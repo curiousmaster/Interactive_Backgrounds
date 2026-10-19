@@ -49,6 +49,11 @@ const CONFIG = {
     retries: 2,
 
     diagnosticDirectory: "_thumbnail-diagnostics"
+    // Unset means all backgrounds are eligible.
+    // An empty array means no backgrounds should be processed.
+    const SELECTED_FOLDERS = process.env.THUMBNAIL_FOLDERS === undefined
+        ? null
+        : new Set(JSON.parse(process.env.THUMBNAIL_FOLDERS));
 };
 
 const REGENERATE_ALL = process.argv.includes("--all");
@@ -821,14 +826,24 @@ function escapeHTML(value) {
    ============================================================ */
 
 async function main() {
-    const backgrounds = await readBackgrounds();
-
-    if (!backgrounds.length) {
+    const allBackgrounds = await readBackgrounds();
+    
+    if (!allBackgrounds.length) {
         throw new Error(
             "No backgrounds found in backgrounds.js"
         );
     }
-
+    
+    const backgrounds = SELECTED_FOLDERS === null
+        ? allBackgrounds
+        : allBackgrounds.filter(background =>
+            SELECTED_FOLDERS.has(background.folder)
+        );
+    
+    if (!backgrounds.length) {
+        console.log("No updated backgrounds to capture.");
+        return;
+    }
     console.log("====================================");
     console.log("Background Thumbnail Generator");
     console.log("====================================");
