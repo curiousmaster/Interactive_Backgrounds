@@ -1,190 +1,1283 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Topographic Contours — WebGL2</title>
+
 <style>
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
-#background{display:block;width:100%;height:100%}
-.topo-editor,.topo-editor *{box-sizing:border-box}
-.topo-editor{font:12px system-ui,sans-serif;color:#eee}
-.topo-editor [hidden]{display:none!important}
-.topo-launcher{position:fixed;right:16px;top:16px;z-index:1000}
-.topo-panel{position:fixed;inset:0 0 0 auto;width:min(350px,100vw);z-index:1001;display:flex;flex-direction:column;background:rgba(18,20,25,.97);border-left:1px solid #343840;box-shadow:-8px 0 30px #0008;transform:translateX(100%);transition:transform .22s ease}
-.topo-panel.open{transform:translateX(0)}
-.topo-header{display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid #343840}
-.topo-header strong{font-size:15px}
-.topo-body{flex:1;overflow-y:auto;padding:0 16px 20px}
-.topo-editor details{border:1px solid #343840;border-radius:8px;margin-top:14px}
-.topo-editor summary{cursor:pointer;padding:12px;color:#b7c7df;font-weight:650;user-select:none}
-.topo-fields{padding:0 12px 12px}
-.topo-control{position:relative;display:grid;grid-template-columns:1fr 96px;gap:7px;align-items:center;margin:10px 0;font-size:12px}
-.topo-control>label{cursor:help}
-.topo-control input[type=range]{grid-column:1/-1;width:100%;accent-color:#80baff;margin:0}
-.topo-control input[type=number],.topo-control select{width:100%;min-width:0;padding:5px;color:white;background:#090b10;border:1px solid #454b57;border-radius:5px}
-.topo-control input[type=checkbox]{justify-self:end;accent-color:#80baff}
-.topo-colors{grid-column:1/-1;display:flex;gap:7px}
-.topo-colors input[type=color]{width:42px;height:30px;background:transparent;border:1px solid #454b57}
-.topo-rgb{flex:1;display:flex;gap:5px}
-.topo-rgb input{width:33%!important}
-.topo-editor button{padding:8px 11px;color:#eee;background:#272d38;border:1px solid #454b57;border-radius:6px;cursor:pointer;font:12px system-ui}
-.topo-editor button:hover{background:#384253}
-.topo-actions{display:flex;gap:8px;margin-top:18px}
-.topo-editor textarea{width:100%;height:290px;margin-top:12px;padding:10px;resize:vertical;color:#bce0ff;background:#090b10;border:1px solid #454b57;border-radius:6px;font:11px/1.5 monospace}
-.topo-status,.topo-hint{color:#aeb8ca;font-size:11px;line-height:1.5}
-.topo-status{min-height:18px;margin-top:8px;color:#a8d6ad}
-.topo-tooltip{position:fixed;z-index:1100;max-width:260px;padding:10px 12px;background:#111923;border:1px solid #46566c;border-radius:7px;color:#d8e8ff;box-shadow:0 8px 24px #0009;font-size:12px;line-height:1.5;pointer-events:none;visibility:hidden}
-.topo-tooltip.visible{visibility:visible}
-@media(prefers-reduced-motion:reduce){.topo-panel{transition:none}}
+    html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+    }
+
+    #background {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+
+    .topo-editor,
+    .topo-editor * {
+        box-sizing: border-box;
+    }
+
+    .topo-editor {
+        color: #eee;
+        font-family: system-ui, sans-serif;
+    }
+
+    .topo-editor [hidden] {
+        display: none !important;
+    }
+
+    .topo-launcher {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        z-index: 1000;
+    }
+
+    .topo-panel {
+        position: fixed;
+        inset: 0 0 0 auto;
+        width: min(350px, 100vw);
+        z-index: 1001;
+        display: flex;
+        flex-direction: column;
+        background: rgba(18, 20, 25, 0.97);
+        border-left: 1px solid #343840;
+        box-shadow: -8px 0 30px #0008;
+        transform: translateX(100%);
+        transition: transform 220ms ease;
+    }
+
+    .topo-panel.open {
+        transform: translateX(0);
+    }
+
+    .topo-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px;
+        border-bottom: 1px solid #343840;
+    }
+
+    .topo-header strong {
+        font-size: 15px;
+    }
+
+    .topo-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 16px 20px;
+    }
+
+    .topo-editor details {
+        margin-top: 14px;
+        border: 1px solid #343840;
+        border-radius: 8px;
+    }
+
+    .topo-editor summary {
+        padding: 12px;
+        color: #b7c7df;
+        font-size: 12px;
+        font-weight: 650;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .topo-fields {
+        padding: 0 12px 12px;
+    }
+
+    .topo-control {
+        position: relative;
+        display: grid;
+        grid-template-columns: 1fr 96px;
+        gap: 7px;
+        align-items: center;
+        margin: 10px 0;
+        font-size: 12px;
+    }
+
+    .topo-control > label {
+        cursor: help;
+    }
+
+    .topo-control input[type="range"] {
+        grid-column: 1 / -1;
+        width: 100%;
+        margin: 0;
+        accent-color: #80baff;
+    }
+
+    .topo-control input[type="number"],
+    .topo-control select {
+        width: 100%;
+        min-width: 0;
+        padding: 5px;
+        color: white;
+        background: #090b10;
+        border: 1px solid #454b57;
+        border-radius: 5px;
+    }
+
+    .topo-control input[type="checkbox"] {
+        justify-self: end;
+        accent-color: #80baff;
+    }
+
+    .topo-colors {
+        grid-column: 1 / -1;
+        display: flex;
+        gap: 7px;
+    }
+
+    .topo-colors input[type="color"] {
+        width: 42px;
+        height: 30px;
+        padding: 2px;
+        background: transparent;
+        border: 1px solid #454b57;
+        border-radius: 5px;
+    }
+
+    .topo-rgb {
+        flex: 1;
+        display: flex;
+        gap: 5px;
+    }
+
+    .topo-rgb input {
+        width: 33% !important;
+    }
+
+    .topo-editor button {
+        padding: 8px 11px;
+        color: #eee;
+        background: #272d38;
+        border: 1px solid #454b57;
+        border-radius: 6px;
+        cursor: pointer;
+        font: 12px system-ui, sans-serif;
+    }
+
+    .topo-editor button:hover {
+        background: #384253;
+    }
+
+    .topo-editor button:focus-visible,
+    .topo-editor input:focus-visible,
+    .topo-editor select:focus-visible,
+    .topo-editor summary:focus-visible,
+    .topo-editor textarea:focus-visible {
+        outline: 2px solid #80baff;
+        outline-offset: 2px;
+    }
+
+    .topo-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 18px;
+    }
+
+    .topo-editor textarea {
+        width: 100%;
+        height: 290px;
+        margin-top: 12px;
+        padding: 10px;
+        resize: vertical;
+        color: #bce0ff;
+        background: #090b10;
+        border: 1px solid #454b57;
+        border-radius: 6px;
+        font: 11px/1.5 monospace;
+        white-space: pre;
+    }
+
+    .topo-status,
+    .topo-hint {
+        color: #aeb8ca;
+        font-size: 11px;
+        line-height: 1.5;
+    }
+
+    .topo-status {
+        min-height: 18px;
+        margin-top: 8px;
+        color: #a8d6ad;
+    }
+
+    .topo-tooltip {
+        position: fixed;
+        z-index: 1100;
+        max-width: 260px;
+        padding: 10px 12px;
+        background: #111923;
+        border: 1px solid #46566c;
+        border-radius: 7px;
+        color: #d8e8ff;
+        box-shadow: 0 8px 24px #0009;
+        font-size: 12px;
+        line-height: 1.5;
+        pointer-events: none;
+        visibility: hidden;
+    }
+
+    .topo-tooltip.visible {
+        visibility: visible;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .topo-panel {
+            transition: none;
+        }
+    }
 </style>
 </head>
+
 <body>
 <canvas id="background" aria-hidden="true"></canvas>
+
 <script type="module">
 "use strict";
+
+// ==================================================
+// Default configuration
+// ==================================================
+
 const config = {
-  terrain:{scale:230,amplitude:1,speed:0.18,detail:0.35,rotation:0},
-  contours:{interval:0.12,lineWidth:1,opacity:0.65,color:[100,190,255],majorEvery:5,majorWidth:1.8},
-  mouse:{enabled:true,mode:"hill",radius:180,strength:0.9,smoothing:8,color:[255,100,170]},
-  glow:{enabled:true,intensity:0.5,blur:8},
-  resolution:14,
-  panel:{enabled:true}
+    terrain: {
+        scale: 230,
+        amplitude: 1,
+        speed: 0.18,
+        detail: 0.35,
+        rotation: 0
+    },
+
+    contours: {
+        interval: 0.12,
+        lineWidth: 1,
+        opacity: 0.65,
+        color: [100, 190, 255],
+        majorEvery: 5,
+        majorWidth: 1.8
+    },
+
+    elevationColors: {
+        theme: "ocean",
+
+        // Color contour lines by elevation.
+        coloredLines: false,
+
+        // Fill areas between contour lines.
+        filledBands: false,
+
+        // Visibility of elevation fill.
+        bandOpacity: 0.45,
+
+        // 0 = original contour color
+        // 1 = full elevation color
+        lineBlend: 1,
+
+        // false = distinct elevation bands
+        // true = continuous elevation gradient
+        smoothBands: false,
+
+        // Elevation range represented by the palette.
+        range: 1.5,
+
+        // Shift the palette up or down.
+        offset: 0
+    },
+
+    mouse: {
+        enabled: true,
+        mode: "hill",
+        radius: 180,
+        strength: 0.9,
+        smoothing: 8,
+        color: [255, 100, 170]
+    },
+
+    glow: {
+        enabled: true,
+        intensity: 0.5,
+        blur: 8
+    },
+
+    resolution: 14,
+
+    panel: {
+        enabled: true
+    }
 };
-window.getBackgroundConfig=()=>structuredClone(config);
-const canvas=document.getElementById("background");
-const gl=canvas.getContext("webgl2",{alpha:false,antialias:false,depth:false,stencil:false,preserveDrawingBuffer:false});
-if(!gl) throw new Error("WebGL2 is required for this background.");
-const vertex = `#version 300 es
+
+window.getBackgroundConfig = () =>
+    JSON.parse(JSON.stringify(config));
+
+// ==================================================
+// Color themes
+// ==================================================
+
+const COLOR_THEMES = {
+    ocean: [
+        [4, 16, 56],
+        [5, 46, 125],
+        [10, 109, 202],
+        [20, 186, 214],
+        [51, 227, 176],
+        [237, 252, 255]
+    ],
+
+    terrain: [
+        [9, 38, 23],
+        [26, 82, 38],
+        [84, 138, 54],
+        [194, 181, 84],
+        [140, 89, 59],
+        [247, 247, 237]
+    ],
+
+    lava: [
+        [31, 3, 6],
+        [89, 5, 11],
+        [186, 17, 10],
+        [255, 82, 6],
+        [255, 194, 20],
+        [255, 247, 201]
+    ],
+
+    aurora: [
+        [9, 20, 79],
+        [54, 33, 145],
+        [158, 36, 191],
+        [235, 71, 171],
+        [26, 205, 214],
+        [135, 250, 161]
+    ],
+
+    monochrome: [
+        [14, 14, 14],
+        [38, 38, 38],
+        [79, 79, 79],
+        [128, 128, 128],
+        [186, 186, 186],
+        [250, 250, 250]
+    ]
+};
+
+// ==================================================
+// WebGL initialization
+// ==================================================
+
+const canvas = document.getElementById("background");
+
+const gl = canvas.getContext("webgl2", {
+    alpha: false,
+    antialias: false,
+    depth: false,
+    stencil: false,
+    preserveDrawingBuffer: false
+});
+
+if (!gl) {
+    throw new Error("WebGL2 is required.");
+}
+
+// ==================================================
+// Vertex shader
+// ==================================================
+
+const vertexSource = `#version 300 es
 precision highp float;
 
 void main() {
     vec2 position = vec2(
-        (gl_VertexID == 1) ? 3.0 : -1.0,
-        (gl_VertexID == 2) ? 3.0 : -1.0
+        gl_VertexID == 1 ? 3.0 : -1.0,
+        gl_VertexID == 2 ? 3.0 : -1.0
     );
 
     gl_Position = vec4(position, 0.0, 1.0);
-}`;
-const fragment=`#version 300 es
+}
+`;
+
+// ==================================================
+// Fragment shader
+// ==================================================
+
+const fragmentSource = `#version 300 es
 precision highp float;
+
 out vec4 outColor;
-uniform vec2 uSize,uPixels;
-uniform float uTime,uScale,uAmplitude,uDetail,uRotation;
-uniform float uInterval,uLineWidth,uMajorWidth,uOpacity,uMajorEvery;
-uniform vec3 uColor,uMouseColor;
+
+uniform vec2 uSize;
+uniform vec2 uPixels;
+
+uniform float uTime;
+uniform float uScale;
+uniform float uAmplitude;
+uniform float uDetail;
+uniform float uRotation;
+
+uniform float uInterval;
+uniform float uLineWidth;
+uniform float uMajorWidth;
+uniform float uOpacity;
+uniform float uMajorEvery;
+
+uniform vec3 uColor;
+uniform vec3 uMouseColor;
+
 uniform vec2 uMouse;
-uniform float uMouseRadius,uMouseStrength,uMouseInfluence,uMouseEnabled;
-uniform float uGlowEnabled,uGlowIntensity,uGlowBlur;
-float elevation(vec2 screen){
-  vec2 p=(screen-uSize*0.5)/max(uScale,10.0);
-  float c=cos(uRotation),s=sin(uRotation);
-  vec2 r=vec2(p.x*c-p.y*s,p.x*s+p.y*c);
-  float u=r.x+0.5*sin(r.y*0.8+uTime*0.6);
-  float v=r.y+0.5*cos(r.x*0.7-uTime*0.5);
-  float h=uAmplitude*(
-    0.55*sin(u*1.15+uTime)+
-    0.4*cos(v*1.35-uTime*0.7)+
-    0.25*sin(u*0.7+v*0.9+uTime*0.4)+
-    uDetail*(0.3*sin(u*2.8-v*1.7+uTime*0.8)+
-             0.2*cos(v*3.2+u*1.3-uTime*0.9)));
-  vec2 d=screen-uMouse;
-  h+=uMouseEnabled*uMouseStrength*uMouseInfluence*exp(-dot(d,d)/(2.0*uMouseRadius*uMouseRadius));
-  return h;
+uniform float uMouseRadius;
+uniform float uMouseStrength;
+uniform float uMouseInfluence;
+uniform float uMouseEnabled;
+
+uniform float uGlowEnabled;
+uniform float uGlowIntensity;
+uniform float uGlowBlur;
+
+uniform float uColoredLines;
+uniform float uFilledBands;
+uniform float uBandOpacity;
+uniform float uLineBlend;
+uniform float uSmoothBands;
+uniform float uPaletteRange;
+uniform float uPaletteOffset;
+
+uniform vec3 uPalette[6];
+
+// --------------------------------------------------
+// Terrain elevation
+// --------------------------------------------------
+
+float elevation(vec2 screen) {
+    vec2 p = (screen - uSize * 0.5) /
+             max(uScale, 10.0);
+
+    float c = cos(uRotation);
+    float s = sin(uRotation);
+
+    vec2 r = vec2(
+        p.x * c - p.y * s,
+        p.x * s + p.y * c
+    );
+
+    float u = r.x +
+        0.5 * sin(r.y * 0.8 + uTime * 0.6);
+
+    float v = r.y +
+        0.5 * cos(r.x * 0.7 - uTime * 0.5);
+
+    float h = uAmplitude * (
+        0.55 * sin(u * 1.15 + uTime) +
+        0.4 * cos(v * 1.35 - uTime * 0.7) +
+        0.25 * sin(
+            u * 0.7 +
+            v * 0.9 +
+            uTime * 0.4
+        ) +
+        uDetail * (
+            0.3 * sin(
+                u * 2.8 -
+                v * 1.7 +
+                uTime * 0.8
+            ) +
+            0.2 * cos(
+                v * 3.2 +
+                u * 1.3 -
+                uTime * 0.9
+            )
+        )
+    );
+
+    vec2 d = screen - uMouse;
+
+    h +=
+        uMouseEnabled *
+        uMouseStrength *
+        uMouseInfluence *
+        exp(
+            -dot(d, d) /
+            (
+                2.0 *
+                uMouseRadius *
+                uMouseRadius
+            )
+        );
+
+    return h;
 }
-void main(){
-  vec2 screen=vec2(gl_FragCoord.x*uSize.x/uPixels.x,uSize.y-gl_FragCoord.y*uSize.y/uPixels.y);
-  float h=elevation(screen);
-  float interval=max(uInterval,0.02);
-  float level=h/interval;
-  // Analytic derivatives convert elevation distance to pixel distance.
-  float slope=max(length(vec2(dFdx(level),dFdy(level))),0.00001);
-  float nearest=floor(level+0.5);
-  float distancePx=abs(level-nearest)/slope;
-  float major=1.0-step(0.5,mod(mod(nearest,max(uMajorEvery,1.0))+max(uMajorEvery,1.0),max(uMajorEvery,1.0)));
-  float widthPx=mix(uLineWidth,uMajorWidth,major);
-  float line=1.0-smoothstep(max(0.0,widthPx*0.5-0.75),widthPx*0.5+0.75,distancePx);
-  line*=step(0.001,widthPx);
-  float glow=0.0;
-  if(uGlowEnabled>0.5){
-    float radius=max(0.01,uGlowBlur);
-    glow=exp(-distancePx*distancePx/(2.0*radius*radius))*uGlowIntensity;
-  }
-  float d=length(screen-uMouse)/max(uMouseRadius,1.0);
-  float tint=uMouseEnabled*uMouseInfluence*exp(-d*d/2.0);
-  vec3 color=mix(uColor,uMouseColor,clamp(tint,0.0,1.0));
-  vec3 rgb=color*(line*uOpacity+glow*uOpacity*0.32);
-  outColor=vec4(clamp(rgb,0.0,1.0),1.0);
-}`;
-function compile(type,source){
-  const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);
-  if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(shader));
-  return shader;
+
+// --------------------------------------------------
+// Palette interpolation
+// --------------------------------------------------
+
+vec3 paletteColor(float elevationValue) {
+    float rangeValue = max(
+        uPaletteRange,
+        0.001
+    );
+
+    float t = clamp(
+        (
+            elevationValue -
+            uPaletteOffset
+        ) / (2.0 * rangeValue) + 0.5,
+        0.0,
+        1.0
+    );
+
+    float position = t * 5.0;
+
+    int index = int(floor(position));
+    index = clamp(index, 0, 4);
+
+    float blend = clamp(
+        position - float(index),
+        0.0,
+        1.0
+    );
+
+    return mix(
+        uPalette[index],
+        uPalette[index + 1],
+        blend
+    );
 }
-const program=gl.createProgram();
-gl.attachShader(program,compile(gl.VERTEX_SHADER,vertex));
-gl.attachShader(program,compile(gl.FRAGMENT_SHADER,fragment));
+
+// --------------------------------------------------
+// Main rendering
+// --------------------------------------------------
+
+void main() {
+    vec2 screen = vec2(
+        gl_FragCoord.x *
+            uSize.x / uPixels.x,
+
+        uSize.y -
+        gl_FragCoord.y *
+            uSize.y / uPixels.y
+    );
+
+    float h = elevation(screen);
+
+    float interval = max(
+        uInterval,
+        0.02
+    );
+
+    float level = h / interval;
+
+    float slope = max(
+        length(vec2(
+            dFdx(level),
+            dFdy(level)
+        )),
+        0.00001
+    );
+
+    float nearest = floor(level + 0.5);
+
+    float distancePx =
+        abs(level - nearest) / slope;
+
+    float majorEvery = max(
+        uMajorEvery,
+        1.0
+    );
+
+    float majorIndex = mod(
+        mod(nearest, majorEvery) +
+        majorEvery,
+        majorEvery
+    );
+
+    float major =
+        1.0 - step(0.5, majorIndex);
+
+    float widthPx = mix(
+        uLineWidth,
+        uMajorWidth,
+        major
+    );
+
+    float line = 1.0 - smoothstep(
+        max(0.0, widthPx * 0.5 - 0.75),
+        widthPx * 0.5 + 0.75,
+        distancePx
+    );
+
+    line *= step(0.001, widthPx);
+
+    // ----------------------------------------------
+    // Contour glow
+    // ----------------------------------------------
+
+    float glow = 0.0;
+
+    if (uGlowEnabled > 0.5) {
+        float radius = max(
+            0.01,
+            uGlowBlur
+        );
+
+        glow = exp(
+            -distancePx * distancePx /
+            (2.0 * radius * radius)
+        ) * uGlowIntensity;
+    }
+
+    // ----------------------------------------------
+    // Elevation-colored contour lines
+    // ----------------------------------------------
+
+    vec3 contourColor = uColor;
+
+    if (uColoredLines > 0.5) {
+        vec3 elevationColor = paletteColor(
+            nearest * interval
+        );
+
+        contourColor = mix(
+            contourColor,
+            elevationColor,
+            clamp(uLineBlend, 0.0, 1.0)
+        );
+    }
+
+    // ----------------------------------------------
+    // Mouse color influence
+    // ----------------------------------------------
+
+    float mouseDistance =
+        length(screen - uMouse) /
+        max(uMouseRadius, 1.0);
+
+    float mouseTint =
+        uMouseEnabled *
+        uMouseInfluence *
+        exp(
+            -mouseDistance *
+            mouseDistance / 2.0
+        );
+
+    contourColor = mix(
+        contourColor,
+        uMouseColor,
+        clamp(mouseTint, 0.0, 1.0)
+    );
+
+    // ----------------------------------------------
+    // Elevation fill
+    // ----------------------------------------------
+
+    vec3 background = vec3(0.0);
+
+    if (uFilledBands > 0.5) {
+        float fillElevation = h;
+
+        if (uSmoothBands < 0.5) {
+            fillElevation =
+                floor(h / interval) * interval +
+                interval * 0.5;
+        }
+
+        vec3 fillColor = paletteColor(
+            fillElevation
+        );
+
+        background = mix(
+            background,
+            fillColor,
+            clamp(uBandOpacity, 0.0, 1.0)
+        );
+    }
+
+    // ----------------------------------------------
+    // Final composition
+    // ----------------------------------------------
+
+    float lineAlpha = clamp(
+        line * uOpacity,
+        0.0,
+        1.0
+    );
+
+    vec3 result = mix(
+        background,
+        contourColor,
+        lineAlpha
+    );
+
+    result += contourColor *
+        glow *
+        uOpacity *
+        0.32;
+
+    outColor = vec4(
+        clamp(result, 0.0, 1.0),
+        1.0
+    );
+}
+`;
+
+// ==================================================
+// Shader compilation
+// ==================================================
+
+function compileShader(type, source) {
+    const shader = gl.createShader(type);
+
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+
+    if (!gl.getShaderParameter(
+        shader,
+        gl.COMPILE_STATUS
+    )) {
+        const error = gl.getShaderInfoLog(shader);
+        gl.deleteShader(shader);
+        throw new Error(error);
+    }
+
+    return shader;
+}
+
+const program = gl.createProgram();
+
+const vertexShader = compileShader(
+    gl.VERTEX_SHADER,
+    vertexSource
+);
+
+const fragmentShader = compileShader(
+    gl.FRAGMENT_SHADER,
+    fragmentSource
+);
+
+gl.attachShader(program, vertexShader);
+gl.attachShader(program, fragmentShader);
+
 gl.linkProgram(program);
-if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program));
+
+if (!gl.getProgramParameter(
+    program,
+    gl.LINK_STATUS
+)) {
+    throw new Error(
+        gl.getProgramInfoLog(program)
+    );
+}
+
+gl.deleteShader(vertexShader);
+gl.deleteShader(fragmentShader);
+
 gl.useProgram(program);
-const vao=gl.createVertexArray();gl.bindVertexArray(vao);
-const loc={};
-for(const name of ["Size","Pixels","Time","Scale","Amplitude","Detail","Rotation","Interval","LineWidth","MajorWidth","Opacity","MajorEvery","Color","MouseColor","Mouse","MouseRadius","MouseStrength","MouseInfluence","MouseEnabled","GlowEnabled","GlowIntensity","GlowBlur"]){loc[name]=gl.getUniformLocation(program,"u"+name);}
-const f=(name,value)=>gl.uniform1f(loc[name],value);
-const v2=(name,x,y)=>gl.uniform2f(loc[name],x,y);
-const v3=(name,c)=>gl.uniform3f(loc[name],c[0]/255,c[1]/255,c[2]/255);
-const mouse={x:0,y:0,targetX:0,targetY:0,active:false,initialized:false,influence:0};
-let width=0,height=0,time=0,previous=null;
-function resize(){
-  width=innerWidth;height=innerHeight;
-  // Original resolution=14 is the baseline; higher values lower GPU load.
-  const quality=Math.min(devicePixelRatio||1,2)*Math.min(1,Math.sqrt(14/Math.max(4,config.resolution)));
-  const w=Math.max(1,Math.round(width*quality)),h=Math.max(1,Math.round(height*quality));
-  if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}
+
+const vao = gl.createVertexArray();
+gl.bindVertexArray(vao);
+
+// ==================================================
+// Uniform locations
+// ==================================================
+
+const uniformNames = [
+    "Size",
+    "Pixels",
+    "Time",
+    "Scale",
+    "Amplitude",
+    "Detail",
+    "Rotation",
+    "Interval",
+    "LineWidth",
+    "MajorWidth",
+    "Opacity",
+    "MajorEvery",
+    "Color",
+    "MouseColor",
+    "Mouse",
+    "MouseRadius",
+    "MouseStrength",
+    "MouseInfluence",
+    "MouseEnabled",
+    "GlowEnabled",
+    "GlowIntensity",
+    "GlowBlur",
+    "ColoredLines",
+    "FilledBands",
+    "BandOpacity",
+    "LineBlend",
+    "SmoothBands",
+    "PaletteRange",
+    "PaletteOffset"
+];
+
+const uniforms = {};
+
+for (const name of uniformNames) {
+    uniforms[name] = gl.getUniformLocation(
+        program,
+        "u" + name
+    );
 }
-function move(event){
-  if(event.target instanceof Element&&event.target.closest("[data-background-editor]")){mouse.active=false;return;}
-  mouse.targetX=event.clientX;mouse.targetY=event.clientY;mouse.active=true;
-  if(!mouse.initialized){mouse.x=mouse.targetX;mouse.y=mouse.targetY;mouse.initialized=true;}
+
+uniforms.Palette = gl.getUniformLocation(
+    program,
+    "uPalette[0]"
+);
+
+function uniformFloat(name, value) {
+    gl.uniform1f(
+        uniforms[name],
+        value
+    );
 }
-const deactivate=()=>{mouse.active=false;};
-window.addEventListener("pointermove",move);
-window.addEventListener("pointerdown",move);
-document.documentElement.addEventListener("pointerleave",deactivate);
-window.addEventListener("blur",deactivate);
-window.addEventListener("pointercancel",deactivate);
-window.addEventListener("pointerup",e=>{if(e.pointerType!=="mouse")deactivate();});
-document.addEventListener("visibilitychange",()=>{previous=null;deactivate();});
-window.addEventListener("resize",resize);
-function animate(timestamp){
-  const dt=previous===null?0:Math.min((timestamp-previous)/1000,0.05);previous=timestamp;
-  time+=dt*config.terrain.speed;
-  const smoothing=1-Math.exp(-Math.max(0.1,config.mouse.smoothing)*dt);
-  mouse.x+=(mouse.targetX-mouse.x)*smoothing;
-  mouse.y+=(mouse.targetY-mouse.y)*smoothing;
-  mouse.influence+=((mouse.active&&config.mouse.enabled?1:0)-mouse.influence)*smoothing;
-  resize();
-  gl.useProgram(program);
-  // Shader coordinates are in CSS pixels, so they stay stable at every DPR.
-  v2("Size",width,height);v2("Pixels",canvas.width,canvas.height);f("Time",time);
-  f("Scale",config.terrain.scale);f("Amplitude",config.terrain.amplitude);
-  f("Detail",config.terrain.detail);f("Rotation",config.terrain.rotation*Math.PI/180);
-  f("Interval",config.contours.interval);f("LineWidth",config.contours.lineWidth);
-  f("MajorWidth",config.contours.majorWidth);f("Opacity",config.contours.opacity);
-  f("MajorEvery",Math.max(1,Math.floor(config.contours.majorEvery)));
-  v3("Color",config.contours.color);v3("MouseColor",config.mouse.color);
-  v2("Mouse",mouse.x,mouse.y);f("MouseRadius",Math.max(1,config.mouse.radius));
-  f("MouseStrength",config.mouse.strength*(config.mouse.mode==="depression"?-1:1));
-  f("MouseInfluence",mouse.influence);f("MouseEnabled",+config.mouse.enabled);
-  f("GlowEnabled",+config.glow.enabled);f("GlowIntensity",config.glow.intensity);
-  f("GlowBlur",config.glow.blur);
-  gl.drawArrays(gl.TRIANGLES,0,3);
-  requestAnimationFrame(animate);
+
+function uniformVec2(name, x, y) {
+    gl.uniform2f(
+        uniforms[name],
+        x,
+        y
+    );
 }
-resize();requestAnimationFrame(animate);
-if(config.panel.enabled){
-  import("./settings-editor.js?v=2").then(({mountEditor})=>mountEditor({config,onChange(){deactivate();}}))
-    .catch(console.error);
+
+function uniformColor(name, color) {
+    gl.uniform3f(
+        uniforms[name],
+        color[0] / 255,
+        color[1] / 255,
+        color[2] / 255
+    );
+}
+
+// ==================================================
+// Mouse state
+// ==================================================
+
+const mouse = {
+    x: 0,
+    y: 0,
+    targetX: 0,
+    targetY: 0,
+    active: false,
+    initialized: false,
+    influence: 0
+};
+
+let width = 0;
+let height = 0;
+let time = 0;
+let previousTime = null;
+
+// ==================================================
+// Resize
+// ==================================================
+
+function resize() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+
+    const dpr = Math.min(
+        window.devicePixelRatio || 1,
+        2
+    );
+
+    const quality = dpr * Math.min(
+        1,
+        Math.sqrt(
+            14 / Math.max(
+                4,
+                config.resolution
+            )
+        )
+    );
+
+    const targetWidth = Math.max(
+        1,
+        Math.round(width * quality)
+    );
+
+    const targetHeight = Math.max(
+        1,
+        Math.round(height * quality)
+    );
+
+    if (
+        canvas.width !== targetWidth ||
+        canvas.height !== targetHeight
+    ) {
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+
+        gl.viewport(
+            0,
+            0,
+            targetWidth,
+            targetHeight
+        );
+    }
+}
+
+// ==================================================
+// Pointer handling
+// ==================================================
+
+function updateMouse(event) {
+    if (
+        event.target instanceof Element &&
+        event.target.closest(
+            "[data-background-editor]"
+        )
+    ) {
+        mouse.active = false;
+        return;
+    }
+
+    mouse.targetX = event.clientX;
+    mouse.targetY = event.clientY;
+    mouse.active = true;
+
+    if (!mouse.initialized) {
+        mouse.x = mouse.targetX;
+        mouse.y = mouse.targetY;
+        mouse.initialized = true;
+    }
+}
+
+function deactivateMouse() {
+    mouse.active = false;
+}
+
+window.addEventListener(
+    "pointermove",
+    updateMouse
+);
+
+window.addEventListener(
+    "pointerdown",
+    updateMouse
+);
+
+document.documentElement.addEventListener(
+    "pointerleave",
+    deactivateMouse
+);
+
+window.addEventListener(
+    "blur",
+    deactivateMouse
+);
+
+window.addEventListener(
+    "pointercancel",
+    deactivateMouse
+);
+
+window.addEventListener(
+    "pointerup",
+    event => {
+        if (event.pointerType !== "mouse") {
+            deactivateMouse();
+        }
+    }
+);
+
+document.addEventListener(
+    "visibilitychange",
+    () => {
+        previousTime = null;
+        deactivateMouse();
+    }
+);
+
+window.addEventListener("resize", resize);
+
+// ==================================================
+// Animation
+// ==================================================
+
+function animate(timestamp) {
+    const delta = previousTime === null
+        ? 0
+        : Math.min(
+            (timestamp - previousTime) / 1000,
+            0.05
+        );
+
+    previousTime = timestamp;
+
+    time += delta * config.terrain.speed;
+
+    const smoothing = 1 - Math.exp(
+        -Math.max(
+            0.1,
+            config.mouse.smoothing
+        ) * delta
+    );
+
+    mouse.x +=
+        (mouse.targetX - mouse.x) * smoothing;
+
+    mouse.y +=
+        (mouse.targetY - mouse.y) * smoothing;
+
+    mouse.influence += (
+        (
+            mouse.active &&
+            config.mouse.enabled
+                ? 1
+                : 0
+        ) - mouse.influence
+    ) * smoothing;
+
+    resize();
+
+    gl.useProgram(program);
+
+    // ----------------------------------------------
+    // Terrain
+    // ----------------------------------------------
+
+    uniformVec2("Size", width, height);
+
+    uniformVec2(
+        "Pixels",
+        canvas.width,
+        canvas.height
+    );
+
+    uniformFloat("Time", time);
+
+    uniformFloat(
+        "Scale",
+        config.terrain.scale
+    );
+
+    uniformFloat(
+        "Amplitude",
+        config.terrain.amplitude
+    );
+
+    uniformFloat(
+        "Detail",
+        config.terrain.detail
+    );
+
+    uniformFloat(
+        "Rotation",
+        config.terrain.rotation *
+        Math.PI / 180
+    );
+
+    // ----------------------------------------------
+    // Contours
+    // ----------------------------------------------
+
+    uniformFloat(
+        "Interval",
+        config.contours.interval
+    );
+
+    uniformFloat(
+        "LineWidth",
+        config.contours.lineWidth
+    );
+
+    uniformFloat(
+        "MajorWidth",
+        config.contours.majorWidth
+    );
+
+    uniformFloat(
+        "Opacity",
+        config.contours.opacity
+    );
+
+    uniformFloat(
+        "MajorEvery",
+        Math.max(
+            1,
+            Math.floor(
+                config.contours.majorEvery
+            )
+        )
+    );
+
+    uniformColor(
+        "Color",
+        config.contours.color
+    );
+
+    // ----------------------------------------------
+    // Mouse
+    // ----------------------------------------------
+
+    uniformColor(
+        "MouseColor",
+        config.mouse.color
+    );
+
+    uniformVec2(
+        "Mouse",
+        mouse.x,
+        mouse.y
+    );
+
+    uniformFloat(
+        "MouseRadius",
+        Math.max(
+            1,
+            config.mouse.radius
+        )
+    );
+
+    uniformFloat(
+        "MouseStrength",
+        config.mouse.strength *
+        (
+            config.mouse.mode === "depression"
+                ? -1
+                : 1
+        )
+    );
+
+    uniformFloat(
+        "MouseInfluence",
+        mouse.influence
+    );
+
+    uniformFloat(
+        "MouseEnabled",
+        Number(config.mouse.enabled)
+    );
+
+    // ----------------------------------------------
+    // Glow
+    // ----------------------------------------------
+
+    uniformFloat(
+        "GlowEnabled",
+        Number(config.glow.enabled)
+    );
+
+    uniformFloat(
+        "GlowIntensity",
+        config.glow.intensity
+    );
+
+    uniformFloat(
+        "GlowBlur",
+        config.glow.blur
+    );
+
+    // ----------------------------------------------
+    // Elevation colors
+    // ----------------------------------------------
+
+    const elevation = config.elevationColors;
+
+    uniformFloat(
+        "ColoredLines",
+        Number(elevation.coloredLines)
+    );
+
+    uniformFloat(
+        "FilledBands",
+        Number(elevation.filledBands)
+    );
+
+    uniformFloat(
+        "BandOpacity",
+        elevation.bandOpacity
+    );
+
+    uniformFloat(
+        "LineBlend",
+        elevation.lineBlend
+    );
+
+    uniformFloat(
+        "SmoothBands",
+        Number(elevation.smoothBands)
+    );
+
+    uniformFloat(
+        "PaletteRange",
+        elevation.range
+    );
+
+    uniformFloat(
+        "PaletteOffset",
+        elevation.offset
+    );
+
+    const palette =
+        COLOR_THEMES[elevation.theme] ||
+        COLOR_THEMES.ocean;
+
+    const paletteData = new Float32Array(
+        palette.flat().map(
+            value => value / 255
+        )
+    );
+
+    gl.uniform3fv(
+        uniforms.Palette,
+        paletteData
+    );
+
+    // ----------------------------------------------
+    // Draw fullscreen triangle
+    // ----------------------------------------------
+
+    gl.drawArrays(
+        gl.TRIANGLES,
+        0,
+        3
+    );
+
+    requestAnimationFrame(animate);
+}
+
+// ==================================================
+// Start
+// ==================================================
+
+resize();
+requestAnimationFrame(animate);
+
+// ==================================================
+// Optional settings editor
+// ==================================================
+
+if (config.panel.enabled) {
+    import("./settings-editor.js?v=3")
+        .then(({ mountEditor }) => {
+            mountEditor({
+                config,
+
+                onChange() {
+                    deactivateMouse();
+                }
+            });
+        })
+        .catch(error => {
+            console.error(
+                "Could not load settings editor:",
+                error
+            );
+        });
 }
 </script>
 </body>
