@@ -1,501 +1,186 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Topographic Contours</title>
-
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Topographic Contours — WebGL2</title>
 <style>
-    html, body {
-        margin: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        background: #000;
-    }
-
-    canvas {
-        display: block;
-        width: 100%;
-        height: 100%;
-    }
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
+#background{display:block;width:100%;height:100%}
+.topo-editor,.topo-editor *{box-sizing:border-box}
+.topo-editor{font:12px system-ui,sans-serif;color:#eee}
+.topo-editor [hidden]{display:none!important}
+.topo-launcher{position:fixed;right:16px;top:16px;z-index:1000}
+.topo-panel{position:fixed;inset:0 0 0 auto;width:min(350px,100vw);z-index:1001;display:flex;flex-direction:column;background:rgba(18,20,25,.97);border-left:1px solid #343840;box-shadow:-8px 0 30px #0008;transform:translateX(100%);transition:transform .22s ease}
+.topo-panel.open{transform:translateX(0)}
+.topo-header{display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid #343840}
+.topo-header strong{font-size:15px}
+.topo-body{flex:1;overflow-y:auto;padding:0 16px 20px}
+.topo-editor details{border:1px solid #343840;border-radius:8px;margin-top:14px}
+.topo-editor summary{cursor:pointer;padding:12px;color:#b7c7df;font-weight:650;user-select:none}
+.topo-fields{padding:0 12px 12px}
+.topo-control{position:relative;display:grid;grid-template-columns:1fr 96px;gap:7px;align-items:center;margin:10px 0;font-size:12px}
+.topo-control>label{cursor:help}
+.topo-control input[type=range]{grid-column:1/-1;width:100%;accent-color:#80baff;margin:0}
+.topo-control input[type=number],.topo-control select{width:100%;min-width:0;padding:5px;color:white;background:#090b10;border:1px solid #454b57;border-radius:5px}
+.topo-control input[type=checkbox]{justify-self:end;accent-color:#80baff}
+.topo-colors{grid-column:1/-1;display:flex;gap:7px}
+.topo-colors input[type=color]{width:42px;height:30px;background:transparent;border:1px solid #454b57}
+.topo-rgb{flex:1;display:flex;gap:5px}
+.topo-rgb input{width:33%!important}
+.topo-editor button{padding:8px 11px;color:#eee;background:#272d38;border:1px solid #454b57;border-radius:6px;cursor:pointer;font:12px system-ui}
+.topo-editor button:hover{background:#384253}
+.topo-actions{display:flex;gap:8px;margin-top:18px}
+.topo-editor textarea{width:100%;height:290px;margin-top:12px;padding:10px;resize:vertical;color:#bce0ff;background:#090b10;border:1px solid #454b57;border-radius:6px;font:11px/1.5 monospace}
+.topo-status,.topo-hint{color:#aeb8ca;font-size:11px;line-height:1.5}
+.topo-status{min-height:18px;margin-top:8px;color:#a8d6ad}
+.topo-tooltip{position:fixed;z-index:1100;max-width:260px;padding:10px 12px;background:#111923;border:1px solid #46566c;border-radius:7px;color:#d8e8ff;box-shadow:0 8px 24px #0009;font-size:12px;line-height:1.5;pointer-events:none;visibility:hidden}
+.topo-tooltip.visible{visibility:visible}
+@media(prefers-reduced-motion:reduce){.topo-panel{transition:none}}
 </style>
 </head>
-
 <body>
 <canvas id="background" aria-hidden="true"></canvas>
-
 <script type="module">
 "use strict";
-
-// Replace with configuration copied from the editor.
 const config = {
-    terrain: {
-        scale: 230,           // Larger = wider terrain features
-        amplitude: 1,
-        speed: 0.18,
-        detail: 0.35,
-        rotation: 0
-    },
-
-    contours: {
-        interval: 0.12,        // Elevation between contour lines
-        lineWidth: 1,
-        opacity: 0.65,
-        color: [100, 190, 255],
-        majorEvery: 5,         // Every fifth contour is emphasized
-        majorWidth: 1.8
-    },
-
-    mouse: {
-        enabled: true,
-        mode: "hill",          // "hill" or "depression"
-        radius: 180,
-        strength: 0.9,
-        smoothing: 8,
-        color: [255, 100, 170]
-    },
-
-    glow: {
-        enabled: true,
-        intensity: 0.5,
-        blur: 8
-    },
-
-    resolution: 14,            // Sampling spacing; lower = finer
-    panel: {
-        enabled: true
-    }
+  terrain:{scale:230,amplitude:1,speed:0.18,detail:0.35,rotation:0},
+  contours:{interval:0.12,lineWidth:1,opacity:0.65,color:[100,190,255],majorEvery:5,majorWidth:1.8},
+  mouse:{enabled:true,mode:"hill",radius:180,strength:0.9,smoothing:8,color:[255,100,170]},
+  glow:{enabled:true,intensity:0.5,blur:8},
+  resolution:14,
+  panel:{enabled:true}
 };
-
-window.getBackgroundConfig = () =>
-      JSON.parse(JSON.stringify(config));
-
-const canvas = document.getElementById("background");
-const ctx = canvas.getContext("2d");
-
-const clamp = (value, min, max) =>
-    Math.max(min, Math.min(max, value));
-
-function rgb(color) {
-    return `rgb(${color.map(value =>
-        Math.round(clamp(value, 0, 255))
-    ).join(",")})`;
+window.getBackgroundConfig=()=>structuredClone(config);
+const canvas=document.getElementById("background");
+const gl=canvas.getContext("webgl2",{alpha:false,antialias:false,depth:false,stencil:false,preserveDrawingBuffer:false});
+if(!gl) throw new Error("WebGL2 is required for this background.");
+const vertex=`#version 300 es
+precision highp float;
+void main(){
+  vec2 p=vec2((gl_VertexID==1||gl_VertexID==2)?3.0:-1.0,(gl_VertexID>=2)?3.0:-1.0);
+  gl_Position=vec4(p,0.0,1.0);
+}`;
+const fragment=`#version 300 es
+precision highp float;
+out vec4 outColor;
+uniform vec2 uSize,uPixels;
+uniform float uTime,uScale,uAmplitude,uDetail,uRotation;
+uniform float uInterval,uLineWidth,uMajorWidth,uOpacity,uMajorEvery;
+uniform vec3 uColor,uMouseColor;
+uniform vec2 uMouse;
+uniform float uMouseRadius,uMouseStrength,uMouseInfluence,uMouseEnabled;
+uniform float uGlowEnabled,uGlowIntensity,uGlowBlur;
+float elevation(vec2 screen){
+  vec2 p=(screen-uSize*0.5)/max(uScale,10.0);
+  float c=cos(uRotation),s=sin(uRotation);
+  vec2 r=vec2(p.x*c-p.y*s,p.x*s+p.y*c);
+  float u=r.x+0.5*sin(r.y*0.8+uTime*0.6);
+  float v=r.y+0.5*cos(r.x*0.7-uTime*0.5);
+  float h=uAmplitude*(
+    0.55*sin(u*1.15+uTime)+
+    0.4*cos(v*1.35-uTime*0.7)+
+    0.25*sin(u*0.7+v*0.9+uTime*0.4)+
+    uDetail*(0.3*sin(u*2.8-v*1.7+uTime*0.8)+
+             0.2*cos(v*3.2+u*1.3-uTime*0.9)));
+  vec2 d=screen-uMouse;
+  h+=uMouseEnabled*uMouseStrength*uMouseInfluence*exp(-dot(d,d)/(2.0*uMouseRadius*uMouseRadius));
+  return h;
 }
-
-function mixColor(a, b, amount) {
-    const t = clamp(amount, 0, 1);
-
-    return a.map((value, index) =>
-        value + (b[index] - value) * t
-    );
+void main(){
+  vec2 screen=vec2(gl_FragCoord.x*uSize.x/uPixels.x,uSize.y-gl_FragCoord.y*uSize.y/uPixels.y);
+  float h=elevation(screen);
+  float interval=max(uInterval,0.02);
+  float level=h/interval;
+  // Analytic derivatives convert elevation distance to pixel distance.
+  float slope=max(length(vec2(dFdx(level),dFdy(level))),0.00001);
+  float nearest=floor(level+0.5);
+  float distancePx=abs(level-nearest)/slope;
+  float major=1.0-step(0.5,mod(mod(nearest,max(uMajorEvery,1.0))+max(uMajorEvery,1.0),max(uMajorEvery,1.0)));
+  float widthPx=mix(uLineWidth,uMajorWidth,major);
+  float line=1.0-smoothstep(max(0.0,widthPx*0.5-0.75),widthPx*0.5+0.75,distancePx);
+  line*=step(0.001,widthPx);
+  float glow=0.0;
+  if(uGlowEnabled>0.5){
+    float radius=max(0.01,uGlowBlur);
+    glow=exp(-distancePx*distancePx/(2.0*radius*radius))*uGlowIntensity;
+  }
+  float d=length(screen-uMouse)/max(uMouseRadius,1.0);
+  float tint=uMouseEnabled*uMouseInfluence*exp(-d*d/2.0);
+  vec3 color=mix(uColor,uMouseColor,clamp(tint,0.0,1.0));
+  vec3 rgb=color*(line*uOpacity+glow*uOpacity*0.32);
+  outColor=vec4(clamp(rgb,0.0,1.0),1.0);
+}`;
+function compile(type,source){
+  const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);
+  if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(shader));
+  return shader;
 }
-
-let width = 0;
-let height = 0;
-let columns = 0;
-let rows = 0;
-let cellSize = 14;
-let values = new Float32Array(0);
-
-let time = 0;
-let previousTime = null;
-let gridDirty = true;
-
-const mouse = {
-    x: 0,
-    y: 0,
-    targetX: 0,
-    targetY: 0,
-    active: false,
-    initialized: false,
-    influence: 0
-};
-
-function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-
-    width = window.innerWidth;
-    height = window.innerHeight;
-
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(height * dpr);
-
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    gridDirty = true;
+const program=gl.createProgram();
+gl.attachShader(program,compile(gl.VERTEX_SHADER,vertex));
+gl.attachShader(program,compile(gl.FRAGMENT_SHADER,fragment));
+gl.linkProgram(program);
+if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program));
+gl.useProgram(program);
+const vao=gl.createVertexArray();gl.bindVertexArray(vao);
+const loc={};
+for(const name of ["Size","Pixels","Time","Scale","Amplitude","Detail","Rotation","Interval","LineWidth","MajorWidth","Opacity","MajorEvery","Color","MouseColor","Mouse","MouseRadius","MouseStrength","MouseInfluence","MouseEnabled","GlowEnabled","GlowIntensity","GlowBlur"]){loc[name]=gl.getUniformLocation(program,"u"+name);}
+const f=(name,value)=>gl.uniform1f(loc[name],value);
+const v2=(name,x,y)=>gl.uniform2f(loc[name],x,y);
+const v3=(name,c)=>gl.uniform3f(loc[name],c[0]/255,c[1]/255,c[2]/255);
+const mouse={x:0,y:0,targetX:0,targetY:0,active:false,initialized:false,influence:0};
+let width=0,height=0,time=0,previous=null;
+function resize(){
+  width=innerWidth;height=innerHeight;
+  // Original resolution=14 is the baseline; higher values lower GPU load.
+  const quality=Math.min(devicePixelRatio||1,2)*Math.min(1,Math.sqrt(14/Math.max(4,config.resolution)));
+  const w=Math.max(1,Math.round(width*quality)),h=Math.max(1,Math.round(height*quality));
+  if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}
 }
-
-function rebuildGrid() {
-    cellSize = Math.max(4, config.resolution);
-    columns = Math.ceil(width / cellSize) + 1;
-    rows = Math.ceil(height / cellSize) + 1;
-
-    values = new Float32Array(columns * rows);
+function move(event){
+  if(event.target instanceof Element&&event.target.closest("[data-background-editor]")){mouse.active=false;return;}
+  mouse.targetX=event.clientX;mouse.targetY=event.clientY;mouse.active=true;
+  if(!mouse.initialized){mouse.x=mouse.targetX;mouse.y=mouse.targetY;mouse.initialized=true;}
 }
-
-// --------------------------------------------------
-// Terrain field
-// --------------------------------------------------
-
-function sampleTerrain() {
-    const scale = Math.max(10, config.terrain.scale);
-    const amplitude = Math.max(0, config.terrain.amplitude);
-    const detail = Math.max(0, config.terrain.detail);
-
-    const angle = config.terrain.rotation * Math.PI / 180;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-
-    const radius = Math.max(1, config.mouse.radius);
-    const mouseSign = config.mouse.mode === "depression" ? -1 : 1;
-    const mouseStrength =
-        config.mouse.enabled
-            ? mouse.influence * config.mouse.strength * mouseSign
-            : 0;
-
-    let minimum = Infinity;
-    let maximum = -Infinity;
-
-    for (let row = 0; row < rows; row++) {
-        const screenY = row * cellSize;
-
-        for (let column = 0; column < columns; column++) {
-            const screenX = column * cellSize;
-
-            const px = (screenX - width / 2) / scale;
-            const py = (screenY - height / 2) / scale;
-
-            const x = px * cos - py * sin;
-            const y = px * sin + py * cos;
-
-            // Smooth domain warping makes irregular terrain.
-            const u = x + 0.5 * Math.sin(y * 0.8 + time * 0.6);
-            const v = y + 0.5 * Math.cos(x * 0.7 - time * 0.5);
-
-            let elevation = amplitude * (
-                0.55 * Math.sin(u * 1.15 + time) +
-                0.4 * Math.cos(v * 1.35 - time * 0.7) +
-                0.25 * Math.sin(u * 0.7 + v * 0.9 + time * 0.4) +
-                detail * (
-                    0.3 * Math.sin(u * 2.8 - v * 1.7 + time * 0.8) +
-                    0.2 * Math.cos(v * 3.2 + u * 1.3 - time * 0.9)
-                )
-            );
-
-            if (Math.abs(mouseStrength) > 0.0001) {
-                const dx = screenX - mouse.x;
-                const dy = screenY - mouse.y;
-
-                elevation += mouseStrength * Math.exp(
-                    -(dx * dx + dy * dy) /
-                    (2 * radius * radius)
-                );
-            }
-
-            values[row * columns + column] = elevation;
-
-            minimum = Math.min(minimum, elevation);
-            maximum = Math.max(maximum, elevation);
-        }
-    }
-
-    return { minimum, maximum };
+const deactivate=()=>{mouse.active=false;};
+window.addEventListener("pointermove",move);
+window.addEventListener("pointerdown",move);
+document.documentElement.addEventListener("pointerleave",deactivate);
+window.addEventListener("blur",deactivate);
+window.addEventListener("pointercancel",deactivate);
+window.addEventListener("pointerup",e=>{if(e.pointerType!=="mouse")deactivate();});
+document.addEventListener("visibilitychange",()=>{previous=null;deactivate();});
+window.addEventListener("resize",resize);
+function animate(timestamp){
+  const dt=previous===null?0:Math.min((timestamp-previous)/1000,0.05);previous=timestamp;
+  time+=dt*config.terrain.speed;
+  const smoothing=1-Math.exp(-Math.max(0.1,config.mouse.smoothing)*dt);
+  mouse.x+=(mouse.targetX-mouse.x)*smoothing;
+  mouse.y+=(mouse.targetY-mouse.y)*smoothing;
+  mouse.influence+=((mouse.active&&config.mouse.enabled?1:0)-mouse.influence)*smoothing;
+  resize();
+  gl.useProgram(program);
+  // Shader coordinates are in CSS pixels, so they stay stable at every DPR.
+  v2("Size",width,height);v2("Pixels",canvas.width,canvas.height);f("Time",time);
+  f("Scale",config.terrain.scale);f("Amplitude",config.terrain.amplitude);
+  f("Detail",config.terrain.detail);f("Rotation",config.terrain.rotation*Math.PI/180);
+  f("Interval",config.contours.interval);f("LineWidth",config.contours.lineWidth);
+  f("MajorWidth",config.contours.majorWidth);f("Opacity",config.contours.opacity);
+  f("MajorEvery",Math.max(1,Math.floor(config.contours.majorEvery)));
+  v3("Color",config.contours.color);v3("MouseColor",config.mouse.color);
+  v2("Mouse",mouse.x,mouse.y);f("MouseRadius",Math.max(1,config.mouse.radius));
+  f("MouseStrength",config.mouse.strength*(config.mouse.mode==="depression"?-1:1));
+  f("MouseInfluence",mouse.influence);f("MouseEnabled",+config.mouse.enabled);
+  f("GlowEnabled",+config.glow.enabled);f("GlowIntensity",config.glow.intensity);
+  f("GlowBlur",config.glow.blur);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+  requestAnimationFrame(animate);
 }
-
-// --------------------------------------------------
-// Contours using marching squares
-// --------------------------------------------------
-
-// Edge numbering:
-// 0: top, 1: right, 2: bottom, 3: left.
-//
-// Corner bits:
-// top-left 1, top-right 2, bottom-right 4, bottom-left 8.
-
-const edgePairs = {
-    1:  [3, 0],
-    2:  [0, 1],
-    3:  [3, 1],
-    4:  [1, 2],
-    6:  [0, 2],
-    7:  [3, 2],
-    8:  [2, 3],
-    9:  [0, 2],
-    11: [1, 2],
-    12: [1, 3],
-    13: [0, 1],
-    14: [3, 0]
-};
-
-function buildContour(level) {
-    const path = new Path2D();
-
-    for (let row = 0; row < rows - 1; row++) {
-        for (let column = 0; column < columns - 1; column++) {
-            const index = row * columns + column;
-
-            const a = values[index];
-            const b = values[index + 1];
-            const c = values[index + columns + 1];
-            const d = values[index + columns];
-
-            const mask =
-                (a > level ? 1 : 0) |
-                (b > level ? 2 : 0) |
-                (c > level ? 4 : 0) |
-                (d > level ? 8 : 0);
-
-            if (mask === 0 || mask === 15) continue;
-
-            let pairs = edgePairs[mask];
-
-            if (mask === 5 || mask === 10) {
-                // Resolve saddle cells using the bilinear field.
-                const determinant =
-                    (a - level) * (c - level) -
-                    (b - level) * (d - level);
-
-                pairs = determinant >= 0
-                    ? [0, 1, 2, 3]
-                    : [3, 0, 1, 2];
-            }
-
-            const x = column * cellSize;
-            const y = row * cellSize;
-
-            function fraction(start, end) {
-                const difference = end - start;
-
-                return difference === 0
-                    ? 0.5
-                    : clamp((level - start) / difference, 0, 1);
-            }
-
-            function edgePoint(edge) {
-                switch (edge) {
-                    case 0:
-                        return [
-                            x + fraction(a, b) * cellSize,
-                            y
-                        ];
-
-                    case 1:
-                        return [
-                            x + cellSize,
-                            y + fraction(b, c) * cellSize
-                        ];
-
-                    case 2:
-                        return [
-                            x + fraction(d, c) * cellSize,
-                            y + cellSize
-                        ];
-
-                    default:
-                        return [
-                            x,
-                            y + fraction(a, d) * cellSize
-                        ];
-                }
-            }
-
-            for (let i = 0; i < pairs.length; i += 2) {
-                const start = edgePoint(pairs[i]);
-                const end = edgePoint(pairs[i + 1]);
-
-                path.moveTo(start[0], start[1]);
-                path.lineTo(end[0], end[1]);
-            }
-        }
-    }
-
-    return path;
-}
-
-function strokeContour(path, lineWidth) {
-    if (config.glow.enabled && config.glow.intensity > 0) {
-        ctx.save();
-
-        ctx.globalAlpha =
-            config.contours.opacity *
-            clamp(config.glow.intensity, 0, 1);
-
-        ctx.shadowColor = rgb(config.contours.color);
-        ctx.shadowBlur = Math.max(0, config.glow.blur);
-        ctx.lineWidth = lineWidth;
-        ctx.stroke(path);
-
-        ctx.restore();
-    }
-
-    ctx.globalAlpha = clamp(config.contours.opacity, 0, 1);
-    ctx.lineWidth = lineWidth;
-    ctx.stroke(path);
-}
-
-function drawContours(minimum, maximum) {
-    const interval = Math.max(0.02, config.contours.interval);
-    const majorEvery = Math.max(
-        1, Math.floor(config.contours.majorEvery)
-    );
-
-    // Integer indices keep contour elevations anchored.
-    const first = Math.ceil(minimum / interval);
-    const last = Math.floor(maximum / interval);
-
-    let stroke = rgb(config.contours.color);
-
-    if (
-        config.mouse.enabled &&
-        mouse.influence > 0.001 &&
-        config.mouse.strength > 0
-    ) {
-        const radius = Math.max(1, config.mouse.radius);
-        const gradient = ctx.createRadialGradient(
-            mouse.x, mouse.y, 0,
-            mouse.x, mouse.y, radius * 2.5
-        );
-
-        gradient.addColorStop(0, rgb(mixColor(
-            config.contours.color,
-            config.mouse.color,
-            mouse.influence
-        )));
-
-        gradient.addColorStop(1, rgb(config.contours.color));
-        stroke = gradient;
-    }
-
-    ctx.strokeStyle = stroke;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-
-    for (let index = first; index <= last; index++) {
-        const major = index % majorEvery === 0;
-
-        const lineWidth = major
-            ? config.contours.majorWidth
-            : config.contours.lineWidth;
-
-        if (lineWidth <= 0) continue;
-
-        const path = buildContour(index * interval);
-        strokeContour(path, lineWidth);
-    }
-
-    ctx.globalAlpha = 1;
-}
-
-// --------------------------------------------------
-// Animation
-// --------------------------------------------------
-
-function animate(timestamp) {
-    const delta = previousTime === null
-        ? 0
-        : Math.min((timestamp - previousTime) / 1000, 0.05);
-
-    previousTime = timestamp;
-    time += delta * config.terrain.speed;
-
-    const smoothing =
-        1 - Math.exp(-Math.max(0.1, config.mouse.smoothing) * delta);
-
-    mouse.x += (mouse.targetX - mouse.x) * smoothing;
-    mouse.y += (mouse.targetY - mouse.y) * smoothing;
-
-    mouse.influence +=
-        ((mouse.active && config.mouse.enabled ? 1 : 0) -
-            mouse.influence) * smoothing;
-
-    if (gridDirty) {
-        gridDirty = false;
-        rebuildGrid();
-    }
-
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, width, height);
-
-    const { minimum, maximum } = sampleTerrain();
-    drawContours(minimum, maximum);
-
-    requestAnimationFrame(animate);
-}
-
-// --------------------------------------------------
-// Mouse and touch
-// --------------------------------------------------
-
-function updateMouse(event) {
-    if (
-        event.target instanceof Element &&
-        event.target.closest("[data-background-editor]")
-    ) {
-        mouse.active = false;
-        return;
-    }
-
-    mouse.targetX = event.clientX;
-    mouse.targetY = event.clientY;
-    mouse.active = true;
-
-    if (!mouse.initialized) {
-        mouse.x = mouse.targetX;
-        mouse.y = mouse.targetY;
-        mouse.initialized = true;
-    }
-}
-
-function deactivateMouse() {
-    mouse.active = false;
-}
-
-window.addEventListener("pointermove", updateMouse);
-window.addEventListener("pointerdown", updateMouse);
-
-document.documentElement.addEventListener(
-    "pointerleave", deactivateMouse
-);
-
-window.addEventListener("blur", deactivateMouse);
-window.addEventListener("pointercancel", deactivateMouse);
-
-window.addEventListener("pointerup", event => {
-    if (event.pointerType !== "mouse") deactivateMouse();
-});
-
-document.addEventListener("visibilitychange", () => {
-    previousTime = null;
-    deactivateMouse();
-});
-
-window.addEventListener("resize", resize);
-
-resize();
-requestAnimationFrame(animate);
-
-// --------------------------------------------------
-// Optional editor
-// --------------------------------------------------
-
-if (config.panel.enabled) {
-    import("./settings-editor.js")
-        .then(({ mountEditor }) => {
-            mountEditor({
-                config,
-
-                onChange(path) {
-                    if (path === "resolution") {
-                        gridDirty = true;
-                    }
-
-                    deactivateMouse();
-                }
-            });
-        })
-        .catch(error => {
-            console.error("Could not load settings editor:", error);
-        });
+resize();requestAnimationFrame(animate);
+if(config.panel.enabled){
+  import("./settings-editor.js?v=2").then(({mountEditor})=>mountEditor({config,onChange(){deactivate();}}))
+    .catch(console.error);
 }
 </script>
 </body>
