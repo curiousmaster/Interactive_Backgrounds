@@ -254,69 +254,55 @@
 // ==================================================
 
 const config = {
-    terrain: {
-        scale: 230,
-        amplitude: 1,
-        speed: 0.18,
-        detail: 0.35,
-        rotation: 0
+    "terrain": {
+        "scale": 228,
+        "amplitude": 0.6,
+        "speed": 0.18,
+        "detail": 0.4,
+        "rotation": 0
     },
-
-    contours: {
-        interval: 0.12,
-        lineWidth: 1,
-        opacity: 0.65,
-        color: [100, 190, 255],
-        majorEvery: 5,
-        majorWidth: 1.8
+    "contours": {
+        "interval": 0.05,
+        "lineWidth": 1,
+        "opacity": 0.65,
+        "color": [
+            100,
+            190,
+            255
+        ],
+        "majorEvery": 5,
+        "majorWidth": 1.8
     },
-
-    elevationColors: {
-        theme: "ocean",
-
-        // Color contour lines by elevation.
-        coloredLines: false,
-
-        // Fill areas between contour lines.
-        filledBands: false,
-
-        // Visibility of elevation fill.
-        bandOpacity: 0.45,
-
-        // 0 = original contour color
-        // 1 = full elevation color
-        lineBlend: 1,
-
-        // false = distinct elevation bands
-        // true = continuous elevation gradient
-        smoothBands: false,
-
-        // Elevation range represented by the palette.
-        range: 1.5,
-
-        // Shift the palette up or down.
-        offset: 0
+    "elevationColors": {
+        "theme": "ocean",
+        "coloredLines": false,
+        "filledBands": true,
+        "bandOpacity": 0.8,
+        "lineBlend": 0.5,
+        "smoothBands": false,
+        "range": 0.9,
+        "offset": 0.4
     },
-
-    mouse: {
-        enabled: true,
-        mode: "hill",
-        radius: 180,
-        strength: 0.9,
-        smoothing: 8,
-        color: [255, 100, 170]
+    "mouse": {
+        "enabled": true,
+        "mode": "hill",
+        "radius": 180,
+        "strength": 0.9,
+        "smoothing": 8,
+        "color": [
+            255,
+            100,
+            170
+        ]
     },
-
-    glow: {
-        enabled: true,
-        intensity: 0.5,
-        blur: 8
+    "glow": {
+        "enabled": false,
+        "intensity": 0.43,
+        "blur": 10
     },
-
-    resolution: 14,
-
-    panel: {
-        enabled: true
+    "resolution": 14,
+    "panel": {
+        "enabled": true
     }
 };
 
