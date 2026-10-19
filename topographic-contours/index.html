@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -56,11 +55,16 @@ window.getBackgroundConfig=()=>structuredClone(config);
 const canvas=document.getElementById("background");
 const gl=canvas.getContext("webgl2",{alpha:false,antialias:false,depth:false,stencil:false,preserveDrawingBuffer:false});
 if(!gl) throw new Error("WebGL2 is required for this background.");
-const vertex=`#version 300 es
+const vertex = `#version 300 es
 precision highp float;
-void main(){
-  vec2 p=vec2((gl_VertexID==1||gl_VertexID==2)?3.0:-1.0,(gl_VertexID>=2)?3.0:-1.0);
-  gl_Position=vec4(p,0.0,1.0);
+
+void main() {
+    vec2 position = vec2(
+        (gl_VertexID == 1) ? 3.0 : -1.0,
+        (gl_VertexID == 2) ? 3.0 : -1.0
+    );
+
+    gl_Position = vec4(position, 0.0, 1.0);
 }`;
 const fragment=`#version 300 es
 precision highp float;
