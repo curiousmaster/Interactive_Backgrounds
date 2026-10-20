@@ -36,101 +36,57 @@
 // ==================================================
 
 const config = {
-    fabric: {
-        // Distance between neighboring threads.
-        spacing: 34,
-
-        // Rotation of the entire fabric in degrees.
-        rotation: -15,
-
-        // Thickness of each thread.
-        lineWidth: 1,
-
-        // Overall thread opacity: 0 = invisible, 1 = solid.
-        opacity: 0.65,
-
-        // Color of threads running along the first axis.
-        colorA: [65, 210, 220],
-
-        // Color of threads running along the second axis.
-        colorB: [190, 100, 255]
+    "fabric": {
+        "spacing": 55,
+        "rotation": -15,
+        "lineWidth": 1,
+        "opacity": 0.65,
+        "colorA": [
+            65,
+            210,
+            220
+        ],
+        "colorB": [
+            190,
+            100,
+            255
+        ]
     },
-
-    time: {
-        // Shared animation speed.
-        // Use 0 to stop clock advancement, or negative values to reverse it.
-        speed: 0.8,
-
-        // How differently individual thread samples experience time.
-        variation: 0.85,
-
-        // Strength of temporary slowdowns in different fabric regions.
-        pauseStrength: 0.7,
-
-        // How quickly calm patches disappear after the mouse leaves.
-        // Also gently pulls local clocks toward the shared clock.
-        recovery: 1.5
+    "time": {
+        "speed": 1.51,
+        "variation": 0.23,
+        "pauseStrength": 0.7,
+        "recovery": 1.5
     },
-
-    weave: {
-        // Maximum scale of sideways thread movement.
-        amplitude: 22,
-
-        // Length of the main wave along each thread.
-        wavelength: 280,
-
-        // Strength of smaller, tighter folds.
-        knotStrength: 0.65,
-
-        // Frequency of regions containing tighter folds.
-        knotFrequency: 0.6,
-
-        // Half-width of the approximate gaps at alternating crossings.
-        // Set to 0 for continuous threads.
-        crossingGap: 5
+    "weave": {
+        "amplitude": 7,
+        "wavelength": 220,
+        "knotStrength": 0.65,
+        "knotFrequency": 0.6,
+        "crossingGap": 5
     },
-
-    mouse: {
-        // Enable mouse and touch interaction.
-        enabled: true,
-
-        // Size of the region influenced by the pointer.
-        radius: 200,
-
-        // How quickly nearby local clocks synchronize.
-        synchronization: 5,
-
-        // How strongly synchronized threads flatten.
-        // 0 = retain movement, 1 = become almost straight.
-        calmness: 0.85,
-
-        // How quickly pointer position and influence respond.
-        smoothing: 10,
-
-        // Color of synchronized threads.
-        color: [255, 185, 110]
+    "mouse": {
+        "enabled": true,
+        "radius": 200,
+        "synchronization": 5,
+        "calmness": 0.85,
+        "smoothing": 10,
+        "color": [
+            255,
+            185,
+            110
+        ]
     },
-
-    glow: {
-        // Enable the soft halo around threads.
-        enabled: true,
-
-        // Brightness of the halo.
-        intensity: 0.5,
-
-        // Spread of the halo.
-        blur: 8
+    "glow": {
+        "enabled": true,
+        "intensity": 0.56,
+        "blur": 4
     },
-
-    rendering: {
-        // Distance between simulation samples along threads.
-        // Smaller values give finer curves but require more processing.
-        sampleSpacing: 10
+    "rendering": {
+        "sampleSpacing": 10
     },
-
-    panel: {
-        // Set to false to skip loading the settings editor.
-        enabled: true
+    "panel": {
+        "enabled": true
     }
 };
 
