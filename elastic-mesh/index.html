@@ -14,7 +14,7 @@
         background: #000;
     }
 
-    canvas {
+    #background {
         display: block;
         width: 100%;
         height: 100%;
@@ -28,14 +28,26 @@
 <script type="module">
 "use strict";
 
-// Replace this block with configuration copied from the editor.
+// ==================================================
+// CONFIGURATION
+// Colors use RGB arrays. Distances use CSS pixels.
+// Every additional visual feature can be disabled.
+// ==================================================
+
 const config = {
     mesh: {
         spacing: 40,
         rotation: 0,
+
+        // Anchor spring strength.
         stiffness: 35,
+
+        // Strength of displacement coupling between neighbors.
         coupling: 25,
+
+        // Higher values make movement settle faster.
         damping: 7,
+
         maxDisplacement: 160,
         lineWidth: 0.8,
         opacity: 0.55,
@@ -53,11 +65,69 @@ const config = {
 
     mouse: {
         enabled: true,
-        mode: "attract",       // "attract" or "repel"
+
+        // "attract", "repel", or "vortex".
+        mode: "attract",
+
         radius: 220,
         strength: 450,
         smoothing: 10,
         color: [255, 90, 170]
+    },
+
+    // Click or tap to launch a physical deformation wave.
+    shockwaves: {
+        enabled: true,
+        strength: 1400,
+        speed: 280,
+        width: 65,
+        lifetime: 3,
+        showRings: true,
+        ringOpacity: 0.16,
+        color: [150, 210, 255]
+    },
+
+    // Color springs according to their length change.
+    stress: {
+        enabled: true,
+        sensitivity: 3,
+        intensity: 0.85,
+        stretchColor: [255, 120, 90],
+        compressionColor: [165, 110, 255]
+    },
+
+    // Luminous bands travel along the mesh coordinates.
+    energy: {
+        enabled: true,
+        speed: 100,
+        spacing: 420,
+        width: 45,
+        brightness: 0.55,
+        color: [130, 255, 225]
+    },
+
+    // Faint translucent triangles reveal the deformed surface.
+    membrane: {
+        enabled: true,
+        opacity: 0.035,
+        stressBoost: 0.09,
+        color: [75, 130, 210]
+    },
+
+    // Optional tangential force added to pointer interaction.
+    vortex: {
+        enabled: false,
+
+        // Negative values reverse rotation.
+        strength: 350
+    },
+
+    // Stretched or compressed nodes occasionally glint.
+    glints: {
+        enabled: true,
+        brightness: 0.6,
+        size: 2.3,
+        speed: 1.3
     },
 
     glow: {
@@ -66,44 +136,85 @@ const config = {
         blur: 8
     },
 
+    appearance: {
+        backgroundColor: [0, 0, 0]
+    },
+
+    animation: {
+        speed: 1,
+        paused: false,
+        respectReducedMotion: true
+    },
+
+    rendering: {
+        pixelRatio: 1.5
+    },
+
     panel: {
         enabled: true
     }
 };
 
 window.getBackgroundConfig = () =>
-  JSON.parse(JSON.stringify(config));
+    JSON.parse(JSON.stringify(config));
+
+// ==================================================
+// WEBGL INITIALIZATION
+// ==================================================
 
 const canvas = document.getElementById("background");
-const ctx = canvas.getContext("2d");
+
+const gl = canvas.getContext("webgl", {
+    alpha: false,
+    antialias: false,
+    depth: false,
+    stencil: false
+});
+
+if (!gl) {
+    const message = document.createElement("p");
+
+    message.textContent =
+        "Elastic Mesh requires WebGL. Enable hardware acceleration and reload.";
+
+    message.style.cssText =
+        "position:fixed;inset:20px;color:white;font:16px system-ui";
+
+    document.body.append(message);
+    throw new Error("WebGL is unavailable");
+}
 
 const TAU = Math.PI * 2;
-
 const clamp = (value, min, max) =>
     Math.max(min, Math.min(max, value));
 
-function mixColor(a, b, amount) {
+const mix = (a, b, amount) => {
     const t = clamp(amount, 0, 1);
-
     return a.map((value, index) =>
         value + (b[index] - value) * t
     );
-}
+};
 
-function rgb(color) {
-    return `rgb(${color.map(value =>
-        Math.round(clamp(value, 0, 255))
-    ).join(",")})`;
-}
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
-let width = 0;
-let height = 0;
+let width = 1;
+let height = 1;
 let columns = 0;
 let rows = 0;
 let nodes = [];
+let edges = [];
+let waves = [];
+
 let meshDirty = true;
 let previousTime = null;
 let motionTime = 0;
+let time = 0;
+let lost = false;
+
+let program;
+let buffer;
+let uniforms;
+let attributes;
 
 const mouse = {
     x: 0,
@@ -115,21 +226,155 @@ const mouse = {
     influence: 0
 };
 
-// --------------------------------------------------
-// Generate mesh
-// --------------------------------------------------
+const vertexSource = `
+attribute vec2 a_position;
+attribute vec2 a_local;
+attribute vec4 a_shape;
+attribute vec3 a_color;
+
+uniform vec2 u_resolution;
+
+varying vec2 v_local;
+varying vec4 v_shape;
+varying vec3 v_color;
+
+void main() {
+    vec2 clip = a_position / u_resolution * 2.0 - 1.0;
+
+    gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+
+    v_local = a_local;
+    v_shape = a_shape;
+    v_color = a_color;
+}
+`;
+
+const fragmentSource = `
+precision mediump float;
+
+uniform float u_pixel;
+
+varying vec2 v_local;
+varying vec4 v_shape;
+varying vec3 v_color;
+
+void main() {
+    float segmentLength = v_shape.x;
+    float radius = v_shape.y;
+    float blur = v_shape.z;
+    float opacity = v_shape.w;
+
+    // A negative blur identifies a filled membrane triangle.
+    if (blur < 0.0) {
+        gl_FragColor = vec4(v_color * opacity, opacity);
+        return;
+    }
+
+    vec2 nearest = vec2(
+        clamp(v_local.x, 0.0, segmentLength),
+        0.0
+    );
+
+    float distanceToLine = length(v_local - nearest);
+    float aa = max(0.3, u_pixel * 0.7);
+
+    float core = 1.0 - smoothstep(
+        max(0.0, radius - aa),
+        radius + aa,
+        distanceToLine
+    );
+
+    float outside = max(0.0, distanceToLine - radius);
+
+    float halo = exp(
+        -outside * outside /
+        max(0.001, 2.0 * blur * blur)
+    );
+
+    float alpha = opacity * (blur > 0.0 ? halo : core);
+
+    if (alpha < 0.001) discard;
+
+    gl_FragColor = vec4(v_color * alpha, alpha);
+}
+`;
+
+function compile(type, source) {
+    const shader = gl.createShader(type);
+
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const message = gl.getShaderInfoLog(shader);
+        gl.deleteShader(shader);
+        throw new Error(message);
+    }
+
+    return shader;
+}
+
+function initializeGL() {
+    const vertex = compile(gl.VERTEX_SHADER, vertexSource);
+    const fragment = compile(gl.FRAGMENT_SHADER, fragmentSource);
+
+    program = gl.createProgram();
+
+    gl.attachShader(program, vertex);
+    gl.attachShader(program, fragment);
+    gl.linkProgram(program);
+
+    gl.deleteShader(vertex);
+    gl.deleteShader(fragment);
+
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(program));
+    }
+
+    buffer = gl.createBuffer();
+
+    attributes = [
+        ["a_position", 2, 0],
+        ["a_local", 2, 2],
+        ["a_shape", 4, 4],
+        ["a_color", 3, 8]
+    ].map(([name, size, offset]) => ({
+        location: gl.getAttribLocation(program, name),
+        size,
+        offset
+    }));
+
+    uniforms = {
+        resolution: gl.getUniformLocation(program, "u_resolution"),
+        pixel: gl.getUniformLocation(program, "u_pixel")
+    };
+
+    gl.disable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+}
+
+initializeGL();
+
+// ==================================================
+// MESH GENERATION
+// The pinned outer boundary remains outside the viewport.
+// ==================================================
 
 function rebuildMesh() {
     nodes = [];
+    edges = [];
+    waves = [];
 
     const spacing = Math.max(12, config.mesh.spacing);
     const angle = config.mesh.rotation * Math.PI / 180;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
 
-    const margin = Math.max(
-        0, config.mesh.maxDisplacement
-    ) + Math.max(0, config.motion.amplitude) + spacing * 2;
+    const margin =
+        Math.max(0, config.mesh.maxDisplacement) +
+        Math.max(0, config.motion.amplitude) +
+        spacing * 2;
 
     const halfX =
         Math.abs(cos) * width / 2 +
@@ -152,17 +397,29 @@ function rebuildMesh() {
             const localX = (column - halfColumns) * spacing;
             const localY = (row - halfRows) * spacing;
 
+            const baseX = width / 2 + localX * cos - localY * sin;
+            const baseY = height / 2 + localX * sin + localY * cos;
+
             nodes.push({
-                baseX: width / 2 + localX * cos - localY * sin,
-                baseY: height / 2 + localX * sin + localY * cos,
+                baseX,
+                baseY,
+                localX,
+                localY,
+
+                x: baseX,
+                y: baseY,
 
                 dx: 0,
                 dy: 0,
                 vx: 0,
                 vy: 0,
-
                 ax: 0,
                 ay: 0,
+
+                strain: 0,
+                energy: 0,
+                phase: column * 1.731 + row * 2.417,
+                color: [...config.mesh.color],
 
                 pinned:
                     row === 0 ||
@@ -172,40 +429,76 @@ function rebuildMesh() {
             });
         }
     }
+
+    for (let row = 0; row < rows; row++) {
+        for (let column = 0; column < columns; column++) {
+            const index = row * columns + column;
+
+            if (column < columns - 1) {
+                edges.push({
+                    a: index,
+                    b: index + 1,
+                    rest: spacing
+                });
+            }
+
+            if (row < rows - 1) {
+                edges.push({
+                    a: index,
+                    b: index + columns,
+                    rest: spacing
+                });
+            }
+        }
+    }
 }
 
 function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(
+        devicePixelRatio || 1,
+        config.rendering.pixelRatio
+    );
 
-    width = window.innerWidth;
-    height = window.innerHeight;
+    width = Math.max(1, innerWidth);
+    height = Math.max(1, innerHeight);
 
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(height * dpr);
+    canvas.width = Math.max(1, Math.round(width * dpr));
+    canvas.height = Math.max(1, Math.round(height * dpr));
 
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     meshDirty = true;
 }
 
-// --------------------------------------------------
-// Elastic simulation
-// --------------------------------------------------
+// ==================================================
+// ELASTIC SIMULATION
+// Forces are computed from one shared node state,
+// then all nodes are integrated.
+// ==================================================
 
 function simulate(delta) {
+    if (delta <= 0) return;
+
     const stiffness = Math.max(0, config.mesh.stiffness);
     const coupling = Math.max(0, config.mesh.coupling);
     const damping = Math.max(0, config.mesh.damping);
 
     const wavelength = Math.max(30, config.motion.wavelength);
+
     const amplitude = config.motion.enabled
         ? Math.max(0, config.motion.amplitude)
         : 0;
 
     const mouseRadius = Math.max(1, config.mouse.radius);
-    const mouseDirection =
-        config.mouse.mode === "repel" ? -1 : 1;
 
-    // Calculate forces first, using the same state for every node.
+    if (config.shockwaves.enabled) {
+        for (const wave of waves) wave.age += delta;
+
+        waves = waves.filter(
+            wave => wave.age < config.shockwaves.lifetime
+        );
+    } else {
+        waves = [];
+    }
+
     for (let row = 1; row < rows - 1; row++) {
         for (let column = 1; column < columns - 1; column++) {
             const index = row * columns + column;
@@ -227,11 +520,9 @@ function simulate(delta) {
                 Math.cos(phaseX + motionTime * 0.8) *
                 Math.sin(phaseY * 0.7 - motionTime * 0.6);
 
-            // Anchor springs pull nodes toward their moving rest positions.
             node.ax = stiffness * (targetX - node.dx);
             node.ay = stiffness * (targetY - node.dy);
 
-            // Neighbor coupling spreads deformation through the mesh.
             node.ax += coupling * (
                 left.dx + right.dx + above.dx + below.dx -
                 node.dx * 4
@@ -242,13 +533,13 @@ function simulate(delta) {
                 node.dy * 4
             );
 
+            const x = node.baseX + node.dx;
+            const y = node.baseY + node.dy;
+
             if (
                 config.mouse.enabled &&
                 mouse.influence > 0.001
             ) {
-                const x = node.baseX + node.dx;
-                const y = node.baseY + node.dy;
-
                 const dx = mouse.x - x;
                 const dy = mouse.y - y;
                 const distance = Math.hypot(dx, dy);
@@ -256,16 +547,58 @@ function simulate(delta) {
                 const influence = Math.exp(
                     -(distance * distance) /
                     (2 * mouseRadius * mouseRadius)
+                ) * mouse.influence;
+
+                const divisor = Math.max(30, distance);
+
+                if (config.mouse.mode !== "vortex") {
+                    const direction =
+                        config.mouse.mode === "repel" ? -1 : 1;
+
+                    const force =
+                        config.mouse.strength *
+                        influence *
+                        direction;
+
+                    node.ax += dx / divisor * force;
+                    node.ay += dy / divisor * force;
+                }
+
+                const swirl =
+                    (config.mouse.mode === "vortex"
+                        ? config.mouse.strength
+                        : 0) +
+                    (config.vortex.enabled
+                        ? config.vortex.strength
+                        : 0);
+
+                node.ax -= dy / divisor * swirl * influence;
+                node.ay += dx / divisor * swirl * influence;
+            }
+
+            for (const wave of waves) {
+                const dx = x - wave.x;
+                const dy = y - wave.y;
+                const distance = Math.hypot(dx, dy);
+
+                const radius = wave.age * config.shockwaves.speed;
+                const normalized =
+                    (distance - radius) /
+                    Math.max(1, config.shockwaves.width);
+
+                const fade = Math.max(
+                    0,
+                    1 - wave.age / config.shockwaves.lifetime
                 );
 
-                const force =
-                    Math.max(0, config.mouse.strength) *
-                    mouse.influence *
-                    influence *
-                    mouseDirection;
+                const influence =
+                    Math.exp(-normalized * normalized * 2) *
+                    fade * fade;
 
-                // Soft normalization avoids a singularity at the cursor.
-                const divisor = Math.max(30, distance);
+                const force =
+                    config.shockwaves.strength * influence;
+
+                const divisor = Math.max(20, distance);
 
                 node.ax += dx / divisor * force;
                 node.ay += dy / divisor * force;
@@ -276,7 +609,6 @@ function simulate(delta) {
     const drag = Math.exp(-damping * delta);
     const limit = Math.max(0, config.mesh.maxDisplacement);
 
-    // Integrate only after all forces have been calculated.
     for (const node of nodes) {
         if (node.pinned) continue;
 
@@ -295,7 +627,6 @@ function simulate(delta) {
             node.dx = nx * limit;
             node.dy = ny * limit;
 
-            // Remove velocity pushing beyond the displacement limit.
             const outward = node.vx * nx + node.vy * ny;
 
             if (outward > 0) {
@@ -306,156 +637,483 @@ function simulate(delta) {
     }
 }
 
-// --------------------------------------------------
-// Drawing
-// --------------------------------------------------
+// ==================================================
+// COLOR AND ENERGY
+// ==================================================
 
-function nodePosition(node) {
-    return {
-        x: node.baseX + node.dx,
-        y: node.baseY + node.dy
-    };
+function updateVisualState() {
+    for (const node of nodes) {
+        node.x = node.baseX + node.dx;
+        node.y = node.baseY + node.dy;
+        node.strain = 0;
+    }
+
+    // Retain the strongest signed edge strain touching each node.
+    for (const edge of edges) {
+        const a = nodes[edge.a];
+        const b = nodes[edge.b];
+
+        const strain = (
+            Math.hypot(b.x - a.x, b.y - a.y) - edge.rest
+        ) / edge.rest;
+
+        if (Math.abs(strain) > Math.abs(a.strain)) {
+            a.strain = strain;
+        }
+
+        if (Math.abs(strain) > Math.abs(b.strain)) {
+            b.strain = strain;
+        }
+    }
+
+    for (const node of nodes) {
+        let color = [...config.mesh.color];
+
+        if (config.mouse.enabled && mouse.influence > 0.001) {
+            const distance = Math.hypot(
+                node.x - mouse.x,
+                node.y - mouse.y
+            );
+
+            const influence = clamp(
+                1 - distance / (config.mouse.radius * 2),
+                0, 1
+            ) * mouse.influence;
+
+            color = mix(color, config.mouse.color, influence);
+        }
+
+        if (config.stress.enabled) {
+            const amount = clamp(
+                Math.abs(node.strain) *
+                config.stress.sensitivity,
+                0, 1
+            ) * config.stress.intensity;
+
+            color = mix(
+                color,
+                node.strain >= 0
+                    ? config.stress.stretchColor
+                    : config.stress.compressionColor,
+                amount
+            );
+        }
+
+        node.energy = 0;
+
+        if (config.energy.enabled) {
+            const spacing = Math.max(1, config.energy.spacing);
+
+            const coordinate =
+                node.localX + node.localY -
+                time * config.energy.speed;
+
+            const wrapped =
+                ((coordinate % spacing) + spacing) % spacing;
+
+            const distance = Math.min(
+                wrapped,
+                spacing - wrapped
+            );
+
+            node.energy = Math.exp(
+                -distance * distance /
+                (2 * config.energy.width ** 2)
+            );
+
+            color = mix(
+                color,
+                config.energy.color,
+                node.energy * 0.8
+            );
+        }
+
+        node.color = color;
+    }
 }
 
-function drawMesh() {
-    const lines = new Path2D();
-    const dots = new Path2D();
+// ==================================================
+// GEOMETRY
+// Position(2), local position(2), shape(4), RGB(3).
+// ==================================================
 
-    const radius = Math.max(0, config.mesh.dotRadius);
+let vertices = new Float32Array(262144);
+let offset = 0;
 
-    for (let row = 0; row < rows; row++) {
-        for (let column = 0; column < columns; column++) {
-            const index = row * columns + column;
-            const point = nodePosition(nodes[index]);
+function vertex(x, y, lx, ly, length, radius, blur, alpha, color) {
+    if (offset + 11 > vertices.length) {
+        const larger = new Float32Array(vertices.length * 2);
+        larger.set(vertices);
+        vertices = larger;
+    }
 
-            if (column < columns - 1) {
-                const next = nodePosition(nodes[index + 1]);
+    vertices[offset++] = x;
+    vertices[offset++] = y;
+    vertices[offset++] = lx;
+    vertices[offset++] = ly;
+    vertices[offset++] = length;
+    vertices[offset++] = radius;
+    vertices[offset++] = blur;
+    vertices[offset++] = alpha;
+    vertices[offset++] = color[0] / 255;
+    vertices[offset++] = color[1] / 255;
+    vertices[offset++] = color[2] / 255;
+}
 
-                lines.moveTo(point.x, point.y);
-                lines.lineTo(next.x, next.y);
-            }
+function capsule(a, b, width, alpha, blur = 0) {
+    if (width <= 0 || alpha <= 0.0001) return;
 
-            if (row < rows - 1) {
-                const next = nodePosition(nodes[index + columns]);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = Math.hypot(dx, dy);
 
-                lines.moveTo(point.x, point.y);
-                lines.lineTo(next.x, next.y);
-            }
+    const ux = length > 0.0001 ? dx / length : 1;
+    const uy = length > 0.0001 ? dy / length : 0;
 
-            if (
-                config.mesh.showDots &&
-                radius > 0 &&
-                point.x >= -radius &&
-                point.x <= width + radius &&
-                point.y >= -radius &&
-                point.y <= height + radius
-            ) {
-                dots.moveTo(point.x + radius, point.y);
-                dots.arc(point.x, point.y, radius, 0, TAU);
+    const radius = width / 2;
+    const padding = radius + blur * 3 + 1.5;
+
+    if (
+        Math.max(a.x, b.x) + padding < 0 ||
+        Math.min(a.x, b.x) - padding > widthPixels() ||
+        Math.max(a.y, b.y) + padding < 0 ||
+        Math.min(a.y, b.y) - padding > height
+    ) {
+        return;
+    }
+
+    const corners = [
+        [-padding, -padding],
+        [length + padding, -padding],
+        [length + padding, padding],
+        [-padding, padding]
+    ];
+
+    for (const index of [0, 1, 2, 0, 2, 3]) {
+        const [x, y] = corners[index];
+        const color = x < length * 0.5 ? a.color : b.color;
+
+        vertex(
+            a.x + ux * x - uy * y,
+            a.y + uy * x + ux * y,
+            x, y,
+            length,
+            radius,
+            blur,
+            alpha,
+            color
+        );
+    }
+}
+
+// Avoid shadowing the viewport width inside capsule().
+function widthPixels() {
+    return width;
+}
+
+function light(a, b, lineWidth, alpha, halo = true) {
+    if (
+        halo &&
+        config.glow.enabled &&
+        config.glow.intensity > 0 &&
+        config.glow.blur > 0
+    ) {
+        capsule(
+            a,
+            b,
+            lineWidth,
+            alpha * config.glow.intensity * 0.22,
+            config.glow.blur * 0.5
+        );
+    }
+
+    capsule(a, b, lineWidth, alpha);
+}
+
+function triangle(a, b, c) {
+    if (
+        Math.max(a.x, b.x, c.x) < 0 ||
+        Math.min(a.x, b.x, c.x) > width ||
+        Math.max(a.y, b.y, c.y) < 0 ||
+        Math.min(a.y, b.y, c.y) > height
+    ) {
+        return;
+    }
+
+    for (const point of [a, b, c]) {
+        const stress = clamp(
+            Math.abs(point.strain) *
+            config.stress.sensitivity,
+            0, 1
+        );
+
+        const alpha = clamp(
+            config.membrane.opacity +
+            stress * config.membrane.stressBoost,
+            0, 0.5
+        );
+
+        const color = mix(
+            config.membrane.color,
+            point.color,
+            0.5
+        );
+
+        vertex(
+            point.x, point.y,
+            0, 0,
+            0, 0, -1,
+            alpha,
+            color
+        );
+    }
+}
+
+function buildGeometry() {
+    offset = 0;
+
+    if (config.membrane.enabled) {
+        for (let row = 0; row < rows - 1; row++) {
+            for (let column = 0; column < columns - 1; column++) {
+                const i = row * columns + column;
+
+                const a = nodes[i];
+                const b = nodes[i + 1];
+                const c = nodes[i + columns];
+                const d = nodes[i + columns + 1];
+
+                // Alternate diagonals to soften directional bias.
+                if ((row + column) % 2) {
+                    triangle(a, b, c);
+                    triangle(b, d, c);
+                } else {
+                    triangle(a, b, d);
+                    triangle(a, d, c);
+                }
             }
         }
     }
 
-    let color = rgb(config.mesh.color);
+    if (config.mesh.lineWidth > 0) {
+        for (const edge of edges) {
+            const a = nodes[edge.a];
+            const b = nodes[edge.b];
+
+            const energy = (a.energy + b.energy) * 0.5;
+
+            const brightness = config.energy.enabled
+                ? 1 + energy * config.energy.brightness
+                : 1;
+
+            light(
+                a,
+                b,
+                config.mesh.lineWidth,
+                config.mesh.opacity * brightness
+            );
+        }
+    }
+
+    for (const node of nodes) {
+        if (config.mesh.showDots && config.mesh.dotRadius > 0) {
+            light(
+                node,
+                node,
+                config.mesh.dotRadius * 2,
+                config.mesh.opacity,
+                false
+            );
+        }
+
+        if (config.glints.enabled) {
+            const stress = clamp(
+                Math.abs(node.strain) *
+                config.stress.sensitivity,
+                0, 1
+            );
+
+            const beat = Math.pow(
+                0.5 + 0.5 * Math.sin(
+                    time * config.glints.speed + node.phase
+                ),
+                12
+            );
+
+            const alpha =
+                beat * stress *
+                config.glints.brightness *
+                config.mesh.opacity;
+
+            if (alpha > 0.005) {
+                const point = {
+                    x: node.x,
+                    y: node.y,
+                    color: mix(node.color, [235, 250, 255], 0.7)
+                };
+
+                light(
+                    point,
+                    point,
+                    config.glints.size * 2,
+                    alpha
+                );
+            }
+        }
+    }
 
     if (
-        config.mouse.enabled &&
-        mouse.influence > 0.001
+        config.shockwaves.enabled &&
+        config.shockwaves.showRings
     ) {
-        const radius = Math.max(1, config.mouse.radius);
+        for (const wave of waves) {
+            const radius = wave.age * config.shockwaves.speed;
 
-        const gradient = ctx.createRadialGradient(
-            mouse.x, mouse.y, 0,
-            mouse.x, mouse.y, radius * 2
-        );
+            const fade = Math.max(
+                0,
+                1 - wave.age / config.shockwaves.lifetime
+            );
 
-        gradient.addColorStop(0, rgb(mixColor(
-            config.mesh.color,
-            config.mouse.color,
-            mouse.influence
-        )));
+            const segments = clamp(
+                Math.ceil(radius / 5),
+                48, 240
+            );
 
-        gradient.addColorStop(1, rgb(config.mesh.color));
-        color = gradient;
+            for (let i = 0; i < segments; i++) {
+                const a = i / segments * TAU;
+                const b = (i + 1) / segments * TAU;
+
+                light(
+                    {
+                        x: wave.x + Math.cos(a) * radius,
+                        y: wave.y + Math.sin(a) * radius,
+                        color: config.shockwaves.color
+                    },
+                    {
+                        x: wave.x + Math.cos(b) * radius,
+                        y: wave.y + Math.sin(b) * radius,
+                        color: config.shockwaves.color
+                    },
+                    0.8,
+                    fade * fade *
+                        config.shockwaves.ringOpacity
+                );
+            }
+        }
     }
-
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = Math.max(0.01, config.mesh.lineWidth);
-
-    const opacity = clamp(config.mesh.opacity, 0, 1);
-
-    function draw() {
-        if (config.mesh.lineWidth > 0) ctx.stroke(lines);
-        if (config.mesh.showDots && radius > 0) ctx.fill(dots);
-    }
-
-    if (
-        config.glow.enabled &&
-        config.glow.intensity > 0
-    ) {
-        ctx.save();
-
-        ctx.globalAlpha =
-            opacity * clamp(config.glow.intensity, 0, 1);
-
-        ctx.shadowColor = rgb(config.mesh.color);
-        ctx.shadowBlur = Math.max(0, config.glow.blur);
-
-        draw();
-        ctx.restore();
-    }
-
-    ctx.globalAlpha = opacity;
-    draw();
-    ctx.globalAlpha = 1;
 }
 
-// --------------------------------------------------
-// Animation
-// --------------------------------------------------
+// ==================================================
+// WEBGL RENDERING
+// ==================================================
+
+function render() {
+    gl.viewport(0, 0, canvas.width, canvas.height);
+
+    const background = config.appearance.backgroundColor;
+
+    gl.clearColor(
+        background[0] / 255,
+        background[1] / 255,
+        background[2] / 255,
+        1
+    );
+
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    if (!offset) return;
+
+    gl.useProgram(program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+
+    gl.bufferData(
+        gl.ARRAY_BUFFER,
+        vertices.subarray(0, offset),
+        gl.DYNAMIC_DRAW
+    );
+
+    for (const attribute of attributes) {
+        gl.enableVertexAttribArray(attribute.location);
+
+        gl.vertexAttribPointer(
+            attribute.location,
+            attribute.size,
+            gl.FLOAT,
+            false,
+            44,
+            attribute.offset * 4
+        );
+    }
+
+    gl.uniform2f(uniforms.resolution, width, height);
+    gl.uniform1f(uniforms.pixel, width / canvas.width);
+
+    gl.drawArrays(gl.TRIANGLES, 0, offset / 11);
+}
+
+// ==================================================
+// ANIMATION
+// ==================================================
+
+function isStill() {
+    return config.animation.paused || (
+        config.animation.respectReducedMotion &&
+        reducedMotion.matches
+    );
+}
 
 function animate(timestamp) {
-    const delta = previousTime === null
+    requestAnimationFrame(animate);
+
+    if (lost) {
+        previousTime = null;
+        return;
+    }
+
+    const realDelta = previousTime === null
         ? 0
-        : Math.min((timestamp - previousTime) / 1000, 0.05);
+        : clamp((timestamp - previousTime) / 1000, 0, 0.05);
 
     previousTime = timestamp;
 
-    const smoothing =
-        1 - Math.exp(-Math.max(0.1, config.mouse.smoothing) * delta);
+    const smoothing = 1 - Math.exp(
+        -Math.max(0.1, config.mouse.smoothing) * realDelta
+    );
 
     mouse.x += (mouse.targetX - mouse.x) * smoothing;
     mouse.y += (mouse.targetY - mouse.y) * smoothing;
 
-    mouse.influence +=
-        ((mouse.active && config.mouse.enabled ? 1 : 0) -
-            mouse.influence) * smoothing;
+    mouse.influence += (
+        (mouse.active && config.mouse.enabled ? 1 : 0) -
+        mouse.influence
+    ) * smoothing;
 
     if (meshDirty) {
         meshDirty = false;
         rebuildMesh();
     }
 
-    // Small simulation steps keep the springs stable.
-    const steps = Math.max(1, Math.ceil(delta / (1 / 240)));
+    const delta = isStill()
+        ? 0
+        : realDelta * config.animation.speed;
+
+    // Preserve small spring steps even at increased playback speed.
+    const steps = Math.max(1, Math.ceil(delta * 240));
     const stepDelta = delta / steps;
 
     for (let step = 0; step < steps; step++) {
+        time += stepDelta;
         motionTime += stepDelta * config.motion.speed;
         simulate(stepDelta);
     }
 
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, width, height);
-
-    drawMesh();
-    requestAnimationFrame(animate);
+    updateVisualState();
+    buildGeometry();
+    render();
 }
 
-// --------------------------------------------------
-// Pointer interaction
-// --------------------------------------------------
+// ==================================================
+// INTERACTION
+// ==================================================
 
 function updateMouse(event) {
     if (
@@ -463,7 +1121,7 @@ function updateMouse(event) {
         event.target.closest("[data-background-editor]")
     ) {
         mouse.active = false;
-        return;
+        return false;
     }
 
     mouse.targetX = event.clientX;
@@ -475,23 +1133,45 @@ function updateMouse(event) {
         mouse.y = mouse.targetY;
         mouse.initialized = true;
     }
+
+    return true;
 }
 
 function deactivateMouse() {
     mouse.active = false;
 }
 
-window.addEventListener("pointermove", updateMouse);
-window.addEventListener("pointerdown", updateMouse);
+addEventListener("pointermove", updateMouse);
+
+addEventListener("pointerdown", event => {
+    if (
+        event.pointerType === "mouse" &&
+        event.button !== 0
+    ) {
+        return;
+    }
+
+    if (!updateMouse(event)) return;
+    if (!config.shockwaves.enabled || isStill()) return;
+
+    if (waves.length >= 8) waves.shift();
+
+    waves.push({
+        x: event.clientX,
+        y: event.clientY,
+        age: 0
+    });
+});
 
 document.documentElement.addEventListener(
-    "pointerleave", deactivateMouse
+    "pointerleave",
+    deactivateMouse
 );
 
-window.addEventListener("blur", deactivateMouse);
-window.addEventListener("pointercancel", deactivateMouse);
+addEventListener("blur", deactivateMouse);
+addEventListener("pointercancel", deactivateMouse);
 
-window.addEventListener("pointerup", event => {
+addEventListener("pointerup", event => {
     if (event.pointerType !== "mouse") deactivateMouse();
 });
 
@@ -500,17 +1180,29 @@ document.addEventListener("visibilitychange", () => {
     deactivateMouse();
 });
 
-window.addEventListener("resize", resize);
+canvas.addEventListener("webglcontextlost", event => {
+    event.preventDefault();
+    lost = true;
+});
+
+canvas.addEventListener("webglcontextrestored", () => {
+    initializeGL();
+    lost = false;
+    previousTime = null;
+    resize();
+});
+
+addEventListener("resize", resize);
+
+// ==================================================
+// START AND OPTIONAL EDITOR
+// ==================================================
 
 resize();
 requestAnimationFrame(animate);
 
-// --------------------------------------------------
-// Optional editor
-// --------------------------------------------------
-
 if (config.panel.enabled) {
-    import("./settings-editor.js")
+    import("./settings-editor.js?v=elastic-webgl-1")
         .then(({ mountEditor }) => {
             mountEditor({
                 config,
@@ -523,6 +1215,15 @@ if (config.panel.enabled) {
                         "motion.amplitude"
                     ].includes(path)) {
                         meshDirty = true;
+                    }
+
+                    if (path === "rendering.pixelRatio") resize();
+
+                    if (
+                        path === "shockwaves.enabled" &&
+                        !config.shockwaves.enabled
+                    ) {
+                        waves = [];
                     }
 
                     deactivateMouse();
