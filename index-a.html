@@ -893,6 +893,7 @@ function updateSearch() {
         const label = labels.get(background.folder);
 
         card.classList.toggle("search-match", matches);
+        card.hidden = Boolean(query) && !matches;
         highlightLabel(label, background.name, query);
 
         if (matches) searchMatches.push(index);
