@@ -37,139 +37,131 @@
 // ==================================================
 
 const config = {
-    rain: {
-        count: 150,
-        speed: 150,
-        direction: 12,
-        length: 100,
-        width: 0.8,
-        opacity: 0.55,
-        depthVariation: 0.65
+    "rain": {
+        "count": 453,
+        "speed": 256,
+        "direction": 12,
+        "length": 273,
+        "width": 0.8,
+        "opacity": 0.55,
+        "depthVariation": 0.65
     },
-
-    prisms: {
-        bands: 3,
-        angle: -25,
-        spacing: 220,
-        thickness: 85,
-        strength: 30,
-        separation: 18,
-        drift: 12,
-        showBands: true,
-        bandOpacity: 0.025
+    "prisms": {
+        "bands": 3,
+        "angle": -25,
+        "spacing": 135,
+        "thickness": 85,
+        "strength": 93,
+        "separation": 15,
+        "drift": 120,
+        "showBands": true,
+        "bandOpacity": 0.02
     },
-
-    // Smoothly colored spectral strands replace the original
-    // three colored strands when enabled.
-    spectrum: {
-        enabled: true,
-        channels: 7,
-        spread: 1.25,
-        saturation: 0.9
+    "spectrum": {
+        "enabled": true,
+        "channels": 7,
+        "spread": 1.25,
+        "saturation": 0.9
     },
-
-    // Translucent glass ribbons and illuminated edges.
-    glass: {
-        enabled: true,
-        opacity: 0.055,
-        edgeBrightness: 0.18,
-        iridescence: 0.6
+    "glass": {
+        "enabled": true,
+        "opacity": 0.08,
+        "edgeBrightness": 0.6,
+        "iridescence": 0.6
     },
-
-    // Flashes and tiny fragments when a drop crosses
-    // a prism boundary.
-    flashes: {
-        enabled: true,
-        brightness: 0.85,
-        size: 3,
-        lifetime: 0.35,
-        fragments: 3
+    "flashes": {
+        "enabled": true,
+        "brightness": 2.65,
+        "size": 6,
+        "lifetime": 0.35,
+        "fragments": 3
     },
-
-    // Additional cinematic layering beyond the original
-    // rain.depthVariation setting.
-    depth: {
-        enabled: true,
-        strength: 0.75,
-        foregroundBlur: 1.5,
-        parallax: 14
+    "depth": {
+        "enabled": true,
+        "strength": 0.75,
+        "foregroundBlur": 1.5,
+        "parallax": 14
     },
-
-    // Soft halos around rain and flashes.
-    bloom: {
-        enabled: true,
-        intensity: 0.55,
-        spread: 1
+    "bloom": {
+        "enabled": true,
+        "intensity": 0.39,
+        "spread": 1
     },
-
-    // Traveling waves modify prism bending and dispersion.
-    waves: {
-        enabled: true,
-        amplitude: 0.45,
-        wavelength: 350,
-        speed: 65
+    "waves": {
+        "enabled": true,
+        "amplitude": 0.45,
+        "wavelength": 350,
+        "speed": 65
     },
-
-    // Existing pointer interaction.
-    mouse: {
-        enabled: true,
-        radius: 200,
-        strength: 65,
-        separation: 35,
-        smoothing: 8,
-        showHalo: true
+    "mouse": {
+        "enabled": true,
+        "radius": 200,
+        "strength": 65,
+        "separation": 35,
+        "smoothing": 8,
+        "showHalo": true
     },
-
-    // Adds a curved lens to the existing pointer field.
-    lens: {
-        enabled: true,
-        strength: 45,
-        separation: 20,
-        ringOpacity: 0.08
+    "lens": {
+        "enabled": true,
+        "strength": 45,
+        "separation": 20,
+        "ringOpacity": 0.12
     },
-
-    // Click or tap to launch an expanding refractive wave.
-    ripples: {
-        enabled: true,
-        speed: 260,
-        width: 65,
-        strength: 28,
-        separation: 24,
-        lifetime: 3,
-        opacity: 0.08
+    "ripples": {
+        "enabled": true,
+        "speed": 260,
+        "width": 65,
+        "strength": 28,
+        "separation": 24,
+        "lifetime": 3,
+        "opacity": 0.08
     },
-
-    // Occasional brighter, longer drops.
-    heroes: {
-        enabled: true,
-        chance: 0.035,
-        brightness: 1.8,
-        length: 1.8,
-        width: 1.5
+    "heroes": {
+        "enabled": true,
+        "chance": 0.075,
+        "brightness": 1.5,
+        "length": 1.8,
+        "width": 1.5
     },
-
-    appearance: {
-        backgroundColor: [5, 7, 17],
-        coreColor: [220, 235, 255],
-        colorA: [102, 205, 255],
-        colorB: [186, 122, 255],
-        colorC: [255, 145, 181],
-        glow: 8
+    "appearance": {
+        "backgroundColor": [
+            5,
+            7,
+            17
+        ],
+        "coreColor": [
+            220,
+            235,
+            255
+        ],
+        "colorA": [
+            102,
+            205,
+            255
+        ],
+        "colorB": [
+            186,
+            122,
+            255
+        ],
+        "colorC": [
+            255,
+            145,
+            181
+        ],
+        "glow": 8
     },
-
-    animation: {
-        speed: 1,
-        paused: false,
-        respectReducedMotion: true
+    "animation": {
+        "speed": 1,
+        "paused": false,
+        "respectReducedMotion": true
     },
-
-    rendering: {
-        samples: 20,
-        pixelRatio: 1.5
+    "rendering": {
+        "samples": 25,
+        "pixelRatio": 1.5
     },
-
-    panel: {
-        enabled: true
+    "panel": {
+        "enabled": true
     }
 };
 
