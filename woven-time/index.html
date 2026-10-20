@@ -14,7 +14,7 @@
         background: #000;
     }
 
-    canvas {
+    #background {
         display: block;
         width: 100%;
         height: 100%;
@@ -28,51 +28,108 @@
 <script type="module">
 "use strict";
 
+// ==================================================
+// CONFIGURATION
+// Edit these values to customize the background.
+// Colors use RGB arrays: [red, green, blue].
+// Distances and widths use CSS pixels.
+// ==================================================
+
 const config = {
     fabric: {
+        // Distance between neighboring threads.
         spacing: 34,
+
+        // Rotation of the entire fabric in degrees.
         rotation: -15,
+
+        // Thickness of each thread.
         lineWidth: 1,
+
+        // Overall thread opacity: 0 = invisible, 1 = solid.
         opacity: 0.65,
+
+        // Color of threads running along the first axis.
         colorA: [65, 210, 220],
+
+        // Color of threads running along the second axis.
         colorB: [190, 100, 255]
     },
 
     time: {
+        // Shared animation speed.
+        // Use 0 to stop clock advancement, or negative values to reverse it.
         speed: 0.8,
+
+        // How differently individual thread samples experience time.
         variation: 0.85,
+
+        // Strength of temporary slowdowns in different fabric regions.
         pauseStrength: 0.7,
+
+        // How quickly calm patches disappear after the mouse leaves.
+        // Also gently pulls local clocks toward the shared clock.
         recovery: 1.5
     },
 
     weave: {
+        // Maximum scale of sideways thread movement.
         amplitude: 22,
+
+        // Length of the main wave along each thread.
         wavelength: 280,
+
+        // Strength of smaller, tighter folds.
         knotStrength: 0.65,
+
+        // Frequency of regions containing tighter folds.
         knotFrequency: 0.6,
+
+        // Half-width of the approximate gaps at alternating crossings.
+        // Set to 0 for continuous threads.
         crossingGap: 5
     },
 
     mouse: {
+        // Enable mouse and touch interaction.
         enabled: true,
+
+        // Size of the region influenced by the pointer.
         radius: 200,
+
+        // How quickly nearby local clocks synchronize.
         synchronization: 5,
+
+        // How strongly synchronized threads flatten.
+        // 0 = retain movement, 1 = become almost straight.
         calmness: 0.85,
+
+        // How quickly pointer position and influence respond.
         smoothing: 10,
+
+        // Color of synchronized threads.
         color: [255, 185, 110]
     },
 
     glow: {
+        // Enable the soft halo around threads.
         enabled: true,
+
+        // Brightness of the halo.
         intensity: 0.5,
+
+        // Spread of the halo.
         blur: 8
     },
 
     rendering: {
+        // Distance between simulation samples along threads.
+        // Smaller values give finer curves but require more processing.
         sampleSpacing: 10
     },
 
     panel: {
+        // Set to false to skip loading the settings editor.
         enabled: true
     }
 };
@@ -80,10 +137,12 @@ const config = {
 window.getBackgroundConfig = () =>
     JSON.parse(JSON.stringify(config));
 
+// ==================================================
+// WEBGL INITIALIZATION
+// ==================================================
+
 const canvas = document.getElementById("background");
 
-// WebGL draws antialiased capsule segments.
-// Each sampled part of a thread retains its independent clock.
 const gl = canvas.getContext("webgl", {
     alpha: false,
     antialias: false,
@@ -101,13 +160,17 @@ if (!gl) {
         "position:fixed;inset:20px;color:white;font:16px system-ui";
 
     document.body.append(message);
-
     throw new Error("WebGL is unavailable");
 }
 
+const clamp = (value, min, max) =>
+    Math.max(min, Math.min(max, value));
+
+const TAU = Math.PI * 2;
+
 let program;
 let buffer;
-let locations;
+let uniforms;
 
 const vertexSource = `
 attribute vec2 a_position;
@@ -122,11 +185,9 @@ varying float v_length;
 varying vec3 v_color;
 
 void main() {
-    gl_Position = vec4(
-        a_position / u_resolution * vec2(2., -2.) + vec2(-1., 1.),
-        0.,
-        1.
-    );
+    vec2 clip = a_position / u_resolution * 2.0 - 1.0;
+
+    gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
 
     v_local = a_local;
     v_length = a_length;
@@ -149,54 +210,56 @@ uniform float u_pixel;
 
 void main() {
     vec2 nearest = vec2(
-        clamp(v_local.x, 0., v_length),
-        0.
+        clamp(v_local.x, 0.0, v_length),
+        0.0
     );
 
     float distanceToLine = length(v_local - nearest);
 
-    float core = 1. - smoothstep(
-        max(0., u_halfWidth - u_pixel * .5),
-        u_halfWidth + u_pixel * .5,
+    float core = 1.0 - smoothstep(
+        max(0.0, u_halfWidth - u_pixel * 0.5),
+        u_halfWidth + u_pixel * 0.5,
         distanceToLine
     );
 
     float outside = max(
-        0.,
+        0.0,
         distanceToLine - u_halfWidth
     );
 
     float halo = exp(
         -outside * outside /
-        max(.001, 2. * u_blur * u_blur)
+        max(0.001, 2.0 * u_blur * u_blur)
     );
 
     float alpha = u_opacity * (
-        core + (1. - core) * halo * u_glow
+        core + (1.0 - core) * halo * u_glow
     );
 
     gl_FragColor = vec4(v_color, alpha);
 }
 `;
 
-function initializeGL() {
-    function compile(type, source) {
-        const shader = gl.createShader(type);
+function compileShader(type, source) {
+    const shader = gl.createShader(type);
 
-        gl.shaderSource(shader, source);
-        gl.compileShader(shader);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
 
-        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-            throw new Error(gl.getShaderInfoLog(shader));
-        }
-
-        return shader;
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const message = gl.getShaderInfoLog(shader);
+        gl.deleteShader(shader);
+        throw new Error(message);
     }
 
-    program = gl.createProgram();
+    return shader;
+}
 
-    const vertex = compile(gl.VERTEX_SHADER, vertexSource);
-    const fragment = compile(gl.FRAGMENT_SHADER, fragmentSource);
+function initializeGL() {
+    const vertex = compileShader(gl.VERTEX_SHADER, vertexSource);
+    const fragment = compileShader(gl.FRAGMENT_SHADER, fragmentSource);
+
+    program = gl.createProgram();
 
     gl.attachShader(program, vertex);
     gl.attachShader(program, fragment);
@@ -214,7 +277,7 @@ function initializeGL() {
     buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
 
-    // Position(2), local position(2), segment length(1), RGB(3).
+    // Position(2), local position(2), length(1), RGB(3).
     for (const [name, size, offset] of [
         ["a_position", 2, 0],
         ["a_local", 2, 2],
@@ -224,7 +287,6 @@ function initializeGL() {
         const location = gl.getAttribLocation(program, name);
 
         gl.enableVertexAttribArray(location);
-
         gl.vertexAttribPointer(
             location,
             size,
@@ -235,19 +297,18 @@ function initializeGL() {
         );
     }
 
-    locations = Object.fromEntries(
-        [
-            "resolution",
-            "halfWidth",
-            "opacity",
-            "blur",
-            "glow",
-            "pixel"
-        ].map(name => [
-            name,
-            gl.getUniformLocation(program, "u_" + name)
-        ])
-    );
+    uniforms = {};
+
+    for (const name of [
+        "resolution",
+        "halfWidth",
+        "opacity",
+        "blur",
+        "glow",
+        "pixel"
+    ]) {
+        uniforms[name] = gl.getUniformLocation(program, "u_" + name);
+    }
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -256,46 +317,51 @@ function initializeGL() {
 
 initializeGL();
 
+// ==================================================
+// STATE
+// ==================================================
+
+let width = 0;
+let height = 0;
+let extent = 0;
+let threads = [];
+let gridDirty = true;
+let previousTime = null;
+let globalTime = 0;
 let contextLost = false;
-
-canvas.addEventListener("webglcontextlost", event => {
-    event.preventDefault();
-    contextLost = true;
-});
-
-canvas.addEventListener("webglcontextrestored", () => {
-    initializeGL();
-
-    contextLost = false;
-    previousTime = null;
-
-    resize();
-});
 
 let vertices = new Float32Array(65536);
 let vertexOffset = 0;
 
+const mouse = {
+    x: 0,
+    y: 0,
+    targetX: 0,
+    targetY: 0,
+    active: false,
+    initialized: false,
+    influence: 0
+};
+
+// ==================================================
+// WEBGL GEOMETRY
+// ==================================================
+
 function appendVertex(x, y, localX, localY, length, color) {
     if (vertexOffset + 8 > vertices.length) {
         const larger = new Float32Array(vertices.length * 2);
-
         larger.set(vertices);
         vertices = larger;
     }
 
-    vertices.set(
-        [
-            x,
-            y,
-            localX,
-            localY,
-            length,
-            ...color
-        ],
-        vertexOffset
-    );
-
-    vertexOffset += 8;
+    vertices[vertexOffset++] = x;
+    vertices[vertexOffset++] = y;
+    vertices[vertexOffset++] = localX;
+    vertices[vertexOffset++] = localY;
+    vertices[vertexOffset++] = length;
+    vertices[vertexOffset++] = color[0];
+    vertices[vertexOffset++] = color[1];
+    vertices[vertexOffset++] = color[2];
 }
 
 function segment(a, b, color) {
@@ -353,113 +419,45 @@ function renderFabric() {
         gl.DYNAMIC_DRAW
     );
 
-    gl.uniform2f(
-        locations.resolution,
-        width,
-        height
-    );
+    gl.uniform2f(uniforms.resolution, width, height);
 
     gl.uniform1f(
-        locations.halfWidth,
+        uniforms.halfWidth,
         Math.max(0, config.fabric.lineWidth) / 2
     );
 
     gl.uniform1f(
-        locations.opacity,
+        uniforms.opacity,
         clamp(config.fabric.opacity, 0, 1)
     );
 
     gl.uniform1f(
-        locations.blur,
+        uniforms.blur,
         Math.max(0, config.glow.blur) * 0.5
     );
 
     gl.uniform1f(
-        locations.glow,
+        uniforms.glow,
         config.glow.enabled && config.glow.blur > 0
             ? clamp(config.glow.intensity, 0, 1)
             : 0
     );
 
-    gl.uniform1f(
-        locations.pixel,
-        width / canvas.width
-    );
+    gl.uniform1f(uniforms.pixel, width / canvas.width);
 
-    gl.drawArrays(
-        gl.TRIANGLES,
-        0,
-        vertexOffset / 8
-    );
+    gl.drawArrays(gl.TRIANGLES, 0, vertexOffset / 8);
 }
 
-const TAU = Math.PI * 2;
-
-const clamp = (v, min, max) =>
-    Math.max(min, Math.min(max, v));
-
-const radians = degrees =>
-    degrees * Math.PI / 180;
-
-function mixColor(a, b, amount) {
-    const t = clamp(amount, 0, 1);
-
-    return a.map((value, i) =>
-        value + (b[i] - value) * t
-    );
-}
-
-let width = 0;
-let height = 0;
-let extent = 0;
-let threads = [];
-let gridDirty = true;
-let previousTime = null;
-let globalTime = 0;
-
-const mouse = {
-    x: 0,
-    y: 0,
-    targetX: 0,
-    targetY: 0,
-    active: false,
-    initialized: false,
-    influence: 0
-};
-
-function resize() {
-    const dpr = Math.min(
-        window.devicePixelRatio || 1,
-        2
-    );
-
-    width = window.innerWidth;
-    height = window.innerHeight;
-
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(height * dpr);
-
-    gl.viewport(0, 0, canvas.width, canvas.height);
-
-    gridDirty = true;
-}
-
-// --------------------------------------------------
-// Each sampled part of each thread has its own clock.
-// --------------------------------------------------
+// ==================================================
+// FABRIC GENERATION
+// Each sample has its own independent clock.
+// ==================================================
 
 function rebuildFabric() {
     threads = [];
 
-    const spacing = Math.max(
-        16,
-        config.fabric.spacing
-    );
-
-    const sampleSpacing = Math.max(
-        4,
-        config.rendering.sampleSpacing
-    );
+    const spacing = Math.max(16, config.fabric.spacing);
+    const sampleSpacing = Math.max(4, config.rendering.sampleSpacing);
 
     extent =
         Math.hypot(width, height) / 2 +
@@ -467,29 +465,19 @@ function rebuildFabric() {
         spacing * 2;
 
     const halfThreads = Math.ceil(extent / spacing);
-
-    const samples = Math.ceil(
-        extent * 2 / sampleSpacing
-    );
+    const samples = Math.ceil(extent * 2 / sampleSpacing);
 
     for (let axis = 0; axis < 2; axis++) {
-        for (
-            let index = -halfThreads;
-            index <= halfThreads;
-            index++
-        ) {
-            const phase = index * 1.73 + axis * 2.1;
-
+        for (let index = -halfThreads; index <= halfThreads; index++) {
             threads.push({
                 axis,
                 index,
-                phase,
+                phase: index * 1.73 + axis * 2.1,
+
                 samples: Array.from(
                     { length: samples + 1 },
                     (_, sample) => ({
-                        along:
-                            -extent +
-                            sample / samples * extent * 2,
+                        along: -extent + sample / samples * extent * 2,
                         clock: globalTime,
                         calm: 0
                     })
@@ -506,46 +494,26 @@ function toScreen(x, y, cos, sin) {
     };
 }
 
+// ==================================================
+// LOCAL CLOCKS AND THREAD SHAPES
+// ==================================================
+
 function updateAndShape(thread, delta, cos, sin) {
-    const spacing = Math.max(
-        16,
-        config.fabric.spacing
-    );
-
-    const wavelength = Math.max(
-        40,
-        config.weave.wavelength
-    );
-
-    const amplitude = Math.max(
-        0,
-        config.weave.amplitude
-    );
-
-    const mouseRadius = Math.max(
-        1,
-        config.mouse.radius
-    );
+    const spacing = Math.max(16, config.fabric.spacing);
+    const wavelength = Math.max(40, config.weave.wavelength);
+    const amplitude = Math.max(0, config.weave.amplitude);
+    const mouseRadius = Math.max(1, config.mouse.radius);
+    const recovery = Math.max(0, config.time.recovery);
 
     const points = [];
 
     for (const sample of thread.samples) {
         const across = thread.index * spacing;
 
-        const baseX = thread.axis === 0
-            ? sample.along
-            : across;
+        const baseX = thread.axis === 0 ? sample.along : across;
+        const baseY = thread.axis === 0 ? across : sample.along;
 
-        const baseY = thread.axis === 0
-            ? across
-            : sample.along;
-
-        const baseScreen = toScreen(
-            baseX,
-            baseY,
-            cos,
-            sin
-        );
+        const baseScreen = toScreen(baseX, baseY, cos, sin);
 
         const dx = baseScreen.x - mouse.x;
         const dy = baseScreen.y - mouse.y;
@@ -558,17 +526,17 @@ function updateAndShape(thread, delta, cos, sin) {
             : 0;
 
         const localVariation = Math.sin(
-            sample.along / wavelength * 1.4 +
-            thread.phase
+            sample.along / wavelength * 1.4 + thread.phase
         );
 
-        const pause = (
+        const pause = Math.pow(
             0.5 + 0.5 * Math.sin(
                 globalTime * 0.55 +
                 thread.phase +
                 sample.along / wavelength
-            )
-        ) ** 8;
+            ),
+            8
+        );
 
         const rate = Math.max(
             0.02,
@@ -579,18 +547,9 @@ function updateAndShape(thread, delta, cos, sin) {
 
         sample.clock += delta * config.time.speed * rate;
 
-        // Mouse aligns local clocks with the shared clock.
-        const synchronization = Math.max(
-            0,
-            config.mouse.synchronization
-        ) * influence;
+        const synchronization =
+            Math.max(0, config.mouse.synchronization) * influence;
 
-        const recovery = Math.max(
-            0,
-            config.time.recovery
-        );
-
-        // A gentle recovery keeps clock offsets bounded.
         sample.clock += (globalTime - sample.clock) * (
             1 - Math.exp(
                 -(synchronization + recovery * 0.04) * delta
@@ -605,8 +564,7 @@ function updateAndShape(thread, delta, cos, sin) {
             1 - Math.exp(-calmRate * delta)
         );
 
-        const spatialPhase =
-            sample.along / wavelength * TAU;
+        const spatialPhase = sample.along / wavelength * TAU;
 
         const knotEnvelope = Math.pow(
             0.5 + 0.5 * Math.sin(
@@ -618,9 +576,7 @@ function updateAndShape(thread, delta, cos, sin) {
         );
 
         const motion =
-            0.6 * Math.sin(
-                spatialPhase + sample.clock
-            ) +
+            0.6 * Math.sin(spatialPhase + sample.clock) +
             0.25 * Math.sin(
                 spatialPhase * 0.6 -
                 sample.clock * 0.7 +
@@ -628,18 +584,11 @@ function updateAndShape(thread, delta, cos, sin) {
             ) +
             config.weave.knotStrength *
             knotEnvelope *
-            Math.sin(
-                spatialPhase * 3 +
-                sample.clock * 1.3
-            );
+            Math.sin(spatialPhase * 3 + sample.clock * 1.3);
 
-        const displacement =
-            amplitude * motion *
-            (
-                1 -
-                sample.calm *
-                clamp(config.mouse.calmness, 0, 1)
-            );
+        const displacement = amplitude * motion * (
+            1 - sample.calm * clamp(config.mouse.calmness, 0, 1)
+        );
 
         const x = thread.axis === 0
             ? sample.along
@@ -649,10 +598,8 @@ function updateAndShape(thread, delta, cos, sin) {
             ? across + displacement
             : sample.along;
 
-        const point = toScreen(x, y, cos, sin);
-
         points.push({
-            ...point,
+            ...toScreen(x, y, cos, sin),
             along: sample.along,
             calm: sample.calm
         });
@@ -661,15 +608,12 @@ function updateAndShape(thread, delta, cos, sin) {
     return points;
 }
 
-// --------------------------------------------------
-// Rendering threads and woven crossings
-// --------------------------------------------------
+// ==================================================
+// THREAD COLORS AND ALTERNATING CROSSING GAPS
+// ==================================================
 
 function drawThread(thread, points) {
-    const spacing = Math.max(
-        16,
-        config.fabric.spacing
-    );
+    const spacing = Math.max(16, config.fabric.spacing);
 
     const gap = clamp(
         config.weave.crossingGap,
@@ -685,12 +629,8 @@ function drawThread(thread, points) {
         const before = points[i - 1];
         const point = points[i];
 
-        const midpoint =
-            (before.along + point.along) / 2;
-
-        const crossingIndex = Math.round(
-            midpoint / spacing
-        );
+        const midpoint = (before.along + point.along) / 2;
+        const crossingIndex = Math.round(midpoint / spacing);
 
         const crossingDistance = Math.abs(
             midpoint - crossingIndex * spacing
@@ -708,26 +648,59 @@ function drawThread(thread, points) {
 
         const band = Math.min(
             7,
-            Math.floor(
-                (before.calm + point.calm) * 4
-            )
+            Math.floor((before.calm + point.calm) * 4)
         );
 
-        const color = mixColor(
-            baseColor,
-            config.mouse.color,
-            band / 7
-        ).map(value =>
-            clamp(value, 0, 255) / 255
+        const amount = band / 7;
+
+        const color = baseColor.map((value, channel) =>
+            clamp(
+                value +
+                (config.mouse.color[channel] - value) * amount,
+                0,
+                255
+            ) / 255
         );
 
         segment(before, point, color);
     }
 }
 
-// --------------------------------------------------
-// Animation
-// --------------------------------------------------
+// ==================================================
+// RESIZE AND CONTEXT RECOVERY
+// ==================================================
+
+function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    width = Math.max(1, window.innerWidth);
+    height = Math.max(1, window.innerHeight);
+
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+
+    if (!contextLost) {
+        gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+
+    gridDirty = true;
+}
+
+canvas.addEventListener("webglcontextlost", event => {
+    event.preventDefault();
+    contextLost = true;
+});
+
+canvas.addEventListener("webglcontextrestored", () => {
+    initializeGL();
+    contextLost = false;
+    previousTime = null;
+    resize();
+});
+
+// ==================================================
+// ANIMATION
+// ==================================================
 
 function animate(timestamp) {
     requestAnimationFrame(animate);
@@ -739,24 +712,17 @@ function animate(timestamp) {
 
     const delta = previousTime === null
         ? 0
-        : Math.min(
-            (timestamp - previousTime) / 1000,
-            0.05
-        );
+        : clamp((timestamp - previousTime) / 1000, 0, 0.05);
 
     previousTime = timestamp;
-
     globalTime += delta * config.time.speed;
 
     const smoothing = 1 - Math.exp(
         -Math.max(0.1, config.mouse.smoothing) * delta
     );
 
-    mouse.x +=
-        (mouse.targetX - mouse.x) * smoothing;
-
-    mouse.y +=
-        (mouse.targetY - mouse.y) * smoothing;
+    mouse.x += (mouse.targetX - mouse.x) * smoothing;
+    mouse.y += (mouse.targetY - mouse.y) * smoothing;
 
     mouse.influence += (
         (mouse.active && config.mouse.enabled ? 1 : 0) -
@@ -770,34 +736,34 @@ function animate(timestamp) {
 
     vertexOffset = 0;
 
-    const angle = radians(config.fabric.rotation);
+    const angle = config.fabric.rotation * Math.PI / 180;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
 
     for (const thread of threads) {
-        const points = updateAndShape(
+        drawThread(
             thread,
-            delta,
-            cos,
-            sin
+            updateAndShape(thread, delta, cos, sin)
         );
-
-        drawThread(thread, points);
     }
 
     renderFabric();
 }
 
-// --------------------------------------------------
-// Pointer interaction
-// --------------------------------------------------
+// ==================================================
+// POINTER INTERACTION
+// ==================================================
+
+function deactivateMouse() {
+    mouse.active = false;
+}
 
 function updateMouse(event) {
     if (
         event.target instanceof Element &&
         event.target.closest("[data-background-editor]")
     ) {
-        mouse.active = false;
+        deactivateMouse();
         return;
     }
 
@@ -810,10 +776,6 @@ function updateMouse(event) {
         mouse.y = mouse.targetY;
         mouse.initialized = true;
     }
-}
-
-function deactivateMouse() {
-    mouse.active = false;
 }
 
 window.addEventListener("pointermove", updateMouse);
@@ -839,15 +801,20 @@ document.addEventListener("visibilitychange", () => {
 
 window.addEventListener("resize", resize);
 
+// ==================================================
+// START
+// ==================================================
+
 resize();
 requestAnimationFrame(animate);
 
-// --------------------------------------------------
-// Optional editor
-// --------------------------------------------------
+// ==================================================
+// OPTIONAL SETTINGS EDITOR
+// Increment the version when updating settings-editor.js.
+// ==================================================
 
 if (config.panel.enabled) {
-    import("./settings-editor.js?v=webgl-1")
+    import("./settings-editor.js?v=woven-webgl-2")
         .then(({ mountEditor }) => {
             mountEditor({
                 config,
@@ -866,14 +833,12 @@ if (config.panel.enabled) {
 
                 onReset() {
                     gridDirty = true;
+                    deactivateMouse();
                 }
             });
         })
         .catch(error => {
-            console.error(
-                "Could not load editor:",
-                error
-            );
+            console.error("Could not load editor:", error);
         });
 }
 </script>
