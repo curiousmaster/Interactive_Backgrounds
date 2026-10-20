@@ -60,7 +60,6 @@ const SELECTED_FOLDERS =
 
 const REGENERATE_ALL = process.argv.includes("--all");
 const DIAGNOSTICS = process.argv.includes("--diagnostics");
-const DIAGNOSTICS = process.argv.includes("--diagnostics");
 
 const MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
