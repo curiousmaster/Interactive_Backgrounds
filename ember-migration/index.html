@@ -6,21 +6,21 @@
 <title>Ember Migration</title>
 
 <style>
-  html, body {
-    margin: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: #100b13;
-  }
+    html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #100b13;
+    }
 
-  #background {
-    position: fixed;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-  }
+    #background {
+        position: fixed;
+        inset: 0;
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
 </style>
 </head>
 
@@ -28,599 +28,1483 @@
 <canvas id="background" aria-hidden="true"></canvas>
 
 <script type="module">
+"use strict";
+
+// ==================================================
+// CONFIGURATION
+// Colors use [red, green, blue] arrays.
+// Distances and sizes use CSS pixels.
+// Every new visual feature has an independent toggle.
+// ==================================================
+
 const config = {
-  "embers": {
-    "count": 192,
-    "size": 3.8,
-    "speed": 91,
-    "trailLength": 2.8,
-    "opacity": 0.8,
-    "glow": 8
-  },
-  "flock": {
-    "neighborRadius": 79,
-    "separationDistance": 28,
-    "cohesion": 0.6,
-    "alignment": 0.9,
-    "separation": 1.5,
-    "formationStrength": 0.35
-  },
-  "mouse": {
-    "enabled": true,
-    "radius": 240,
-    "beaconStrength": 100,
-    "smoothing": 8,
-    "showHalo": true
-  },
-  "cooling": {
-    "enabled": true,
-    "scattering": 101,
-    "waveSpeed": 260,
-    "waveWidth": 70,
-    "waveLifetime": 2.5,
-    "coolingTime": 8.2
-  },
-  "appearance": {
-    "backgroundColor": [
-      16,
-      11,
-      19
-    ],
-    "hotColor": [
-      255,
-      174,
-      91
-    ],
-    "warmColor": [
-      228,
-      99,
-      117
-    ],
-    "coolColor": [
-      102,
-      160,
-      205
-    ]
-  },
-  "animation": {
-    "speed": 1,
-    "paused": false,
-    "respectReducedMotion": true
-  },
-  "panel": {
-    "enabled": true
-  }
+    embers: {
+        count: 192,
+        size: 3.8,
+        speed: 91,
+        trailLength: 2.8,
+        opacity: 0.8,
+        glow: 8
+    },
+
+    flock: {
+        neighborRadius: 79,
+        separationDistance: 28,
+        cohesion: 0.6,
+        alignment: 0.9,
+        separation: 1.5,
+        formationStrength: 0.35
+    },
+
+    mouse: {
+        enabled: true,
+        radius: 240,
+        beaconStrength: 100,
+        smoothing: 8,
+        showHalo: true
+    },
+
+    cooling: {
+        enabled: true,
+        scattering: 101,
+        waveSpeed: 260,
+        waveWidth: 70,
+        waveLifetime: 2.5,
+
+        // Half-life of an ember's cooling.
+        coolingTime: 8.2
+    },
+
+    // Smooth currents layered over the original flock flow.
+    wind: {
+        enabled: true,
+        strength: 24,
+        scale: 280,
+        speed: 0.3
+    },
+
+    // Slowly drifting whirlpools gently curl the flock.
+    vortices: {
+        enabled: true,
+        count: 2,
+        radius: 260,
+        strength: 42,
+        drift: 0.18,
+        showHalo: true
+    },
+
+    // Warm regions lift and reheat passing embers.
+    thermal: {
+        enabled: true,
+        strength: 26,
+        scale: 320,
+        reheating: 0.35
+    },
+
+    // Individual depths affect apparent size and movement.
+    depth: {
+        enabled: true,
+        strength: 0.55,
+        foregroundBlur: 1.1,
+        parallax: 18
+    },
+
+    // Tiny particles occasionally shed from hot embers.
+    sparks: {
+        enabled: true,
+
+        // Expected emissions per ember per second.
+        rate: 0.35,
+
+        speed: 30,
+        lifetime: 0.9,
+        size: 0.75,
+        maxCount: 700
+    },
+
+    // A small fraction of larger, brighter embers.
+    heroes: {
+        enabled: true,
+        chance: 0.04,
+        size: 1.65,
+        brightness: 1.5
+    },
+
+    // Individual embers breathe rather than flashing together.
+    breathing: {
+        enabled: true,
+        strength: 0.3,
+        speed: 1.2
+    },
+
+    // Soft animated smoke behind the flock.
+    smoke: {
+        enabled: true,
+        opacity: 0.065,
+        scale: 420,
+        speed: 0.16,
+        color: [118, 52, 77]
+    },
+
+    // Analytic Gaussian light halos.
+    bloom: {
+        enabled: true,
+        intensity: 0.55,
+        spread: 1.2
+    },
+
+    appearance: {
+        backgroundColor: [16, 11, 19],
+        hotColor: [255, 174, 91],
+        warmColor: [228, 99, 117],
+        coolColor: [102, 160, 205]
+    },
+
+    animation: {
+        speed: 1,
+        paused: false,
+        respectReducedMotion: true
+    },
+
+    rendering: {
+        pixelRatio: 1.5,
+
+        // History samples recorded per simulated second.
+        trailSamples: 25
+    },
+
+    panel: {
+        enabled: true
+    }
 };
 
 window.getBackgroundConfig = () =>
-  JSON.parse(JSON.stringify(config));
+    JSON.parse(JSON.stringify(config));
 
-const canvas = document.querySelector("#background");
-const ctx = canvas.getContext("2d");
+// ==================================================
+// WEBGL INITIALIZATION
+// ==================================================
+
+const canvas = document.getElementById("background");
+
+const gl = canvas.getContext("webgl", {
+    alpha: false,
+    antialias: false,
+    depth: false,
+    stencil: false
+});
+
+if (!gl) {
+    const message = document.createElement("p");
+
+    message.textContent =
+        "Ember Migration requires WebGL. Enable hardware acceleration and reload.";
+
+    message.style.cssText =
+        "position:fixed;inset:20px;color:white;font:16px system-ui";
+
+    document.body.append(message);
+    throw new Error("WebGL is unavailable");
+}
+
+const TAU = Math.PI * 2;
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+const random = (min, max) => min + Math.random() * (max - min);
+const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
 let width = 1;
 let height = 1;
-let embers = [];
-let pulses = [];
 let time = 0;
 let previous = null;
+let lost = false;
+
+let embers = [];
+let pulses = [];
+let sparks = [];
+let vortexCenters = [];
+
+let programs;
+let lightBuffer;
+let screenBuffer;
 
 const mouse = {
-  x: 0,
-  y: 0,
-  targetX: 0,
-  targetY: 0,
-  active: false,
-  influence: 0
+    x: 0,
+    y: 0,
+    targetX: 0,
+    targetY: 0,
+    active: false,
+    influence: 0,
+    initialized: false
 };
 
-const random = (min, max) => min + Math.random() * (max - min);
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+// ==================================================
+// SHADERS
+// ==================================================
 
-const rgba = (color, alpha = 1) =>
-  `rgba(${color.join(",")},${clamp(alpha, 0, 1)})`;
+const lightVertex = `
+attribute vec2 a_position;
+attribute vec2 a_local;
+attribute vec4 a_shape;
+attribute vec3 a_color;
 
-function mix(a, b, amount) {
-  return a.map((value, index) =>
-    Math.round(value + (b[index] - value) * amount)
-  );
+uniform vec2 u_resolution;
+
+varying vec2 v_local;
+varying vec4 v_shape;
+varying vec3 v_color;
+
+void main() {
+    vec2 p = a_position / u_resolution * 2.0 - 1.0;
+    gl_Position = vec4(p.x, -p.y, 0.0, 1.0);
+
+    v_local = a_local;
+    v_shape = a_shape;
+    v_color = a_color;
+}
+`;
+
+const lightFragment = `
+precision mediump float;
+
+uniform float u_pixel;
+
+varying vec2 v_local;
+varying vec4 v_shape;
+varying vec3 v_color;
+
+void main() {
+    float segmentLength = v_shape.x;
+    float radius = v_shape.y;
+    float blur = v_shape.z;
+    float opacity = v_shape.w;
+
+    vec2 nearest = vec2(
+        clamp(v_local.x, 0.0, segmentLength),
+        0.0
+    );
+
+    float d = length(v_local - nearest);
+    float aa = max(0.3, u_pixel * 0.7);
+
+    float core = 1.0 - smoothstep(
+        max(0.0, radius - aa),
+        radius + aa,
+        d
+    );
+
+    float outside = max(0.0, d - radius);
+
+    float soft = exp(
+        -outside * outside /
+        max(0.001, 2.0 * blur * blur)
+    );
+
+    float alpha = opacity * (blur > 0.0 ? soft : core);
+
+    if (alpha < 0.001) discard;
+
+    gl_FragColor = vec4(v_color * alpha, alpha);
+}
+`;
+
+const screenVertex = `
+attribute vec2 a_position;
+varying vec2 v_uv;
+
+void main() {
+    v_uv = a_position * 0.5 + 0.5;
+    gl_Position = vec4(a_position, 0.0, 1.0);
+}
+`;
+
+const screenFragment = `
+precision mediump float;
+
+varying vec2 v_uv;
+
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform vec3 u_background;
+uniform vec3 u_hot;
+uniform vec3 u_cool;
+uniform vec3 u_smokeColor;
+uniform vec4 u_smoke;
+uniform vec4 u_mouse;
+uniform vec4 u_vortices[4];
+uniform vec4 u_pulses[10];
+
+void main() {
+    vec2 p = vec2(v_uv.x, 1.0 - v_uv.y) * u_resolution;
+    vec3 light = vec3(0.0);
+
+    if (u_smoke.x > 0.5) {
+        vec2 q = (p - u_resolution * 0.5) /
+            max(80.0, u_smoke.z);
+
+        float t = u_time * u_smoke.w;
+
+        // Domain-warped, layered waves form broad smoke folds.
+        vec2 warp = vec2(
+            sin(q.y * 1.7 + t * 0.8),
+            cos(q.x * 1.3 - t * 0.6)
+        );
+
+        q += warp * 0.65;
+
+        float n =
+            sin(q.x * 1.5 + q.y * 0.7 + t) * 0.5 +
+            sin(q.y * 2.1 - q.x * 0.5 - t * 0.7) * 0.3 +
+            cos(q.x * 3.2 + q.y * 1.9 + t * 0.4) * 0.2;
+
+        float smoke = pow(clamp(n * 0.5 + 0.5, 0.0, 1.0), 2.0);
+
+        light += u_smokeColor * smoke * u_smoke.y;
+    }
+
+    float md = length(p - u_mouse.xy);
+
+    float halo = exp(
+        -md * md /
+        max(1.0, u_mouse.z * u_mouse.z * 0.4)
+    );
+
+    light += u_hot * halo * u_mouse.w * 0.04;
+
+    for (int i = 0; i < 4; i++) {
+        vec4 v = u_vortices[i];
+        vec2 d = p - v.xy;
+
+        float r = length(d) / max(1.0, v.z);
+        float angle = atan(d.y, d.x);
+
+        float spiral = 0.5 + 0.5 * sin(
+            angle * 2.0 - r * 9.0 + u_time * 0.35
+        );
+
+        float veil = exp(-r * r * 2.5);
+
+        light += mix(u_hot, u_cool, float(i) / 3.0) *
+            veil * spiral * v.w;
+    }
+
+    for (int i = 0; i < 10; i++) {
+        vec4 pulse = u_pulses[i];
+        float d = length(p - pulse.xy) - pulse.z;
+
+        float ring = exp(-d * d / 2.5);
+
+        light += u_cool * ring * pulse.w * 0.18;
+    }
+
+    gl_FragColor = vec4(u_background + light, 1.0);
+}
+`;
+
+function compile(type, source) {
+    const shader = gl.createShader(type);
+
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const message = gl.getShaderInfoLog(shader);
+        gl.deleteShader(shader);
+        throw new Error(message);
+    }
+
+    return shader;
 }
 
-function makeEmber() {
-  const angle = random(0, Math.PI * 2);
+function makeProgram(vs, fs) {
+    const vertex = compile(gl.VERTEX_SHADER, vs);
+    const fragment = compile(gl.FRAGMENT_SHADER, fs);
+    const program = gl.createProgram();
 
-  return {
-    x: Math.random() * width,
-    y: Math.random() * height,
-    vx: Math.cos(angle) * config.embers.speed,
-    vy: Math.sin(angle) * config.embers.speed,
-    size: random(0.5, 1.2),
-    tint: Math.random(),
-    phase: random(0, Math.PI * 2),
-    cooling: 0,
-    history: [],
-    sampleClock: 0
-  };
+    gl.attachShader(program, vertex);
+    gl.attachShader(program, fragment);
+    gl.linkProgram(program);
+
+    gl.deleteShader(vertex);
+    gl.deleteShader(fragment);
+
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(program));
+    }
+
+    return {
+        program,
+        uniforms: new Map()
+    };
+}
+
+function uniform(program, name) {
+    if (!program.uniforms.has(name)) {
+        program.uniforms.set(
+            name,
+            gl.getUniformLocation(program.program, "u_" + name)
+        );
+    }
+
+    return program.uniforms.get(name);
+}
+
+function initializeGL() {
+    programs = {
+        light: makeProgram(lightVertex, lightFragment),
+        screen: makeProgram(screenVertex, screenFragment)
+    };
+
+    lightBuffer = gl.createBuffer();
+    screenBuffer = gl.createBuffer();
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, screenBuffer);
+
+    gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array([
+            -1, -1, 1, -1, -1, 1,
+            -1, 1, 1, -1, 1, 1
+        ]),
+        gl.STATIC_DRAW
+    );
+
+    gl.disable(gl.DEPTH_TEST);
+    gl.clearColor(0, 0, 0, 1);
+}
+
+initializeGL();
+
+// ==================================================
+// EMBER STATE
+// ==================================================
+
+function makeEmber() {
+    const angle = random(0, TAU);
+
+    return {
+        x: random(0, width),
+        y: random(0, height),
+        vx: Math.cos(angle) * config.embers.speed,
+        vy: Math.sin(angle) * config.embers.speed,
+        size: random(0.5, 1.2),
+        tint: Math.random(),
+        phase: random(0, TAU),
+        depth: Math.random(),
+        heroSeed: Math.random(),
+        cooling: 0,
+        history: [],
+        sampleClock: 0
+    };
 }
 
 function refresh() {
-  const count = Math.round(config.embers.count);
+    const count = clamp(Math.round(config.embers.count), 10, 600);
 
-  while (embers.length < count) embers.push(makeEmber());
-  embers.length = count;
+    while (embers.length < count) embers.push(makeEmber());
+    embers.length = count;
 }
 
 function reset() {
-  embers = [];
-  pulses = [];
-  refresh();
+    embers = [];
+    pulses = [];
+    sparks = [];
+
+    refresh();
+    updateVortices();
 }
 
 function resize() {
-  const oldWidth = width;
-  const oldHeight = height;
+    const oldWidth = width;
+    const oldHeight = height;
 
-  width = innerWidth;
-  height = innerHeight;
+    width = Math.max(1, innerWidth);
+    height = Math.max(1, innerHeight);
 
-  const dpr = Math.min(devicePixelRatio || 1, 2);
-  canvas.width = Math.round(width * dpr);
-  canvas.height = Math.round(height * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const dpr = Math.min(
+        devicePixelRatio || 1,
+        config.rendering.pixelRatio
+    );
 
-  for (const ember of embers) {
-    ember.x *= width / oldWidth;
-    ember.y *= height / oldHeight;
-    ember.history = [];
-  }
-}
+    canvas.width = Math.max(1, Math.round(width * dpr));
+    canvas.height = Math.max(1, Math.round(height * dpr));
 
-function simulate(dt) {
-  if (dt <= 0) return;
-
-  for (const pulse of pulses) pulse.age += dt;
-  pulses = pulses.filter(
-    pulse => pulse.age < config.cooling.waveLifetime
-  );
-
-  const radius = config.flock.neighborRadius;
-
-  // Spatial buckets keep neighbor searches local.
-  const buckets = new Map();
-
-  function key(x, y) {
-    return `${x}:${y}`;
-  }
-
-  for (let index = 0; index < embers.length; index++) {
-    const ember = embers[index];
-    const cellX = Math.floor(ember.x / radius);
-    const cellY = Math.floor(ember.y / radius);
-    const cellKey = key(cellX, cellY);
-
-    if (!buckets.has(cellKey)) buckets.set(cellKey, []);
-    buckets.get(cellKey).push(index);
-  }
-
-  const accelerations = embers.map(ember => {
-    const cellX = Math.floor(ember.x / radius);
-    const cellY = Math.floor(ember.y / radius);
-
-    let neighbors = 0;
-    let centerX = 0;
-    let centerY = 0;
-    let velocityX = 0;
-    let velocityY = 0;
-    let separateX = 0;
-    let separateY = 0;
-
-    const cohesionRadiusSquared = radius * radius;
-    const separationDistance = config.flock.separationDistance;
-
-    for (let cy = cellY - 1; cy <= cellY + 1; cy++) {
-      for (let cx = cellX - 1; cx <= cellX + 1; cx++) {
-        const entries = buckets.get(key(cx, cy));
-        if (!entries) continue;
-
-        for (const index of entries) {
-          const other = embers[index];
-          if (other === ember) continue;
-
-          const dx = other.x - ember.x;
-          const dy = other.y - ember.y;
-          const distanceSquared = dx * dx + dy * dy;
-
-          if (distanceSquared > cohesionRadiusSquared) continue;
-
-          neighbors++;
-          centerX += other.x;
-          centerY += other.y;
-          velocityX += other.vx;
-          velocityY += other.vy;
-
-          const distance = Math.sqrt(distanceSquared);
-
-          if (distance < separationDistance) {
-            const denominator = Math.max(distance, 1);
-            const strength = 1 - distance / separationDistance;
-
-            separateX -= dx / denominator * strength;
-            separateY -= dy / denominator * strength;
-          }
-        }
-      }
-    }
-
-    let ax = 0;
-    let ay = 0;
-
-    const flockResponse = 1 - ember.cooling * 0.7;
-
-    if (neighbors > 0) {
-      ax += (
-        (centerX / neighbors - ember.x) * config.flock.cohesion +
-        (velocityX / neighbors - ember.vx) * config.flock.alignment
-      ) * flockResponse;
-
-      ay += (
-        (centerY / neighbors - ember.y) * config.flock.cohesion +
-        (velocityY / neighbors - ember.vy) * config.flock.alignment
-      ) * flockResponse;
-    }
-
-    ax += separateX * config.flock.separation * 45;
-    ay += separateY * config.flock.separation * 45;
-
-    // A broad moving current encourages temporary shared formations.
-    const flowAngle =
-      Math.sin(ember.y / 240 + time * 0.16) +
-      Math.cos(ember.x / 310 - time * 0.12);
-
-    ax += Math.cos(flowAngle) * config.flock.formationStrength * 35;
-    ay += Math.sin(flowAngle) * config.flock.formationStrength * 35;
-
-    if (config.mouse.enabled) {
-      const dx = mouse.x - ember.x;
-      const dy = mouse.y - ember.y;
-      const distance = Math.hypot(dx, dy);
-      const proximity = clamp(
-        1 - distance / config.mouse.radius,
-        0,
-        1
-      );
-
-      const strength =
-        proximity * proximity *
-        mouse.influence *
-        config.mouse.beaconStrength *
-        (1 - ember.cooling);
-
-      const denominator = Math.max(distance, 20);
-
-      ax += dx / denominator * strength;
-      ay += dy / denominator * strength;
+    for (const ember of embers) {
+        ember.x *= width / oldWidth;
+        ember.y *= height / oldHeight;
+        ember.history = [];
     }
 
     for (const pulse of pulses) {
-      const dx = ember.x - pulse.x;
-      const dy = ember.y - pulse.y;
-      const distance = Math.hypot(dx, dy);
-      const waveRadius = pulse.age * config.cooling.waveSpeed;
-
-      const influence = Math.exp(
-        -Math.pow(
-          (distance - waveRadius) / config.cooling.waveWidth,
-          2
-        ) * 2
-      ) * Math.max(
-        0,
-        1 - pulse.age / config.cooling.waveLifetime
-      );
-
-      const denominator = Math.max(distance, 10);
-
-      ax += dx / denominator * config.cooling.scattering * influence;
-      ay += dy / denominator * config.cooling.scattering * influence;
-
-      ember.cooling = Math.max(ember.cooling, influence);
+        pulse.x *= width / oldWidth;
+        pulse.y *= height / oldHeight;
     }
 
-    return { x: ax, y: ay };
-  });
+    sparks = [];
+    updateVortices();
+}
 
-  for (let index = 0; index < embers.length; index++) {
-    const ember = embers[index];
-    const acceleration = accelerations[index];
+function depthFactor(ember) {
+    return config.depth.enabled
+        ? 1 + (ember.depth - 0.5) * config.depth.strength
+        : 1;
+}
 
-    ember.vx += acceleration.x * dt;
-    ember.vy += acceleration.y * dt;
+function isHero(ember) {
+    return config.heroes.enabled &&
+        ember.heroSeed < config.heroes.chance;
+}
 
-    const speed = Math.hypot(ember.vx, ember.vy);
-    const targetSpeed = config.embers.speed * (1 + ember.cooling * 0.7);
-
-    const relaxedSpeed =
-      speed + (targetSpeed - speed) * (1 - Math.exp(-1.2 * dt));
-
-    if (speed > 0.001) {
-      const boundedSpeed = Math.min(
-        relaxedSpeed,
-        Math.max(60, config.embers.speed * 3)
-      );
-
-      ember.vx *= boundedSpeed / speed;
-      ember.vy *= boundedSpeed / speed;
-    }
-
-    ember.x += ember.vx * dt;
-    ember.y += ember.vy * dt;
-
-    ember.cooling *= Math.exp(
-      -Math.LN2 * dt / config.cooling.coolingTime
+function emberColor(ember) {
+    return mix(
+        mix(
+            config.appearance.hotColor,
+            config.appearance.warmColor,
+            ember.tint
+        ),
+        config.appearance.coolColor,
+        clamp(ember.cooling, 0, 1)
     );
+}
 
-    const margin = 20;
-    let wrapped = false;
+// ==================================================
+// MOVING VORTICES
+// ==================================================
 
-    if (ember.x < -margin) {
-      ember.x = width + margin;
-      wrapped = true;
+function updateVortices() {
+    vortexCenters = [];
+
+    if (!config.vortices.enabled) return;
+
+    for (let i = 0; i < config.vortices.count; i++) {
+        const phase = i * 2.399;
+        const t = time * config.vortices.drift;
+
+        vortexCenters.push({
+            x: width * (
+                0.5 + Math.sin(t * 0.7 + phase) * 0.28
+            ),
+            y: height * (
+                0.5 + Math.cos(t * 0.53 + phase * 1.3) * 0.28
+            ),
+            direction: i % 2 ? -1 : 1
+        });
     }
-    if (ember.x > width + margin) {
-      ember.x = -margin;
-      wrapped = true;
+}
+
+// ==================================================
+// SPARK EMISSION
+// ==================================================
+
+function emitSpark(ember) {
+    if (sparks.length >= config.sparks.maxCount) return;
+
+    const angle = random(0, TAU);
+    const speed = config.sparks.speed * random(0.3, 1.3);
+    const depth = depthFactor(ember);
+
+    sparks.push({
+        x: ember.x,
+        y: ember.y,
+        vx: ember.vx * 0.3 + Math.cos(angle) * speed,
+        vy: ember.vy * 0.3 + Math.sin(angle) * speed,
+        age: 0,
+        life: config.sparks.lifetime * random(0.5, 1.5),
+        size: config.sparks.size * random(0.5, 1.3) * depth,
+        color: emberColor(ember)
+    });
+}
+
+// ==================================================
+// FLOCK SIMULATION
+// Neighbor forces are calculated before positions change.
+// ==================================================
+
+function simulate(dt) {
+    if (dt <= 0) return;
+
+    if (config.cooling.enabled) {
+        for (const pulse of pulses) pulse.age += dt;
+
+        pulses = pulses.filter(
+            pulse => pulse.age < config.cooling.waveLifetime
+        );
+    } else {
+        pulses = [];
     }
-    if (ember.y < -margin) {
-      ember.y = height + margin;
-      wrapped = true;
-    }
-    if (ember.y > height + margin) {
-      ember.y = -margin;
-      wrapped = true;
-    }
 
-    if (wrapped) ember.history = [];
+    updateVortices();
 
-    ember.sampleClock += dt;
+    const radius = Math.max(1, config.flock.neighborRadius);
+    const radiusSquared = radius * radius;
+    const buckets = new Map();
+    const key = (x, y) => `${x}:${y}`;
 
-    if (ember.sampleClock >= 1 / 25) {
-      ember.sampleClock %= 1 / 25;
-      ember.history.push({ x: ember.x, y: ember.y, time });
-    }
+    for (let i = 0; i < embers.length; i++) {
+        const ember = embers[i];
+        const cellKey = key(
+            Math.floor(ember.x / radius),
+            Math.floor(ember.y / radius)
+        );
 
-    const cutoff = time - config.embers.trailLength;
-
-    while (ember.history.length && ember.history[0].time < cutoff) {
-      ember.history.shift();
+        if (!buckets.has(cellKey)) buckets.set(cellKey, []);
+        buckets.get(cellKey).push(i);
     }
 
-    while (ember.history.length > 150) ember.history.shift();
-  }
+    const accelerations = embers.map(ember => {
+        const cellX = Math.floor(ember.x / radius);
+        const cellY = Math.floor(ember.y / radius);
+
+        let neighbors = 0;
+        let centerX = 0;
+        let centerY = 0;
+        let velocityX = 0;
+        let velocityY = 0;
+        let separateX = 0;
+        let separateY = 0;
+
+        for (let cy = cellY - 1; cy <= cellY + 1; cy++) {
+            for (let cx = cellX - 1; cx <= cellX + 1; cx++) {
+                const entries = buckets.get(key(cx, cy));
+                if (!entries) continue;
+
+                for (const index of entries) {
+                    const other = embers[index];
+                    if (other === ember) continue;
+
+                    const dx = other.x - ember.x;
+                    const dy = other.y - ember.y;
+                    const distanceSquared = dx * dx + dy * dy;
+
+                    if (distanceSquared > radiusSquared) continue;
+
+                    neighbors++;
+                    centerX += other.x;
+                    centerY += other.y;
+                    velocityX += other.vx;
+                    velocityY += other.vy;
+
+                    const distance = Math.sqrt(distanceSquared);
+                    const separation = config.flock.separationDistance;
+
+                    if (distance < separation) {
+                        const denominator = Math.max(distance, 1);
+                        const strength = 1 - distance / separation;
+
+                        separateX -= dx / denominator * strength;
+                        separateY -= dy / denominator * strength;
+                    }
+                }
+            }
+        }
+
+        let ax = 0;
+        let ay = 0;
+        let cooling = ember.cooling;
+
+        for (const pulse of pulses) {
+            const dx = ember.x - pulse.x;
+            const dy = ember.y - pulse.y;
+            const distance = Math.hypot(dx, dy);
+
+            const waveRadius = pulse.age * config.cooling.waveSpeed;
+            const normalized =
+                (distance - waveRadius) / config.cooling.waveWidth;
+
+            const influence = Math.exp(
+                -normalized * normalized * 2
+            ) * Math.max(
+                0,
+                1 - pulse.age / config.cooling.waveLifetime
+            );
+
+            const denominator = Math.max(distance, 10);
+
+            ax += dx / denominator *
+                config.cooling.scattering * influence;
+
+            ay += dy / denominator *
+                config.cooling.scattering * influence;
+
+            cooling = Math.max(cooling, influence);
+        }
+
+        const flockResponse = 1 - cooling * 0.7;
+
+        if (neighbors > 0) {
+            ax += (
+                (centerX / neighbors - ember.x) *
+                    config.flock.cohesion +
+                (velocityX / neighbors - ember.vx) *
+                    config.flock.alignment
+            ) * flockResponse;
+
+            ay += (
+                (centerY / neighbors - ember.y) *
+                    config.flock.cohesion +
+                (velocityY / neighbors - ember.vy) *
+                    config.flock.alignment
+            ) * flockResponse;
+        }
+
+        ax += separateX * config.flock.separation * 45;
+        ay += separateY * config.flock.separation * 45;
+
+        // Original broad migration current.
+        const flowAngle =
+            Math.sin(ember.y / 240 + time * 0.16) +
+            Math.cos(ember.x / 310 - time * 0.12);
+
+        ax += Math.cos(flowAngle) *
+            config.flock.formationStrength * 35;
+
+        ay += Math.sin(flowAngle) *
+            config.flock.formationStrength * 35;
+
+        if (config.wind.enabled) {
+            const scale = Math.max(1, config.wind.scale);
+            const t = time * config.wind.speed;
+            const x = ember.x / scale;
+            const y = ember.y / scale;
+
+            // Smooth curl-like current.
+            ax += (
+                Math.cos(y * 1.7 + t) +
+                Math.sin(x * 0.6 + y - t * 0.7) * 0.5
+            ) * config.wind.strength;
+
+            ay += (
+                -Math.cos(x * 1.3 - t * 0.8) +
+                Math.cos(y * 0.7 - x + t * 0.5) * 0.5
+            ) * config.wind.strength;
+        }
+
+        for (const vortex of vortexCenters) {
+            const dx = ember.x - vortex.x;
+            const dy = ember.y - vortex.y;
+            const distance = Math.hypot(dx, dy);
+
+            const influence = Math.exp(
+                -distance * distance /
+                (config.vortices.radius ** 2)
+            );
+
+            const denominator = Math.max(30, distance);
+            const strength = config.vortices.strength *
+                influence * vortex.direction;
+
+            ax -= dy / denominator * strength;
+            ay += dx / denominator * strength;
+        }
+
+        let heat = 0;
+
+        if (config.thermal.enabled) {
+            const scale = Math.max(1, config.thermal.scale);
+
+            heat = Math.pow(
+                0.5 + 0.5 * Math.sin(
+                    ember.x / scale * TAU +
+                    Math.sin(ember.y / scale + time * 0.2)
+                ),
+                3
+            );
+
+            ay -= heat * config.thermal.strength;
+        }
+
+        if (config.mouse.enabled) {
+            const dx = mouse.x - ember.x;
+            const dy = mouse.y - ember.y;
+            const distance = Math.hypot(dx, dy);
+
+            const proximity = clamp(
+                1 - distance / config.mouse.radius,
+                0, 1
+            );
+
+            const strength =
+                proximity * proximity *
+                mouse.influence *
+                config.mouse.beaconStrength *
+                (1 - cooling);
+
+            const denominator = Math.max(distance, 20);
+
+            ax += dx / denominator * strength;
+            ay += dy / denominator * strength;
+        }
+
+        return { x: ax, y: ay, cooling, heat };
+    });
+
+    for (let i = 0; i < embers.length; i++) {
+        const ember = embers[i];
+        const acceleration = accelerations[i];
+
+        ember.cooling = acceleration.cooling;
+
+        ember.vx += acceleration.x * dt;
+        ember.vy += acceleration.y * dt;
+
+        const speed = Math.hypot(ember.vx, ember.vy);
+
+        const targetSpeed =
+            config.embers.speed *
+            depthFactor(ember) *
+            (1 + ember.cooling * 0.7);
+
+        const relaxedSpeed =
+            speed + (targetSpeed - speed) *
+            (1 - Math.exp(-1.2 * dt));
+
+        if (speed > 0.001) {
+            const boundedSpeed = Math.min(
+                relaxedSpeed,
+                Math.max(60, config.embers.speed * 3)
+            );
+
+            ember.vx *= boundedSpeed / speed;
+            ember.vy *= boundedSpeed / speed;
+        }
+
+        ember.x += ember.vx * dt;
+        ember.y += ember.vy * dt;
+
+        ember.cooling *= Math.exp(
+            -Math.LN2 * dt / config.cooling.coolingTime
+        );
+
+        if (config.thermal.enabled) {
+            ember.cooling *= Math.exp(
+                -acceleration.heat *
+                config.thermal.reheating * dt
+            );
+        }
+
+        // Allow large halos to leave the viewport before wrapping.
+        const margin = Math.max(
+            30,
+            config.embers.size * 5 +
+            config.embers.glow * config.bloom.spread * 3
+        );
+
+        let wrapped = false;
+
+        if (ember.x < -margin) {
+            ember.x = width + margin;
+            wrapped = true;
+        } else if (ember.x > width + margin) {
+            ember.x = -margin;
+            wrapped = true;
+        }
+
+        if (ember.y < -margin) {
+            ember.y = height + margin;
+            wrapped = true;
+        } else if (ember.y > height + margin) {
+            ember.y = -margin;
+            wrapped = true;
+        }
+
+        if (wrapped) {
+            ember.history = [];
+            ember.heroSeed = Math.random();
+        }
+
+        ember.sampleClock += dt;
+
+        const interval = 1 / config.rendering.trailSamples;
+
+        if (ember.sampleClock >= interval) {
+            ember.sampleClock %= interval;
+
+            ember.history.push({
+                x: ember.x,
+                y: ember.y,
+                time
+            });
+        }
+
+        const cutoff = time - config.embers.trailLength;
+
+        while (
+            ember.history.length &&
+            ember.history[0].time < cutoff
+        ) {
+            ember.history.shift();
+        }
+
+        // Hard limit prevents unbounded history after config edits.
+        while (ember.history.length > 240) {
+            ember.history.shift();
+        }
+
+        if (config.sparks.enabled) {
+            const rate =
+                config.sparks.rate *
+                (1 - ember.cooling) *
+                (isHero(ember) ? 2 : 1);
+
+            if (Math.random() < 1 - Math.exp(-rate * dt)) {
+                emitSpark(ember);
+            }
+        }
+    }
+
+    if (!config.sparks.enabled) {
+        sparks = [];
+    } else {
+        if (sparks.length > config.sparks.maxCount) {
+            sparks.length = config.sparks.maxCount;
+        }
+
+        for (let i = sparks.length - 1; i >= 0; i--) {
+            const spark = sparks[i];
+
+            spark.age += dt;
+            spark.x += spark.vx * dt;
+            spark.y += spark.vy * dt;
+
+            const drag = Math.exp(-dt * 1.6);
+
+            spark.vx *= drag;
+            spark.vy = spark.vy * drag - dt * 7;
+
+            if (spark.age >= spark.life) {
+                sparks.splice(i, 1);
+            }
+        }
+    }
+}
+
+// ==================================================
+// WEBGL LIGHT GEOMETRY
+// Capsules draw trails; zero-length capsules draw embers.
+// ==================================================
+
+let vertices = new Float32Array(262144);
+let offset = 0;
+
+function vertex(x, y, lx, ly, length, radius, blur, alpha, color) {
+    if (offset + 11 > vertices.length) {
+        const larger = new Float32Array(vertices.length * 2);
+        larger.set(vertices);
+        vertices = larger;
+    }
+
+    vertices[offset++] = x;
+    vertices[offset++] = y;
+    vertices[offset++] = lx;
+    vertices[offset++] = ly;
+    vertices[offset++] = length;
+    vertices[offset++] = radius;
+    vertices[offset++] = blur;
+    vertices[offset++] = alpha;
+    vertices[offset++] = color[0] / 255;
+    vertices[offset++] = color[1] / 255;
+    vertices[offset++] = color[2] / 255;
+}
+
+function capsule(a, b, width, color, alpha, blur = 0) {
+    if (width <= 0 || alpha <= 0.0001) return;
+
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = Math.hypot(dx, dy);
+
+    const ux = length > 0.0001 ? dx / length : 1;
+    const uy = length > 0.0001 ? dy / length : 0;
+
+    const radius = width / 2;
+    const padding = radius + blur * 3 + 1.5;
+
+    const corners = [
+        [-padding, -padding],
+        [length + padding, -padding],
+        [length + padding, padding],
+        [-padding, padding]
+    ];
+
+    for (const index of [0, 1, 2, 0, 2, 3]) {
+        const [x, y] = corners[index];
+
+        vertex(
+            a.x + ux * x - uy * y,
+            a.y + uy * x + ux * y,
+            x, y,
+            length,
+            radius,
+            blur,
+            alpha,
+            color
+        );
+    }
+}
+
+function light(a, b, width, color, alpha, glow, softness = 0) {
+    if (config.bloom.enabled && glow > 0) {
+        capsule(
+            a, b, width, color,
+            alpha * config.bloom.intensity * 0.25,
+            glow * config.bloom.spread
+        );
+    }
+
+    capsule(a, b, width, color, alpha, softness);
+}
+
+function parallax(ember) {
+    const strength = config.depth.enabled
+        ? (ember.depth - 0.5) *
+            config.depth.parallax *
+            mouse.influence
+        : 0;
+
+    return {
+        x: (mouse.x / width - 0.5) * strength,
+        y: (mouse.y / height - 0.5) * strength
+    };
 }
 
 function drawEmber(ember) {
-  const warm = mix(
-    config.appearance.hotColor,
-    config.appearance.warmColor,
-    ember.tint
-  );
+    const color = emberColor(ember);
+    const depth = depthFactor(ember);
+    const hero = isHero(ember);
+    const shift = parallax(ember);
 
-  const color = mix(
-    warm,
-    config.appearance.coolColor,
-    ember.cooling
-  );
+    const shimmer = config.breathing.enabled
+        ? 1 - config.breathing.strength * 0.5 +
+            Math.sin(
+                time * config.breathing.speed +
+                ember.phase
+            ) * config.breathing.strength * 0.5
+        : 1;
 
-  const shimmer =
-    0.8 + Math.sin(time * 2 + ember.phase) * 0.2;
+    const opacity =
+        config.embers.opacity *
+        shimmer *
+        (1 - ember.cooling * 0.35) *
+        (hero ? config.heroes.brightness : 1);
 
-  const opacity =
-    config.embers.opacity *
-    shimmer *
-    (1 - ember.cooling * 0.35);
+    const radius =
+        config.embers.size *
+        ember.size *
+        depth *
+        (hero ? config.heroes.size : 1);
 
-  ctx.shadowBlur = 0;
+    const softness = config.depth.enabled
+        ? Math.max(0, (ember.depth - 0.8) / 0.2) *
+            config.depth.foregroundBlur
+        : 0;
 
-  const history = ember.history;
+    const point = {
+        x: ember.x + shift.x,
+        y: ember.y + shift.y
+    };
 
-  if (config.embers.trailLength > 0 && history.length > 1) {
-    const first = history[0];
+    const history = ember.history;
 
-    if (Math.hypot(ember.x - first.x, ember.y - first.y) > 0.1) {
-      const gradient = ctx.createLinearGradient(
-        first.x, first.y,
-        ember.x, ember.y
-      );
+    if (config.embers.trailLength > 0 && history.length) {
+        for (let i = 1; i <= history.length; i++) {
+            const a = history[i - 1];
+            const b = i === history.length ? ember : history[i];
 
-      gradient.addColorStop(0, rgba(color, 0));
-      gradient.addColorStop(1, rgba(color, opacity * 0.4));
+            const age = Math.max(
+                0,
+                time - (a.time + (b.time ?? time)) / 2
+            );
 
-      ctx.strokeStyle = gradient;
-      ctx.lineWidth = config.embers.size * ember.size * 0.55;
-      ctx.beginPath();
-      ctx.moveTo(first.x, first.y);
+            const fade = clamp(
+                1 - age / config.embers.trailLength,
+                0, 1
+            );
 
-      for (let i = 1; i < history.length; i++) {
-        ctx.lineTo(history[i].x, history[i].y);
-      }
-
-      ctx.lineTo(ember.x, ember.y);
-      ctx.stroke();
+            // Trails remain restrained; head halos carry most light.
+            capsule(
+                { x: a.x + shift.x, y: a.y + shift.y },
+                { x: b.x + shift.x, y: b.y + shift.y },
+                radius * 0.55,
+                color,
+                opacity * fade * fade * 0.3,
+                softness
+            );
+        }
     }
-  }
 
-  ctx.fillStyle = rgba(color, opacity);
-  ctx.shadowColor = rgba(color);
-  ctx.shadowBlur = config.embers.glow;
+    light(
+        point,
+        point,
+        radius * 2,
+        color,
+        opacity,
+        config.embers.glow * depth,
+        softness
+    );
 
-  ctx.beginPath();
-  ctx.arc(
-    ember.x,
-    ember.y,
-    config.embers.size * ember.size,
-    0,
-    Math.PI * 2
-  );
-  ctx.fill();
+    // Small incandescent center, strongest on hot embers.
+    const coreColor = mix(color, [255, 240, 205], 0.65);
+
+    capsule(
+        point,
+        point,
+        radius * 0.65,
+        coreColor,
+        opacity * (1 - ember.cooling * 0.65) * 0.5,
+        softness
+    );
 }
 
-function drawInteraction() {
-  ctx.shadowBlur = 0;
+function buildGeometry() {
+    offset = 0;
 
-  if (
-    config.mouse.enabled &&
-    config.mouse.showHalo &&
-    mouse.influence > 0.001
-  ) {
-    const gradient = ctx.createRadialGradient(
-      mouse.x, mouse.y, 0,
-      mouse.x, mouse.y, config.mouse.radius
+    for (const ember of embers) drawEmber(ember);
+
+    if (config.sparks.enabled) {
+        for (const spark of sparks) {
+            const fade = Math.max(0, 1 - spark.age / spark.life);
+
+            light(
+                {
+                    x: spark.x - spark.vx * 0.025,
+                    y: spark.y - spark.vy * 0.025
+                },
+                spark,
+                spark.size * 2,
+                spark.color,
+                fade * fade * config.embers.opacity,
+                3
+            );
+        }
+    }
+}
+
+// ==================================================
+// BACKGROUND PASS
+// ==================================================
+
+function drawBackground() {
+    const p = programs.screen;
+
+    gl.disable(gl.BLEND);
+    gl.useProgram(p.program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, screenBuffer);
+
+    const location = gl.getAttribLocation(p.program, "a_position");
+
+    gl.enableVertexAttribArray(location);
+    gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
+
+    gl.uniform2f(uniform(p, "resolution"), width, height);
+    gl.uniform1f(uniform(p, "time"), time);
+
+    for (const [name, color] of [
+        ["background", config.appearance.backgroundColor],
+        ["hot", config.appearance.hotColor],
+        ["cool", config.appearance.coolColor],
+        ["smokeColor", config.smoke.color]
+    ]) {
+        gl.uniform3fv(
+            uniform(p, name),
+            color.map(value => value / 255)
+        );
+    }
+
+    gl.uniform4f(
+        uniform(p, "smoke"),
+        config.smoke.enabled ? 1 : 0,
+        config.smoke.opacity,
+        config.smoke.scale,
+        config.smoke.speed
     );
 
-    gradient.addColorStop(
-      0,
-      rgba(config.appearance.hotColor, mouse.influence * 0.04)
-    );
-    gradient.addColorStop(1, rgba(config.appearance.hotColor, 0));
-
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height);
-  }
-
-  for (const pulse of pulses) {
-    ctx.strokeStyle = rgba(
-      config.appearance.coolColor,
-      (1 - pulse.age / config.cooling.waveLifetime) * 0.18
+    gl.uniform4f(
+        uniform(p, "mouse"),
+        mouse.x,
+        mouse.y,
+        config.mouse.radius,
+        config.mouse.enabled && config.mouse.showHalo
+            ? mouse.influence
+            : 0
     );
 
-    ctx.lineWidth = 0.8;
-    ctx.beginPath();
-    ctx.arc(
-      pulse.x,
-      pulse.y,
-      pulse.age * config.cooling.waveSpeed,
-      0,
-      Math.PI * 2
+    const vortexData = new Float32Array(16);
+
+    if (config.vortices.enabled && config.vortices.showHalo) {
+        vortexCenters.forEach((v, i) => {
+            vortexData.set([
+                v.x,
+                v.y,
+                config.vortices.radius,
+                0.025
+            ], i * 4);
+        });
+    }
+
+    gl.uniform4fv(uniform(p, "vortices[0]"), vortexData);
+
+    const pulseData = new Float32Array(40);
+
+    if (config.cooling.enabled) {
+        pulses.forEach((pulse, i) => {
+            pulseData.set([
+                pulse.x,
+                pulse.y,
+                pulse.age * config.cooling.waveSpeed,
+                Math.max(
+                    0,
+                    1 - pulse.age / config.cooling.waveLifetime
+                )
+            ], i * 4);
+        });
+    }
+
+    gl.uniform4fv(uniform(p, "pulses[0]"), pulseData);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.disableVertexAttribArray(location);
+}
+
+// ==================================================
+// EMBER AND TRAIL PASS
+// ==================================================
+
+function drawGeometry() {
+    if (!offset) return;
+
+    const p = programs.light;
+
+    gl.useProgram(p.program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, lightBuffer);
+
+    gl.bufferData(
+        gl.ARRAY_BUFFER,
+        vertices.subarray(0, offset),
+        gl.DYNAMIC_DRAW
     );
-    ctx.stroke();
-  }
+
+    const enabled = [];
+
+    for (const [name, size, start] of [
+        ["a_position", 2, 0],
+        ["a_local", 2, 2],
+        ["a_shape", 4, 4],
+        ["a_color", 3, 8]
+    ]) {
+        const location = gl.getAttribLocation(p.program, name);
+
+        gl.enableVertexAttribArray(location);
+
+        gl.vertexAttribPointer(
+            location,
+            size,
+            gl.FLOAT,
+            false,
+            44,
+            start * 4
+        );
+
+        enabled.push(location);
+    }
+
+    gl.uniform2f(uniform(p, "resolution"), width, height);
+    gl.uniform1f(uniform(p, "pixel"), width / canvas.width);
+
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+
+    gl.drawArrays(gl.TRIANGLES, 0, offset / 11);
+
+    enabled.forEach(location => {
+        gl.disableVertexAttribArray(location);
+    });
+}
+
+// ==================================================
+// ANIMATION
+// ==================================================
+
+function isStill() {
+    return config.animation.paused || (
+        config.animation.respectReducedMotion &&
+        reducedMotion.matches
+    );
 }
 
 function frame(timestamp) {
-  const realDt = previous === null
-    ? 0
-    : Math.min((timestamp - previous) / 1000, 0.05);
+    requestAnimationFrame(frame);
 
-  previous = timestamp;
+    if (lost) {
+        previous = null;
+        return;
+    }
 
-  const still =
-    config.animation.paused ||
-    (
-      config.animation.respectReducedMotion &&
-      reducedMotion.matches
-    );
+    const realDt = previous === null
+        ? 0
+        : clamp((timestamp - previous) / 1000, 0, 0.05);
 
-  const dt = still ? 0 : realDt * config.animation.speed;
+    previous = timestamp;
 
-  const smoothing =
-    1 - Math.exp(-config.mouse.smoothing * realDt);
+    const dt = isStill()
+        ? 0
+        : realDt * config.animation.speed;
 
-  mouse.x += (mouse.targetX - mouse.x) * smoothing;
-  mouse.y += (mouse.targetY - mouse.y) * smoothing;
-  mouse.influence +=
-    ((mouse.active ? 1 : 0) - mouse.influence) * smoothing;
+    const smoothing =
+        1 - Math.exp(-config.mouse.smoothing * realDt);
 
-  // Small simulation steps improve stability at higher playback speeds.
-  const steps = Math.max(1, Math.ceil(dt / 0.025));
+    mouse.x += (mouse.targetX - mouse.x) * smoothing;
+    mouse.y += (mouse.targetY - mouse.y) * smoothing;
 
-  for (let step = 0; step < steps; step++) {
-    const stepDt = dt / steps;
-    time += stepDt;
-    simulate(stepDt);
-  }
+    mouse.influence += (
+        (mouse.active && config.mouse.enabled ? 1 : 0) -
+        mouse.influence
+    ) * smoothing;
 
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = rgba(config.appearance.backgroundColor);
-  ctx.fillRect(0, 0, width, height);
+    const steps = Math.max(1, Math.ceil(dt / 0.025));
 
-  drawInteraction();
+    for (let step = 0; step < steps; step++) {
+        const stepDt = dt / steps;
+        time += stepDt;
+        simulate(stepDt);
+    }
 
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
+    // Also updates centers when settings change while paused.
+    updateVortices();
 
-  for (const ember of embers) drawEmber(ember);
+    buildGeometry();
 
-  ctx.restore();
-  requestAnimationFrame(frame);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+
+    drawBackground();
+    drawGeometry();
 }
 
+// ==================================================
+// POINTER INTERACTION
+// ==================================================
+
 function updatePointer(event) {
-  if (event.target.closest?.("[data-background-editor]")) {
+    if (
+        event.target instanceof Element &&
+        event.target.closest("[data-background-editor]")
+    ) {
+        mouse.active = false;
+        return false;
+    }
+
+    if (!mouse.initialized) {
+        mouse.x = event.clientX;
+        mouse.y = event.clientY;
+        mouse.initialized = true;
+    }
+
+    mouse.targetX = event.clientX;
+    mouse.targetY = event.clientY;
+    mouse.active = true;
+
+    return true;
+}
+
+function deactivatePointer() {
     mouse.active = false;
-    return false;
-  }
-
-  if (!mouse.active) {
-    mouse.x = event.clientX;
-    mouse.y = event.clientY;
-  }
-
-  mouse.targetX = event.clientX;
-  mouse.targetY = event.clientY;
-  mouse.active = true;
-  return true;
 }
 
 addEventListener("pointermove", updatePointer);
 
 addEventListener("pointerdown", event => {
-  if (!updatePointer(event) || !config.cooling.enabled) return;
-  if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (
+        event.pointerType === "mouse" &&
+        event.button !== 0
+    ) {
+        return;
+    }
 
-  if (pulses.length >= 10) pulses.shift();
+    if (!updatePointer(event)) return;
+    if (!config.cooling.enabled || isStill()) return;
 
-  pulses.push({
-    x: event.clientX,
-    y: event.clientY,
-    age: 0
-  });
+    if (pulses.length >= 10) pulses.shift();
+
+    pulses.push({
+        x: event.clientX,
+        y: event.clientY,
+        age: 0
+    });
 });
 
 addEventListener("pointerup", event => {
-  if (event.pointerType !== "mouse") mouse.active = false;
+    if (event.pointerType !== "mouse") deactivatePointer();
 });
 
-addEventListener("pointercancel", () => mouse.active = false);
-addEventListener("blur", () => mouse.active = false);
+addEventListener("pointercancel", deactivatePointer);
+addEventListener("blur", deactivatePointer);
 
 document.documentElement.addEventListener(
-  "pointerleave",
-  () => mouse.active = false
+    "pointerleave",
+    deactivatePointer
 );
 
 document.addEventListener("visibilitychange", () => {
-  previous = null;
-  mouse.active = false;
+    previous = null;
+    deactivatePointer();
+});
+
+canvas.addEventListener("webglcontextlost", event => {
+    event.preventDefault();
+    lost = true;
+});
+
+canvas.addEventListener("webglcontextrestored", () => {
+    initializeGL();
+    lost = false;
+    previous = null;
+    resize();
 });
 
 addEventListener("resize", resize);
+
+// ==================================================
+// START
+// ==================================================
 
 resize();
 reset();
 requestAnimationFrame(frame);
 
+// ==================================================
+// OPTIONAL SETTINGS EDITOR
+// Increment the version after updating settings-editor.js.
+// ==================================================
+
 if (config.panel.enabled) {
-  import("./settings-editor.js")
-    .then(({ createSettingsEditor }) => {
-      createSettingsEditor({
-        config,
-        onChange: refresh,
-        onReset: reset
-      });
-    })
-    .catch(error => console.error("Editor could not load:", error));
+    import("./settings-editor.js?v=ember-webgl-1")
+        .then(({ createSettingsEditor }) => {
+            createSettingsEditor({
+                config,
+
+                onChange(path) {
+                    if (path === "embers.count") refresh();
+
+                    if (path === "rendering.pixelRatio") resize();
+
+                    if (path === "cooling.enabled" &&
+                        !config.cooling.enabled) {
+                        pulses = [];
+                    }
+
+                    if (path === "sparks.enabled" &&
+                        !config.sparks.enabled) {
+                        sparks = [];
+                    }
+
+                    deactivatePointer();
+                },
+
+                onReset: reset
+            });
+        })
+        .catch(error => {
+            console.error("Editor could not load:", error);
+        });
 }
 </script>
 </body>
