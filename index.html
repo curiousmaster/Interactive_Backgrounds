@@ -2,511 +2,1147 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Background Gallery</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Animated Background Gallery</title>
 
 <style>
-    * {
-        box-sizing: border-box;
-    }
+:root {
+    color-scheme: dark;
+    --accent: #91d8f5;
+    --glass: rgba(8, 13, 23, .82);
+    --border: rgba(255, 255, 255, .18);
+    --search-accent: #f5d391;
+}
 
-    html, body {
-        margin: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        background: #000;
-        color: #fff;
-        font-family: system-ui, sans-serif;
-    }
+* { box-sizing: border-box; }
 
-    #background {
-        position: fixed;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        border: 0;
-    }
+html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    color: #fff;
+    font-family: system-ui, sans-serif;
+}
 
-	.panel {
-		position: fixed;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		width: min(440px, calc(100% - 40px));
-		padding: 28px;
-        max-height: calc(100dvh - 32px);
-        overflow-y: auto;
+button, input { font: inherit; }
+button { color: inherit; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
 
-		background: rgba(0, 0, 0, 0.24);
-		backdrop-filter: none;
-		-webkit-backdrop-filter: none;
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+}
 
-		border: 1px solid rgba(255, 255, 255, 0.25);
-		border-radius: 20px;
-		text-align: center;
+[hidden] { display: none !important; }
 
-		box-shadow: none;
-		text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
-	}
+#background {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #000;
+}
 
-    .eyebrow {
-        margin: 0 0 12px;
-        color: #a8c9df;
-        font-size: 11px;
-        letter-spacing: 0.22em;
-        text-transform: uppercase;
-    }
+#shade {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .3s;
+}
 
-    h1 {
-        margin: 0 0 12px;
-        font-size: clamp(26px, 5vw, 36px);
-        font-weight: 600;
-        letter-spacing: -0.04em;
-    }
+#shade.active { opacity: .85; }
 
-    .description {
-        margin: 0 0 26px;
-        color: rgba(255, 255, 255, 0.75);
-        font-size: 14px;
-        line-height: 1.65;
-    }
+.gallery {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+}
 
-    label {
-        display: block;
-        margin-bottom: 10px;
-        text-align: left;
-        font-size: 12px;
-        color: #c7d5df;
-    }
+.gallery > * { pointer-events: auto; }
 
-    select {
-        width: 100%;
-        padding: 13px 14px;
-        color: #fff;
-        background: rgba(5, 10, 18, 0.55);
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        border-radius: 10px;
-        font: 14px system-ui, sans-serif;
-        cursor: pointer;
-    }
+header {
+    position: absolute;
+    top: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(550px, calc(100% - 30px));
+    text-align: center;
+    text-shadow: 0 2px 16px #000;
+    pointer-events: none;
+}
 
-    option {
-        color: #fff;
-        background: #111820;
-    }
+header h1 {
+    margin: 0 0 5px;
+    font-size: clamp(23px, 3vw, 35px);
+    letter-spacing: -.04em;
+}
 
-    .actions {
-        display: flex;
-        gap: 10px;
-        margin-top: 16px;
-    }
+header p {
+    margin: 0;
+    font-size: 12px;
+    color: #ffffffb0;
+}
 
-    button, .open-link {
-        flex: 1;
-        padding: 11px 12px;
-        color: #fff;
-        background: rgba(255, 255, 255, 0.07);
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        border-radius: 10px;
-        font: 12px system-ui, sans-serif;
-        text-decoration: none;
-        cursor: pointer;
-    }
+.dock {
+    position: absolute;
+    left: 50%;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: min(1180px, calc(100% - 30px));
+    border: 1px solid var(--border);
+    border-radius: 19px;
+    background: var(--glass);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 15px 55px #0008;
+}
 
-    button:hover, .open-link:hover {
-        background: rgba(255, 255, 255, 0.15);
-    }
+.dock-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 17px 8px;
+}
 
-    :focus-visible {
-        outline: 2px solid #8acde5;
-        outline-offset: 3px;
-    }
+.dock-title { flex: 1; min-width: 0; }
 
-    .hint {
-        margin: 20px 0 0;
-        color: rgba(255, 255, 255, 0.5);
-        font-size: 11px;
-        line-height: 1.6;
-    }
+.eyebrow {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--accent);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: .18em;
+}
 
-    #show-panel {
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(15, 20, 28, 0.6);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-    }
+#current-name {
+    display: block;
+    font-size: 16px;
+    font-weight: 600;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
 
-    [hidden] {
-        display: none !important;
-    }
+.actions { display: flex; gap: 7px; }
 
-    #background-select {
-        display: flex; justify-content: space-between; align-items: center;
-        width: 100%; padding: 13px 14px; font-size: 14px; text-align: left;
-        background: rgba(5, 10, 18, .6);
-    }
-    #background-list {
-        max-height: min(220px, 30dvh); overflow-y: auto;
-        margin-top: 7px; padding: 5px; text-align: left;
-        border: 1px solid #ffffff30; border-radius: 10px;
-        background: rgba(8, 15, 25, .96);
-    }
-    .background-option { padding: 9px 11px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-    .background-option.active { background: #ffffff18; color: #b9e8f8; }
-    .background-option[aria-selected="true"]::after { content: ' ✓'; color: #9ad8c5; }
-    .background-details { text-align: left; margin-top: 18px; padding-top: 16px; border-top: 1px solid #ffffff26; }
-    #detail-label { margin: 0 0 6px; font-size: 10px; text-transform: uppercase; letter-spacing: .16em; color: #a8c9df; }
-    #detail-title { margin: 0 0 7px; font-size: 18px; font-weight: 600; }
-    #detail-description { margin: 0; min-height: 72px; font-size: 13px; line-height: 1.65; color: #e2e9ef; }
+.icon-button {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: #ffffff10;
+    color: white;
+    text-decoration: none;
+    font-size: 18px;
+}
 
-    /* Viewport-safe layout, including browser chrome and display cutouts. */
-    .panel {
-        inset: max(12px, env(safe-area-inset-top))
-               max(12px, env(safe-area-inset-right))
-               max(12px, env(safe-area-inset-bottom))
-               max(12px, env(safe-area-inset-left));
-        margin: auto;
-        transform: none;
-        width: min(480px, calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
-        height: fit-content;
-        max-height: calc(100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-        max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-        padding: clamp(18px, 4vw, 32px);
-        overflow-x: hidden;
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        scrollbar-width: thin;
-        scrollbar-color: #ffffff40 transparent;
+.icon-button:hover { background: #ffffff28; }
+
+.icon-button.active {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Search only navigates the thumbnails.
+   Its highlighted result is separate from the selected background. */
+
+.search-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 9px;
+    padding: 3px 17px 9px;
+}
+
+.search-field {
+    display: flex;
+    align-items: center;
+    flex: 1 1 240px;
+    min-width: 0;
+    gap: 8px;
+    min-height: 38px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #00000035;
+}
+
+.search-field:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px #91d8f515;
+}
+
+.search-symbol {
+    flex: 0 0 auto;
+    color: #ffffff80;
+    font-size: 19px;
+}
+
+#search {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    padding: 9px 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: #fff;
+    font-size: 12px;
+}
+
+#search::placeholder { color: #ffffff65; }
+
+#search::-webkit-search-cancel-button {
+    display: none;
+}
+
+.search-clear {
+    flex: 0 0 24px;
+    width: 24px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: #ffffff95;
+    font-size: 18px;
+}
+
+.search-clear:hover {
+    background: #ffffff15;
+    color: white;
+}
+
+.search-results {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#search-status {
+    min-width: 95px;
+    color: #ffffffa8;
+    font-size: 11px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.search-step {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: #ffffff0b;
+    font-size: 18px;
+}
+
+.search-step:hover:not(:disabled) {
+    background: #ffffff25;
+}
+
+.search-hint {
+    margin: -2px 17px 7px;
+    color: #ffffff65;
+    font-size: 10px;
+}
+
+.carousel {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 10px 10px;
+}
+
+.arrow {
+    flex: 0 0 28px;
+    height: 50px;
+    border: 0;
+    background: transparent;
+    font-size: 24px;
+}
+
+.track {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    gap: 10px;
+    padding: 5px 3px 9px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-behavior: smooth;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+    scrollbar-color: #ffffff55 transparent;
+}
+
+.thumb {
+    position: relative;
+    flex: 0 0 158px;
+    width: 158px;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 10px;
+    background: #ffffff0b;
+    text-align: left;
+    overflow: hidden;
+    scroll-snap-align: center;
+    transition:
+        border-color .2s,
+        transform .2s,
+        box-shadow .2s;
+}
+
+.thumb:hover { transform: translateY(-3px); }
+
+.thumb.selected {
+    border-color: var(--accent);
+    background: #91d8f51b;
+}
+
+/* Search results are gold; the playing selection stays blue. */
+
+.thumb.search-match:not(.selected) {
+    border-color: #f5d39170;
+}
+
+.thumb.search-current {
+    box-shadow:
+        0 0 0 1px var(--search-accent),
+        0 0 18px #f5d39130;
+}
+
+.thumb.search-current:not(.selected) {
+    border-color: var(--search-accent);
+    background: #f5d39118;
+}
+
+.thumb-picture {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #0b1322;
+    overflow: hidden;
+}
+
+.thumb-picture img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.thumb-label {
+    display: block;
+    padding: 7px 9px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+}
+
+.thumb.selected .thumb-label { color: var(--accent); }
+
+.thumb-label mark {
+    padding: 0;
+    border-radius: 2px;
+    background: #f5d39130;
+    color: var(--search-accent);
+}
+
+.thumb-check {
+    display: none;
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 21px;
+    height: 21px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #06111a;
+    text-align: center;
+    line-height: 21px;
+    font-weight: bold;
+}
+
+.thumb.selected .thumb-check { display: block; }
+
+.dock-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 17px 13px;
+}
+
+#description {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #ffffffa8;
+}
+
+#count {
+    flex: 0 0 auto;
+    font-size: 10px;
+    color: #ffffff80;
+}
+
+#show-gallery {
+    position: fixed;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    z-index: 10;
+    padding: 12px 20px;
+    border: 1px solid var(--border);
+    border-radius: 30px;
+    background: var(--glass);
+    backdrop-filter: blur(15px);
+}
+
+.popover {
+    position: absolute;
+    right: 12px;
+    bottom: calc(100% + 12px);
+    width: min(330px, calc(100vw - 32px));
+    padding: 18px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: rgba(8, 13, 23, .97);
+    box-shadow: 0 15px 50px #0009;
+}
+
+.popover h2 { margin: 0 0 12px; font-size: 16px; }
+
+.popover p {
+    color: #ffffffaa;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.popover label {
+    display: flex;
+    gap: 9px;
+    margin: 14px 0;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.popover input { accent-color: var(--accent); }
+
+.primary {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #91d8f566;
+    border-radius: 9px;
+    background: #91d8f526;
+}
+
+.primary:hover { background: #91d8f540; }
+#download:disabled { cursor: wait; }
+#status { overflow-wrap: anywhere; }
+
+@media (max-width: 700px) {
+    .dock { width: calc(100% - 16px); bottom: 8px; }
+    .dock-header { padding: 10px 12px 7px; }
+    .thumb { flex-basis: 132px; width: 132px; }
+    .carousel { gap: 2px; padding: 0 5px 8px; }
+    .arrow { flex-basis: 22px; }
+    .dock-footer { padding: 0 12px 11px; }
+    .icon-button { width: 32px; height: 32px; }
+    .actions { gap: 4px; }
+    .search-row { padding: 3px 12px 8px; }
+    .search-field { flex-basis: 180px; }
+    .search-hint { margin-left: 12px; margin-right: 12px; }
+    #description { max-height: 45px; overflow: hidden; }
+}
+
+@media (max-width: 440px) {
+    #search-status { min-width: 70px; }
+    .search-field { flex-basis: 150px; }
+    .search-row { gap: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0s !important;
     }
-    button, .open-link, .background-option {
-        min-height: 44px;
-        touch-action: manipulation;
-    }
-    button, .open-link { font-size: 13px; }
-    .actions { display: grid; grid-template-columns: 1fr 1fr; }
-    .open-link { display: flex; align-items: center; justify-content: center; }
-    #background-select { font-size: 16px; gap: 12px; }
-    #selected-name { min-width: 0; overflow-wrap: anywhere; }
-    #background-list {
-        max-height: min(240px, 35vh);
-        max-height: min(240px, 35dvh);
-        overscroll-behavior: contain;
-        touch-action: pan-y;
-        scrollbar-width: thin;
-    }
-    .background-option { display: flex; align-items: center; font-size: 14px; }
-    .background-option[aria-selected="true"]::after { margin-left: auto; padding-left: 8px; }
-    #detail-description { min-height: 0; font-size: 14px; }
-    .download-option {
-        display: flex; align-items: center; gap: 10px;
-        min-height: 44px; margin: 8px 0 0; font-size: 12px;
-        cursor: pointer;
-    }
-    .download-option input {
-        flex: 0 0 auto; width: 18px; height: 18px; margin: 0;
-        accent-color: #8acde5;
-    }
-    #download-status { overflow-wrap: anywhere; }
-    #download-status:empty { display: none; }
-    #show-panel {
-        bottom: max(16px, env(safe-area-inset-bottom));
-        max-width: calc(100% - 32px);
-        padding-inline: 20px;
-    }
-    button:disabled { cursor: wait; opacity: .65; }
-    @media (max-width: 480px) {
-        .panel { border-radius: 16px; }
-        .eyebrow { font-size: 10px; letter-spacing: .13em; margin-bottom: 8px; }
-        h1 { font-size: clamp(24px, 7vw, 32px); margin-bottom: 8px; }
-        .description { font-size: 13px; margin-bottom: 18px; }
-        .background-details { margin-top: 14px; padding-top: 12px; }
-        .hint { margin-top: 12px; }
-    }
-    @media (max-width: 360px) {
-        .actions { grid-template-columns: 1fr; gap: 8px; }
-    }
-    @media (max-height: 550px) and (min-width: 600px) {
-        .panel { width: min(620px, calc(100% - 32px)); padding: 18px 24px; }
-        .eyebrow { margin-bottom: 5px; }
-        h1 { font-size: 26px; margin-bottom: 6px; }
-        .description { margin-bottom: 12px; }
-        .hint { margin-top: 10px; }
-    }
-    @media (prefers-reduced-motion: reduce) {
-        *, *::before, *::after { scroll-behavior: auto !important; }
-    }
+}
 </style>
 </head>
 
 <body>
-<iframe
-    id="background"
-    title="Selected animated background"
-></iframe>
 
-<main class="panel" id="panel">
-    <p class="eyebrow">Interactive background collection</p>
+<iframe id="background" title="Animated background"></iframe>
+<div id="shade"></div>
 
-    <h1>A little moving magic.</h1>
+<div class="gallery">
+    <header id="gallery-header">
+        <h1>A little moving magic.</h1>
+        <p>Explore interactive animated backgrounds</p>
+    </header>
 
-    <p class="description">
-        Choose a world to explore. Move your pointer across
-        the background and see how it responds.
-    </p>
+    <section class="dock" id="dock" aria-label="Background gallery">
+        <div class="dock-header">
+            <div class="dock-title">
+                <span class="eyebrow">Now playing</span>
+                <span id="current-name"></span>
+            </div>
 
-    <label id="picker-label">Choose your background</label>
-    <div class="picker">
-        <button id="background-select" type="button" aria-haspopup="listbox"
-            aria-expanded="false" aria-controls="background-list"
-            aria-labelledby="picker-label selected-name">
-            <span id="selected-name"></span><span aria-hidden="true">⌄</span>
-        </button>
-        <div id="background-list" role="listbox" tabindex="-1"
-            aria-labelledby="picker-label" hidden></div>
-    </div>
-    <section class="background-details" aria-live="polite" aria-atomic="true">
-        <p id="detail-label">Now playing</p>
-        <h2 id="detail-title"></h2>
-        <p id="detail-description"></p>
+            <div class="actions">
+                <button class="icon-button" id="previous"
+                    title="Previous background" aria-label="Previous">‹</button>
+
+                <button class="icon-button" id="next"
+                    title="Next background" aria-label="Next">›</button>
+
+                <a class="icon-button" id="open-background"
+                    title="Open in new tab" aria-label="Open background"
+                    target="_blank" rel="noopener">↗</a>
+
+                <button class="icon-button" id="settings"
+                    title="Download options" aria-label="Download options"
+                    aria-expanded="false">⚙</button>
+
+                <button class="icon-button" id="hide"
+                    title="Hide gallery" aria-label="Hide gallery">×</button>
+            </div>
+        </div>
+
+        <div class="search-row" role="search" aria-label="Find a background">
+            <div class="search-field">
+                <span class="search-symbol" aria-hidden="true">⌕</span>
+
+                <input
+                    id="search"
+                    type="search"
+                    placeholder="Find a background…"
+                    aria-label="Search background names"
+                    aria-describedby="search-hint"
+                    aria-controls="track"
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+
+                <button
+                    class="search-clear"
+                    id="search-clear"
+                    type="button"
+                    aria-label="Clear search"
+                    title="Clear search"
+                    hidden
+                >×</button>
+            </div>
+
+            <div class="search-results">
+                <span
+                    id="search-status"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                >All backgrounds</span>
+
+                <button
+                    class="search-step"
+                    id="search-previous"
+                    type="button"
+                    title="Previous search match"
+                    aria-label="Previous search match"
+                    disabled
+                >‹</button>
+
+                <button
+                    class="search-step"
+                    id="search-next"
+                    type="button"
+                    title="Next search match"
+                    aria-label="Next search match"
+                    disabled
+                >›</button>
+            </div>
+        </div>
+
+        <p class="search-hint" id="search-hint">
+            Search scrolls only. Click a thumbnail to play.
+            Enter / Shift+Enter moves between matches.
+        </p>
+
+        <div class="carousel">
+            <button class="arrow" id="scroll-left"
+                aria-label="Scroll left">‹</button>
+
+            <div class="track" id="track"
+                aria-label="Background thumbnails"></div>
+
+            <button class="arrow" id="scroll-right"
+                aria-label="Scroll right">›</button>
+        </div>
+
+        <div class="dock-footer">
+            <p id="description"></p>
+            <span id="count"></span>
+        </div>
+
+        <div class="popover" id="popover" hidden>
+            <h2>Background options</h2>
+            <p>Download the selected background with its current settings.</p>
+
+            <label>
+                <input id="editor-enabled" type="checkbox">
+                <span>Enable settings editor in downloaded background</span>
+            </label>
+
+            <button class="primary" id="download">
+                Download background ZIP ↓
+            </button>
+
+            <p id="status" role="status" aria-live="polite"></p>
+        </div>
     </section>
+</div>
 
-    <div class="actions">
-        <button id="hide-panel" type="button">
-            Hide panel
-        </button>
+<button id="show-gallery" hidden>Show gallery ↑</button>
 
-        <a
-            class="open-link"
-            id="open-background"
-            target="_blank"
-            rel="noopener"
-        >
-            Open background ↗
-        </a>
-    </div>
-
-    <button id="download-background" type="button" style="width:100%;margin-top:12px">
-        Download background ZIP ↓
-    </button>
-    <label class="download-option">
-        <input id="download-editor-enabled" type="checkbox">
-        Enable settings editor in downloaded background
-    </label>
-    <p id="download-status" role="status" aria-live="polite"
-        style="font-size:12px;line-height:1.5;margin:10px 0 0"></p>
-
-    <p class="hint">
-        Your selection is remembered.<br>
-        Hide the panel to explore the entire background.
-    </p>
-</main>
-
-<button id="show-panel" type="button" hidden>
-    Show selection
-</button>
-
-<script type=module>
+<script type="module">
 "use strict";
 
 import { backgrounds } from "./backgrounds.js";
 
-const frame = document.getElementById("background");
-const select = document.getElementById("background-select");
-const panel = document.getElementById("panel");
-const showButton = document.getElementById("show-panel");
-const hideButton = document.getElementById("hide-panel");
-const openLink = document.getElementById("open-background");
+const $ = id => document.getElementById(id);
+
+const frame = $("background");
+const shade = $("shade");
+const track = $("track");
+const dock = $("dock");
+const popover = $("popover");
+const search = $("search");
+
+const cards = new Map();
+const labels = new Map();
 
 const storageKey = "background-gallery-selection";
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
-const list = document.getElementById("background-list");
-const selectedName = document.getElementById("selected-name");
 let selectedIndex = 0;
-let activeIndex = 0;
-let isOpen = false;
+let selectionVersion = 0;
 
-function describe(index, preview = false) {
-    const item = backgrounds[index];
-    document.getElementById("detail-label").textContent = preview ? "Explore this background" : "Now playing";
-    document.getElementById("detail-title").textContent = item.name;
-    document.getElementById("detail-description").textContent = item.description;
-}
-
-function highlight(index, scroll = false) {
-    activeIndex = index;
-    [...list.children].forEach((option, i) => option.classList.toggle("active", i === index));
-    list.setAttribute("aria-activedescendant", `background-option-${index}`);
-    describe(index, index !== selectedIndex);
-    if (scroll) list.children[index].scrollIntoView({ block: "nearest" });
-}
-
-function setPickerOpen(open, focus = true) {
-    isOpen = open;
-    list.hidden = !open;
-    select.setAttribute("aria-expanded", String(open));
-    if (open) {
-        highlight(selectedIndex, true);
-        list.focus();
-    } else {
-        describe(selectedIndex);
-        if (focus) select.focus();
-    }
-}
-
-backgrounds.forEach((background, index) => {
-    const option = document.createElement("div");
-    option.id = `background-option-${index}`;
-    option.className = "background-option";
-    option.setAttribute("role", "option");
-    option.setAttribute("aria-selected", "false");
-    option.textContent = background.name;
-    option.addEventListener("pointerenter", event => {
-        if (event.pointerType !== "touch") highlight(index);
-    });
-    option.addEventListener("click", () => {
-        selectBackground(background.folder);
-        setPickerOpen(false);
-    });
-    list.append(option);
-});
-
-select.addEventListener("click", () => setPickerOpen(!isOpen));
-select.addEventListener("keydown", event => {
-    if (["ArrowDown", "ArrowUp"].includes(event.key)) {
-        event.preventDefault();
-        setPickerOpen(true);
-    }
-});
-
-let searchText = "";
-let searchTimer;
-list.addEventListener("keydown", event => {
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault();
-        highlight((activeIndex + (event.key === "ArrowDown" ? 1 : -1) + backgrounds.length) % backgrounds.length, true);
-    } else if (event.key === "Home" || event.key === "End") {
-        event.preventDefault();
-        highlight(event.key === "Home" ? 0 : backgrounds.length - 1, true);
-    } else if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        selectBackground(backgrounds[activeIndex].folder);
-        setPickerOpen(false);
-    } else if (event.key === "Escape") {
-        event.preventDefault();
-        setPickerOpen(false);
-    } else if (event.key === "Tab") {
-        setPickerOpen(false);
-    } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
-        searchText += event.key.toLowerCase();
-        clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => searchText = "", 700);
-        const match = backgrounds.findIndex(item => item.name.toLowerCase().startsWith(searchText));
-        if (match >= 0) highlight(match, true);
-    }
-});
-
-document.addEventListener("pointerdown", event => {
-    if (isOpen && !event.target.closest(".picker")) setPickerOpen(false, false);
-});
-document.addEventListener("focusin", event => {
-    if (isOpen && !event.target.closest(".picker")) setPickerOpen(false, false);
-});
+// Search state never changes selectedIndex or the iframe URL.
+let searchMatches = [];
+let searchMatchIndex = -1;
+let searchScrollTimer = null;
 
 function backgroundURL(folder) {
-    const path = folder
-        .split("/")
-        .map(segment => encodeURIComponent(segment))
-        .join("/");
-
-    return `${path}/index.html`;
+    return folder.split("/")
+        .map(encodeURIComponent)
+        .join("/") + "/index.html";
 }
 
-function selectBackground(folder) {
-    const background = backgrounds.find(item => item.folder === folder)
-        || backgrounds[0];
+function thumbnailURL(folder) {
+    return folder.split("/")
+        .map(encodeURIComponent)
+        .join("/") + "/thumbnail.webp";
+}
 
-    selectedIndex = backgrounds.indexOf(background);
-    selectedName.textContent = background.name;
-    [...list.children].forEach((option, index) => {
-        option.setAttribute("aria-selected", String(index === selectedIndex));
+function fallbackImage(folder) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 480;
+    canvas.height = 270;
+
+    const ctx = canvas.getContext("2d");
+    let seed = 2166136261;
+
+    for (const char of folder) {
+        seed = Math.imul(seed ^ char.charCodeAt(0), 16777619);
+    }
+
+    seed >>>= 0;
+
+    const hue = seed % 360;
+    const gradient = ctx.createLinearGradient(0, 0, 480, 270);
+
+    gradient.addColorStop(0, `hsl(${hue}, 65%, 19%)`);
+    gradient.addColorStop(1, `hsl(${(hue + 95) % 360}, 65%, 5%)`);
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 480, 270);
+
+    function random() {
+        seed ^= seed << 13;
+        seed ^= seed >>> 17;
+        seed ^= seed << 5;
+        return (seed >>> 0) / 4294967296;
+    }
+
+    for (let i = 0; i < 100; i++) {
+        ctx.beginPath();
+
+        ctx.arc(
+            random() * 480,
+            random() * 270,
+            .4 + random() * 2,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fillStyle =
+            `rgba(255,255,255,${.2 + random() * .7})`;
+
+        ctx.fill();
+    }
+
+    return canvas.toDataURL("image/png");
+}
+
+function makeCard(background, index) {
+    const button = document.createElement("button");
+
+    button.type = "button";
+    button.className = "thumb";
+    button.title = background.description || background.name;
+    button.setAttribute("aria-label", `Select ${background.name}`);
+    button.setAttribute("aria-pressed", "false");
+
+    const picture = document.createElement("div");
+    picture.className = "thumb-picture";
+
+    const image = document.createElement("img");
+
+    image.alt = "";
+    image.loading = "lazy";
+    image.decoding = "async";
+    image.src = thumbnailURL(background.folder);
+
+    image.onerror = () => {
+        image.onerror = null;
+        image.src = fallbackImage(background.folder);
+    };
+
+    const check = document.createElement("span");
+
+    check.className = "thumb-check";
+    check.textContent = "✓";
+    check.setAttribute("aria-hidden", "true");
+
+    picture.append(image, check);
+
+    const label = document.createElement("span");
+
+    label.className = "thumb-label";
+    label.textContent = background.name;
+
+    button.append(picture, label);
+
+    button.addEventListener("click", () => {
+        selectBackground(index);
     });
-    describe(selectedIndex);
 
+    cards.set(background.folder, button);
+    labels.set(background.folder, label);
+
+    return button;
+}
+
+// ==================================================
+// THUMBNAIL SCROLLING
+// Scrolling a card into view does not select or load it.
+// ==================================================
+
+function centerCard(index) {
+    const background = backgrounds[index];
+    if (!background) return;
+
+    const card = cards.get(background.folder);
+    if (!card) return;
+
+    const cardRect = card.getBoundingClientRect();
+    const trackRect = track.getBoundingClientRect();
+
+    const left =
+        track.scrollLeft +
+        cardRect.left -
+        trackRect.left -
+        track.clientLeft -
+        (track.clientWidth - cardRect.width) / 2;
+
+    track.scrollTo({
+        left,
+        behavior: reducedMotion.matches ? "auto" : "smooth"
+    });
+}
+
+function centerSelected() {
+    centerCard(selectedIndex);
+}
+
+function centerCurrentSearchMatch() {
+    if (searchMatchIndex < 0) return;
+    centerCard(searchMatches[searchMatchIndex]);
+}
+
+function centerRelevantCard() {
+    if (search.value.trim()) {
+        centerCurrentSearchMatch();
+    } else {
+        centerSelected();
+    }
+}
+
+// ==================================================
+// SEARCH
+// Matches remain in the gallery; nothing is filtered out.
+// Only an explicit selection loads a background.
+// ==================================================
+
+function highlightLabel(label, name, query) {
+    label.replaceChildren();
+
+    if (!query) {
+        label.textContent = name;
+        return;
+    }
+
+    const lowerName = name.toLowerCase();
+    let position = 0;
+
+    while (position < name.length) {
+        const match = lowerName.indexOf(query, position);
+
+        if (match < 0) {
+            label.append(
+                document.createTextNode(name.slice(position))
+            );
+            break;
+        }
+
+        if (match > position) {
+            label.append(
+                document.createTextNode(name.slice(position, match))
+            );
+        }
+
+        const mark = document.createElement("mark");
+        mark.textContent = name.slice(match, match + query.length);
+        label.append(mark);
+
+        position = match + query.length;
+    }
+}
+
+function updateSearchPresentation() {
+    const hasQuery = Boolean(search.value.trim());
+
+    const currentIndex = searchMatchIndex >= 0
+        ? searchMatches[searchMatchIndex]
+        : -1;
+
+    for (let index = 0; index < backgrounds.length; index++) {
+        const background = backgrounds[index];
+        const card = cards.get(background.folder);
+
+        card.classList.toggle(
+            "search-current",
+            hasQuery && index === currentIndex
+        );
+    }
+
+    $("search-clear").hidden = !search.value;
+
+    $("search-previous").disabled =
+        !hasQuery || searchMatches.length < 2;
+
+    $("search-next").disabled =
+        !hasQuery || searchMatches.length < 2;
+
+    if (!hasQuery) {
+        $("search-status").textContent = "All backgrounds";
+    } else if (!searchMatches.length) {
+        $("search-status").textContent = "No matches";
+    } else {
+        $("search-status").textContent =
+            `${searchMatchIndex + 1} of ${searchMatches.length} ` +
+            (searchMatches.length === 1 ? "match" : "matches");
+    }
+}
+
+function updateSearch() {
+    clearTimeout(searchScrollTimer);
+    searchScrollTimer = null;
+
+    const query = search.value.trim().toLowerCase();
+
+    searchMatches = [];
+    searchMatchIndex = -1;
+
+    backgrounds.forEach((background, index) => {
+        const matches = Boolean(query) &&
+            background.name.toLowerCase().includes(query);
+
+        const card = cards.get(background.folder);
+        const label = labels.get(background.folder);
+
+        card.classList.toggle("search-match", matches);
+        card.hidden = Boolean(query) && !matches;
+        highlightLabel(label, background.name, query);
+
+        if (matches) searchMatches.push(index);
+    });
+
+    if (searchMatches.length) {
+        searchMatchIndex = 0;
+    }
+
+    updateSearchPresentation();
+
+    if (!query) {
+        centerSelected();
+    } else if (searchMatches.length) {
+        // Brief debounce avoids starting a new scroll for every keystroke.
+        searchScrollTimer = setTimeout(() => {
+            searchScrollTimer = null;
+            centerCurrentSearchMatch();
+        }, 120);
+    }
+}
+
+function moveSearchMatch(delta) {
+    clearTimeout(searchScrollTimer);
+    searchScrollTimer = null;
+
+    if (!searchMatches.length) return;
+
+    searchMatchIndex = (
+        searchMatchIndex + delta + searchMatches.length
+    ) % searchMatches.length;
+
+    updateSearchPresentation();
+    centerCurrentSearchMatch();
+}
+
+function clearSearch() {
+    search.value = "";
+    updateSearch();
+    search.focus();
+}
+
+search.addEventListener("input", updateSearch);
+
+search.addEventListener("keydown", event => {
+    if (event.isComposing) return;
+
+    if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+
+        moveSearchMatch(event.shiftKey ? -1 : 1);
+    }
+
+    if (event.key === "Escape" && search.value) {
+        event.preventDefault();
+        event.stopPropagation();
+        clearSearch();
+    }
+});
+
+$("search-clear").onclick = clearSearch;
+$("search-previous").onclick = () => moveSearchMatch(-1);
+$("search-next").onclick = () => moveSearchMatch(1);
+
+// ==================================================
+// BACKGROUND SELECTION
+// ==================================================
+
+function selectBackground(indexOrFolder) {
+    if (!backgrounds.length) return;
+
+    // An explicit selection takes priority over a pending search scroll.
+    clearTimeout(searchScrollTimer);
+    searchScrollTimer = null;
+
+    let index = typeof indexOrFolder === "number"
+        ? indexOrFolder
+        : backgrounds.findIndex(
+            background => background.folder === indexOrFolder
+        );
+
+    if (index < 0 || index >= backgrounds.length) index = 0;
+
+    selectedIndex = index;
+
+    const background = backgrounds[index];
+    const version = ++selectionVersion;
     const url = backgroundURL(background.folder);
-    frame.src = url;
-    frame.title = `${background.name} animated background`;
-    openLink.href = url;
+
+    $("current-name").textContent = background.name;
+    $("description").textContent = background.description || "";
+    $("count").textContent = `${index + 1} / ${backgrounds.length}`;
+    $("open-background").href = url;
+
+    for (const [folder, button] of cards) {
+        const active = folder === background.folder;
+
+        button.classList.toggle("selected", active);
+        button.setAttribute("aria-pressed", String(active));
+    }
 
     try {
         localStorage.setItem(storageKey, background.folder);
-    } catch {
-        // Selection still works when storage is unavailable.
+    } catch {}
+
+    const absoluteURL = new URL(url, document.baseURI).href;
+
+    if (frame.src !== absoluteURL) {
+        shade.classList.add("active");
+
+        frame.onload = () => {
+            if (version === selectionVersion) {
+                shade.classList.remove("active");
+            }
+        };
+
+        frame.title = `${background.name} animated background`;
+        frame.src = url;
     }
+
+    centerSelected();
 }
 
-function setPanelVisible(visible) {
-    if (!visible) setPickerOpen(false, false);
-    panel.hidden = !visible;
-    showButton.hidden = visible;
+function moveSelection(delta) {
+    if (!backgrounds.length) return;
+
+    selectBackground(
+        (selectedIndex + delta + backgrounds.length) %
+        backgrounds.length
+    );
+}
+
+function setGalleryVisible(visible) {
+    dock.hidden = !visible;
+    $("gallery-header").hidden = !visible;
+    $("show-gallery").hidden = visible;
+
+    if (!visible) {
+        setPopover(false);
+        clearTimeout(searchScrollTimer);
+        searchScrollTimer = null;
+    }
 
     if (visible) {
-        select.focus();
-    } else {
-        showButton.focus();
+        requestAnimationFrame(centerRelevantCard);
     }
 }
 
-
-
-hideButton.addEventListener("click", () => setPanelVisible(false));
-showButton.addEventListener("click", () => setPanelVisible(true));
-
-let savedSelection = null;
-
-try {
-    savedSelection = localStorage.getItem(storageKey);
-} catch {
-    // Use the first background when storage is unavailable.
+function setPopover(open) {
+    popover.hidden = !open;
+    $("settings").classList.toggle("active", open);
+    $("settings").setAttribute("aria-expanded", String(open));
 }
 
-selectBackground(savedSelection);
+$("previous").onclick = () => moveSelection(-1);
+$("next").onclick = () => moveSelection(1);
+$("hide").onclick = () => setGalleryVisible(false);
+$("show-gallery").onclick = () => setGalleryVisible(true);
+$("settings").onclick = () => setPopover(popover.hidden);
 
-// The foreground panel blocks pointer events from reaching the iframe.
-// Deactivate its cursor interaction when entering foreground controls.
-function deactivateBackgroundPointer() {
-    try {
-        frame.contentWindow.dispatchEvent(new Event("blur"));
-    } catch {
-        // Applicable when the background is served from the same origin.
+$("scroll-left").onclick = () => track.scrollBy({
+    left: -track.clientWidth * .7,
+    behavior: reducedMotion.matches ? "auto" : "smooth"
+});
+
+$("scroll-right").onclick = () => track.scrollBy({
+    left: track.clientWidth * .7,
+    behavior: reducedMotion.matches ? "auto" : "smooth"
+});
+
+track.addEventListener("wheel", event => {
+    if (track.scrollWidth <= track.clientWidth) return;
+
+    track.scrollLeft +=
+        Math.abs(event.deltaX) > Math.abs(event.deltaY)
+            ? event.deltaX
+            : event.deltaY;
+
+    event.preventDefault();
+}, { passive: false });
+
+document.addEventListener("pointerdown", event => {
+    if (
+        !popover.hidden &&
+        !popover.contains(event.target) &&
+        !$("settings").contains(event.target)
+    ) {
+        setPopover(false);
     }
-}
+});
 
-panel.addEventListener("pointerenter", deactivateBackgroundPointer);
-showButton.addEventListener("pointerenter", deactivateBackgroundPointer);
+document.addEventListener("keydown", event => {
+    if (event.defaultPrevented || event.isComposing) return;
 
-// Dependency-free ZIP writer (stored entries, UTF-8 filenames).
+    if (event.key === "Escape") {
+        if (!popover.hidden) setPopover(false);
+        else setGalleryVisible(dock.hidden);
+        return;
+    }
+
+    if (
+        event.target instanceof Element &&
+        event.target.closest("button, a, input, textarea, select")
+    ) {
+        return;
+    }
+
+    if (event.key === "ArrowLeft") moveSelection(-1);
+    if (event.key === "ArrowRight") moveSelection(1);
+});
+
+// ==================================================
+// ZIP WRITER
+// Store entries without compression.
+// ==================================================
+
 function makeBackgroundZip(files) {
     const encoder = new TextEncoder();
     const parts = [];
     const directory = [];
+
     let offset = 0;
     let directorySize = 0;
+
     const now = new Date();
-    const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
-    const dosDate = ((Math.max(1980, now.getFullYear()) - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+
+    const dosTime =
+        (now.getHours() << 11) |
+        (now.getMinutes() << 5) |
+        (now.getSeconds() >> 1);
+
+    const dosDate =
+        ((Math.max(1980, now.getFullYear()) - 1980) << 9) |
+        ((now.getMonth() + 1) << 5) |
+        now.getDate();
 
     function crc32(bytes) {
         let crc = 0xffffffff;
+
         for (const byte of bytes) {
             crc ^= byte;
-            for (let bit = 0; bit < 8; bit++) {
-                crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+
+            for (let i = 0; i < 8; i++) {
+                crc = (crc >>> 1) ^
+                    ((crc & 1) ? 0xedb88320 : 0);
             }
         }
+
         return (crc ^ 0xffffffff) >>> 0;
     }
 
@@ -514,22 +1150,26 @@ function makeBackgroundZip(files) {
         const name = encoder.encode(file.name);
         const data = encoder.encode(file.text);
         const crc = crc32(data);
+
         const local = new Uint8Array(30 + name.length);
-        const view = new DataView(local.buffer);
-        view.setUint32(0, 0x04034b50, true);
-        view.setUint16(4, 20, true);
-        view.setUint16(6, 0x0800, true);
-        view.setUint16(10, dosTime, true);
-        view.setUint16(12, dosDate, true);
-        view.setUint32(14, crc, true);
-        view.setUint32(18, data.length, true);
-        view.setUint32(22, data.length, true);
-        view.setUint16(26, name.length, true);
+        const lv = new DataView(local.buffer);
+
+        lv.setUint32(0, 0x04034b50, true);
+        lv.setUint16(4, 20, true);
+        lv.setUint16(6, 0x0800, true);
+        lv.setUint16(10, dosTime, true);
+        lv.setUint16(12, dosDate, true);
+        lv.setUint32(14, crc, true);
+        lv.setUint32(18, data.length, true);
+        lv.setUint32(22, data.length, true);
+        lv.setUint16(26, name.length, true);
+
         local.set(name, 30);
         parts.push(local, data);
 
         const central = new Uint8Array(46 + name.length);
         const cv = new DataView(central.buffer);
+
         cv.setUint32(0, 0x02014b50, true);
         cv.setUint16(4, 20, true);
         cv.setUint16(6, 20, true);
@@ -541,7 +1181,9 @@ function makeBackgroundZip(files) {
         cv.setUint32(24, data.length, true);
         cv.setUint16(28, name.length, true);
         cv.setUint32(42, offset, true);
+
         central.set(name, 46);
+
         directory.push(central);
         directorySize += central.length;
         offset += local.length + data.length;
@@ -549,98 +1191,168 @@ function makeBackgroundZip(files) {
 
     const end = new Uint8Array(22);
     const ev = new DataView(end.buffer);
+
     ev.setUint32(0, 0x06054b50, true);
     ev.setUint16(8, files.length, true);
     ev.setUint16(10, files.length, true);
     ev.setUint32(12, directorySize, true);
     ev.setUint32(16, offset, true);
-    return new Blob([...parts, ...directory, end], { type: "application/zip" });
+
+    return new Blob(
+        [...parts, ...directory, end],
+        { type: "application/zip" }
+    );
 }
 
 function applyDownloadedConfig(html, config) {
-    // Backgrounds use a multiline object declaration ending on its own line.
     const pattern = /\bconst\s+config\s*=\s*\{[\s\S]*?^\s*\};/gm;
     const matches = [...html.matchAll(pattern)];
+
     if (matches.length !== 1) {
-        throw new Error("Could not locate one configuration block in this background.");
+        throw new Error("Could not locate exactly one config block.");
     }
+
+    const match = matches[0];
+
     const serialized = JSON.stringify(config, null, 2)
         .replace(/</g, "\\u003c")
         .replace(/\u2028/g, "\\u2028")
         .replace(/\u2029/g, "\\u2029");
-    const match = matches[0];
-    return html.slice(0, match.index) + "const config = " + serialized + ";" +
+
+    return html.slice(0, match.index) +
+        "const config = " + serialized + ";" +
         html.slice(match.index + match[0].length);
 }
 
-const downloadButton = document.getElementById("download-background");
-const downloadStatus = document.getElementById("download-status");
-
-async function fetchBackgroundSource(url) {
+async function fetchSource(url) {
     const response = await fetch(url, { cache: "no-cache" });
-    if (!response.ok) throw new Error(`Could not download ${url.pathname} (${response.status}).`);
+
+    if (!response.ok) {
+        throw new Error(
+            `Could not fetch ${url.pathname}: ${response.status}`
+        );
+    }
+
     return response.text();
 }
 
-downloadButton.addEventListener("click", async () => {
-    downloadButton.disabled = true;
-    downloadButton.textContent = "Preparing download…";
-    downloadStatus.textContent = "";
+$("download").addEventListener("click", async () => {
+    const button = $("download");
+
+    button.disabled = true;
+    button.textContent = "Preparing download…";
+    $("status").textContent = "";
 
     try {
         if (!/^https?:$/.test(location.protocol)) {
-            throw new Error("Open the gallery through a local web server or website to download backgrounds.");
+            throw new Error("Open this gallery through a web server.");
         }
+
         const background = backgrounds[selectedIndex];
-        const sourceURL = new URL(backgroundURL(background.folder), document.baseURI);
+
+        if (!background) {
+            throw new Error("Select a background first.");
+        }
+
+        const sourceURL = new URL(
+            backgroundURL(background.folder),
+            document.baseURI
+        );
+
         const child = frame.contentWindow;
 
-        if (child.location.href !== sourceURL.href ||
-            typeof child.getBackgroundConfig !== "function") {
-            throw new Error("Wait for the background to load. It must expose window.getBackgroundConfig().");
+        if (
+            child.location.href !== sourceURL.href ||
+            typeof child.getBackgroundConfig !== "function"
+        ) {
+            throw new Error(
+                "Background is not ready or does not expose getBackgroundConfig()."
+            );
         }
 
-        // Capture settings before fetching, even if the selection changes.
-        const currentConfig = JSON.parse(JSON.stringify(child.getBackgroundConfig()));
-        if (!currentConfig || typeof currentConfig !== "object" || Array.isArray(currentConfig)) {
-            throw new Error("The background returned an invalid configuration.");
-        }
-        if (currentConfig.panel && typeof currentConfig.panel === "object") {
-            currentConfig.panel.enabled = document.getElementById("download-editor-enabled").checked;
+        const config = JSON.parse(
+            JSON.stringify(child.getBackgroundConfig())
+        );
+
+        if (config.panel && typeof config.panel === "object") {
+            config.panel.enabled = $("editor-enabled").checked;
         }
 
-        const results = await Promise.all([
-            fetchBackgroundSource(sourceURL),
-            fetchBackgroundSource(new URL("settings-editor.js", sourceURL))
+        const [htmlSource, editorSource] = await Promise.all([
+            fetchSource(sourceURL),
+            fetchSource(new URL("settings-editor.js", sourceURL))
         ]);
-        const html = applyDownloadedConfig(results[0], currentConfig);
-        if (!/\bexport\b/.test(results[1]) || /^\s*</.test(results[1])) {
-            throw new Error("The settings editor could not be retrieved as JavaScript.");
+
+        const html = applyDownloadedConfig(htmlSource, config);
+
+        if (
+            !/\bexport\b/.test(editorSource) ||
+            /^\s*</.test(editorSource)
+        ) {
+            throw new Error("Could not retrieve the settings editor.");
         }
 
-        const blob = makeBackgroundZip([
+        const zip = makeBackgroundZip([
             { name: "index.html", text: html },
-            { name: "settings-editor.js", text: results[1] }
+            { name: "settings-editor.js", text: editorSource }
         ]);
-        const url = URL.createObjectURL(blob);
+
+        const blobURL = URL.createObjectURL(zip);
         const link = document.createElement("a");
-        link.href = url;
-        link.download = `${background.folder.split("/").pop()}-custom.zip`;
+
+        link.href = blobURL;
+        link.download =
+            `${background.folder.split("/").pop()}-custom.zip`;
+
         document.body.append(link);
         link.click();
         link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
-        downloadStatus.textContent = `${background.name} downloaded with your current settings.`;
+
+        setTimeout(() => URL.revokeObjectURL(blobURL), 60000);
+
+        $("status").textContent = "Background ZIP prepared.";
     } catch (error) {
-        downloadStatus.textContent = error.name === "SecurityError"
-            ? "The gallery and background must be served from the same origin."
-            : error.message;
+        $("status").textContent = error.message;
     } finally {
-        downloadButton.disabled = false;
-        downloadButton.textContent = "Download background ZIP ↓";
+        button.disabled = false;
+        button.textContent = "Download background ZIP ↓";
     }
 });
 
+// ==================================================
+// START
+// Preserve the existing saved-background startup behavior.
+// ==================================================
+
+if (backgrounds.length) {
+    backgrounds.forEach((background, index) => {
+        track.append(makeCard(background, index));
+    });
+
+    let saved = null;
+
+    try {
+        saved = localStorage.getItem(storageKey);
+    } catch {}
+
+    selectBackground(saved);
+    requestAnimationFrame(centerSelected);
+} else {
+    $("current-name").textContent = "No backgrounds found";
+    $("search-status").textContent = "No backgrounds";
+
+    search.disabled = true;
+
+    for (const id of [
+        "previous",
+        "next",
+        "scroll-left",
+        "scroll-right",
+        "download"
+    ]) {
+        $(id).disabled = true;
+    }
+}
 </script>
 </body>
 </html>
