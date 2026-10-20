@@ -40,7 +40,7 @@ const CONFIG = {
 
     webpQuality: 85,
 
-    // Capture after these delays, measured from page load.
+    // Capture after these delays.
     captureTimes: [3000, 5500, 8500],
 
     navigationTimeout: 30000,
@@ -49,14 +49,17 @@ const CONFIG = {
     retries: 2,
 
     diagnosticDirectory: "_thumbnail-diagnostics"
-    // Unset means all backgrounds are eligible.
-    // An empty array means no backgrounds should be processed.
-    const SELECTED_FOLDERS = process.env.THUMBNAIL_FOLDERS === undefined
-        ? null
-        : new Set(JSON.parse(process.env.THUMBNAIL_FOLDERS));
 };
 
+// Unset means all backgrounds are eligible.
+// An empty array means no backgrounds should be processed.
+const SELECTED_FOLDERS =
+    process.env.THUMBNAIL_FOLDERS === undefined
+        ? null
+        : new Set(JSON.parse(process.env.THUMBNAIL_FOLDERS));
+
 const REGENERATE_ALL = process.argv.includes("--all");
+const DIAGNOSTICS = process.argv.includes("--diagnostics");
 const DIAGNOSTICS = process.argv.includes("--diagnostics");
 
 const MIME_TYPES = {
