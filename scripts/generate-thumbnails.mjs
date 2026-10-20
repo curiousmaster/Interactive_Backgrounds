@@ -508,6 +508,7 @@ async function captureBackground(
 
     if (
         !REGENERATE_ALL &&
+        SELECTED_FOLDERS === null &&
         await fileExists(outputPath)
     ) {
         console.log(
