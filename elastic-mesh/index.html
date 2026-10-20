@@ -35,123 +35,124 @@
 // ==================================================
 
 const config = {
-    mesh: {
-        spacing: 40,
-        rotation: 0,
-
-        // Anchor spring strength.
-        stiffness: 35,
-
-        // Strength of displacement coupling between neighbors.
-        coupling: 25,
-
-        // Higher values make movement settle faster.
-        damping: 7,
-
-        maxDisplacement: 160,
-        lineWidth: 0.8,
-        opacity: 0.55,
-        color: [90, 180, 255],
-        showDots: true,
-        dotRadius: 1.4
+    "mesh": {
+        "spacing": 35,
+        "rotation": 0,
+        "stiffness": 50,
+        "coupling": 25,
+        "damping": 7,
+        "maxDisplacement": 160,
+        "lineWidth": 0.8,
+        "opacity": 0.55,
+        "color": [
+            90,
+            180,
+            255
+        ],
+        "showDots": true,
+        "dotRadius": 1.4
     },
-
-    motion: {
-        enabled: true,
-        amplitude: 12,
-        wavelength: 350,
-        speed: 0.7
+    "motion": {
+        "enabled": true,
+        "amplitude": 5,
+        "wavelength": 350,
+        "speed": 0.7
     },
-
-    mouse: {
-        enabled: true,
-
-        // "attract", "repel", or "vortex".
-        mode: "attract",
-
-        radius: 220,
-        strength: 450,
-        smoothing: 10,
-        color: [255, 90, 170]
+    "mouse": {
+        "enabled": true,
+        "mode": "attract",
+        "radius": 220,
+        "strength": 450,
+        "smoothing": 10,
+        "color": [
+            255,
+            90,
+            170
+        ]
     },
-
-    // Click or tap to launch a physical deformation wave.
-    shockwaves: {
-        enabled: true,
-        strength: 1400,
-        speed: 280,
-        width: 65,
-        lifetime: 3,
-        showRings: true,
-        ringOpacity: 0.16,
-        color: [150, 210, 255]
+    "shockwaves": {
+        "enabled": true,
+        "strength": 1400,
+        "speed": 280,
+        "width": 65,
+        "lifetime": 3,
+        "showRings": true,
+        "ringOpacity": 0.16,
+        "color": [
+            150,
+            210,
+            255
+        ]
     },
-
-    // Color springs according to their length change.
-    stress: {
-        enabled: true,
-        sensitivity: 3,
-        intensity: 0.85,
-        stretchColor: [255, 120, 90],
-        compressionColor: [165, 110, 255]
+    "stress": {
+        "enabled": true,
+        "sensitivity": 3,
+        "intensity": 0.85,
+        "stretchColor": [
+            255,
+            120,
+            90
+        ],
+        "compressionColor": [
+            165,
+            110,
+            255
+        ]
     },
-
-    // Luminous bands travel along the mesh coordinates.
-    energy: {
-        enabled: true,
-        speed: 100,
-        spacing: 420,
-        width: 45,
-        brightness: 0.55,
-        color: [130, 255, 225]
+    "energy": {
+        "enabled": false,
+        "speed": 100,
+        "spacing": 420,
+        "width": 45,
+        "brightness": 0.55,
+        "color": [
+            130,
+            255,
+            225
+        ]
     },
-
-    // Faint translucent triangles reveal the deformed surface.
-    membrane: {
-        enabled: true,
-        opacity: 0.035,
-        stressBoost: 0.09,
-        color: [75, 130, 210]
+    "membrane": {
+        "enabled": true,
+        "opacity": 0.04,
+        "stressBoost": 0.09,
+        "color": [
+            75,
+            130,
+            210
+        ]
     },
-
-    // Optional tangential force added to pointer interaction.
-    vortex: {
-        enabled: false,
-
-        // Negative values reverse rotation.
-        strength: 350
+    "vortex": {
+        "enabled": false,
+        "strength": 350
     },
-
-    // Stretched or compressed nodes occasionally glint.
-    glints: {
-        enabled: true,
-        brightness: 0.6,
-        size: 2.3,
-        speed: 1.3
+    "glints": {
+        "enabled": true,
+        "brightness": 1.7,
+        "size": 2.3,
+        "speed": 1.3
     },
-
-    glow: {
-        enabled: true,
-        intensity: 0.5,
-        blur: 8
+    "glow": {
+        "enabled": true,
+        "intensity": 0.5,
+        "blur": 8
     },
-
-    appearance: {
-        backgroundColor: [0, 0, 0]
+    "appearance": {
+        "backgroundColor": [
+            0,
+            0,
+            0
+        ]
     },
-
-    animation: {
-        speed: 1,
-        paused: false,
-        respectReducedMotion: true
+    "animation": {
+        "speed": 1,
+        "paused": false,
+        "respectReducedMotion": true
     },
-
-    rendering: {
-        pixelRatio: 1.5
+    "rendering": {
+        "pixelRatio": 1.5
     },
-
-    panel: {
-        enabled: true
+    "panel": {
+        "enabled": true
     }
 };
 
