@@ -1,36 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Prismatic Rain</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prismatic Rain</title>
 
-  <style>
-    html,
-    body {
-      margin: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #050711;
+<style>
+    html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #050711;
     }
 
     #background {
-      position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
     }
-  </style>
+</style>
 </head>
 
 <body>
-  <canvas id="background" aria-hidden="true"></canvas>
+<canvas id="background" aria-hidden="true"></canvas>
 
-  <script type="module">
-    const config = {
-      rain: {
+<script type="module">
+"use strict";
+
+// ==================================================
+// CONFIGURATION
+// Colors are RGB arrays. Distances use CSS pixels.
+// All new visual features have an "enabled" toggle.
+// ==================================================
+
+const config = {
+    rain: {
         count: 150,
         speed: 150,
         direction: 12,
@@ -38,9 +45,9 @@
         width: 0.8,
         opacity: 0.55,
         depthVariation: 0.65
-      },
+    },
 
-      prisms: {
+    prisms: {
         bands: 3,
         angle: -25,
         spacing: 220,
@@ -50,306 +57,963 @@
         drift: 12,
         showBands: true,
         bandOpacity: 0.025
-      },
+    },
 
-      mouse: {
+    // Smoothly colored spectral strands replace the original
+    // three colored strands when enabled.
+    spectrum: {
+        enabled: true,
+        channels: 7,
+        spread: 1.25,
+        saturation: 0.9
+    },
+
+    // Translucent glass ribbons and illuminated edges.
+    glass: {
+        enabled: true,
+        opacity: 0.055,
+        edgeBrightness: 0.18,
+        iridescence: 0.6
+    },
+
+    // Flashes and tiny fragments when a drop crosses
+    // a prism boundary.
+    flashes: {
+        enabled: true,
+        brightness: 0.85,
+        size: 3,
+        lifetime: 0.35,
+        fragments: 3
+    },
+
+    // Additional cinematic layering beyond the original
+    // rain.depthVariation setting.
+    depth: {
+        enabled: true,
+        strength: 0.75,
+        foregroundBlur: 1.5,
+        parallax: 14
+    },
+
+    // Soft halos around rain and flashes.
+    bloom: {
+        enabled: true,
+        intensity: 0.55,
+        spread: 1
+    },
+
+    // Traveling waves modify prism bending and dispersion.
+    waves: {
+        enabled: true,
+        amplitude: 0.45,
+        wavelength: 350,
+        speed: 65
+    },
+
+    // Existing pointer interaction.
+    mouse: {
         enabled: true,
         radius: 200,
         strength: 65,
         separation: 35,
         smoothing: 8,
         showHalo: true
-      },
+    },
 
-      appearance: {
+    // Adds a curved lens to the existing pointer field.
+    lens: {
+        enabled: true,
+        strength: 45,
+        separation: 20,
+        ringOpacity: 0.08
+    },
+
+    // Click or tap to launch an expanding refractive wave.
+    ripples: {
+        enabled: true,
+        speed: 260,
+        width: 65,
+        strength: 28,
+        separation: 24,
+        lifetime: 3,
+        opacity: 0.08
+    },
+
+    // Occasional brighter, longer drops.
+    heroes: {
+        enabled: true,
+        chance: 0.035,
+        brightness: 1.8,
+        length: 1.8,
+        width: 1.5
+    },
+
+    appearance: {
         backgroundColor: [5, 7, 17],
         coreColor: [220, 235, 255],
         colorA: [102, 205, 255],
         colorB: [186, 122, 255],
         colorC: [255, 145, 181],
         glow: 8
-      },
+    },
 
-      animation: {
+    animation: {
         speed: 1,
         paused: false,
         respectReducedMotion: true
-      },
+    },
 
-      panel: {
+    rendering: {
+        samples: 20,
+        pixelRatio: 1.5
+    },
+
+    panel: {
         enabled: true
-      }
-    };
+    }
+};
 
-    window.getBackgroundConfig = () =>
-      JSON.parse(JSON.stringify(config));
+window.getBackgroundConfig = () =>
+    JSON.parse(JSON.stringify(config));
 
-    const canvas = document.querySelector("#background");
-    const ctx = canvas.getContext("2d");
-    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+// ==================================================
+// WEBGL
+// ==================================================
 
-    let width = 1;
-    let height = 1;
-    let drops = [];
-    let time = 0;
-    let previous = null;
+const canvas = document.getElementById("background");
 
-    const mouse = {
-      x: 0,
-      y: 0,
-      targetX: 0,
-      targetY: 0,
-      influence: 0,
-      active: false
-    };
+const gl = canvas.getContext("webgl", {
+    alpha: false,
+    antialias: false,
+    depth: false,
+    stencil: false
+});
 
-    const random = (min, max) => min + Math.random() * (max - min);
-    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-    const radians = degrees => degrees * Math.PI / 180;
+if (!gl) {
+    document.body.insertAdjacentHTML(
+        "beforeend",
+        '<p style="position:fixed;inset:20px;color:white;font:16px system-ui">' +
+        'Prismatic Rain requires WebGL. Enable hardware acceleration and reload.' +
+        '</p>'
+    );
 
-    function rgba(color, opacity = 1) {
-      return `rgba(${color.join(",")},${clamp(opacity, 0, 1)})`;
+    throw new Error("WebGL is unavailable");
+}
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const random = (a, b) => a + Math.random() * (b - a);
+const radians = d => d * Math.PI / 180;
+const TAU = Math.PI * 2;
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+
+let width = 1;
+let height = 1;
+let time = 0;
+let previous = null;
+let lost = false;
+let drops = [];
+let particles = [];
+let ripples = [];
+let programs;
+let geometryBuffer;
+let screenBuffer;
+
+const mouse = {
+    x: 0,
+    y: 0,
+    targetX: 0,
+    targetY: 0,
+    influence: 0,
+    active: false,
+    initialized: false
+};
+
+const lineVertex = `
+attribute vec2 a_position;
+attribute vec2 a_local;
+attribute vec4 a_shape;
+attribute vec3 a_color;
+
+uniform vec2 u_resolution;
+
+varying vec2 v_local;
+varying vec4 v_shape;
+varying vec3 v_color;
+
+void main() {
+    vec2 p = a_position / u_resolution * 2.0 - 1.0;
+    gl_Position = vec4(p.x, -p.y, 0.0, 1.0);
+
+    v_local = a_local;
+    v_shape = a_shape;
+    v_color = a_color;
+}
+`;
+
+const lineFragment = `
+precision mediump float;
+
+uniform float u_pixel;
+
+varying vec2 v_local;
+varying vec4 v_shape;
+varying vec3 v_color;
+
+void main() {
+    float segmentLength = v_shape.x;
+    float radius = v_shape.y;
+    float blur = v_shape.z;
+    float opacity = v_shape.w;
+
+    vec2 nearest = vec2(
+        clamp(v_local.x, 0.0, segmentLength),
+        0.0
+    );
+
+    float d = length(v_local - nearest);
+    float aa = max(0.35, u_pixel);
+
+    float core = 1.0 - smoothstep(
+        max(0.0, radius - aa),
+        radius + aa,
+        d
+    );
+
+    float outside = max(0.0, d - radius);
+
+    float halo = exp(
+        -outside * outside /
+        max(0.001, 2.0 * blur * blur)
+    );
+
+    // Halo intensity is encoded in the RGB brightness
+    // of separate glow geometry.
+    float alpha = opacity * (
+        blur > 0.0 ? halo : core
+    );
+
+    if (alpha < 0.001) discard;
+
+    // Premultiplied output for additive light.
+    gl_FragColor = vec4(v_color * alpha, alpha);
+}
+`;
+
+const screenVertex = `
+attribute vec2 a_position;
+varying vec2 v_uv;
+
+void main() {
+    v_uv = a_position * 0.5 + 0.5;
+    gl_Position = vec4(a_position, 0.0, 1.0);
+}
+`;
+
+const screenFragment = `
+precision mediump float;
+
+varying vec2 v_uv;
+
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform vec3 u_background;
+uniform vec3 u_a;
+uniform vec3 u_b;
+uniform vec3 u_c;
+
+uniform vec4 u_prisms;
+uniform vec4 u_band;
+uniform vec4 u_glass;
+uniform vec4 u_wave;
+
+uniform vec4 u_mouse;
+uniform vec4 u_lens;
+
+uniform vec4 u_ripples[8];
+uniform float u_rippleWidth;
+uniform float u_rippleOpacity;
+
+void main() {
+    vec2 p = vec2(v_uv.x, 1.0 - v_uv.y) * u_resolution;
+    vec2 centered = p - u_resolution * 0.5;
+
+    float ca = cos(u_prisms.y);
+    float sa = sin(u_prisms.y);
+
+    vec2 normal = vec2(ca, sa);
+    vec2 tangent = vec2(-sa, ca);
+
+    float across = dot(centered, normal);
+    float along = dot(centered, tangent);
+
+    vec3 light = vec3(0.0);
+
+    for (int i = 0; i < 8; i++) {
+        float fi = float(i);
+        if (fi >= u_prisms.x) break;
+
+        float offset =
+            (fi - (u_prisms.x - 1.0) * 0.5) * u_prisms.z +
+            sin(u_time * 0.15 + fi * 1.7) * u_band.x;
+
+        float d = across - offset;
+        float thickness = max(1.0, u_prisms.w);
+        float body = exp(-2.0 * d * d / (thickness * thickness));
+
+        float traveling = sin(
+            along / max(40.0, u_wave.z) * 6.2831853 -
+            u_time * u_wave.w / max(40.0, u_wave.z) * 6.2831853 +
+            fi * 1.7
+        );
+
+        float waveLight = 1.0 + u_wave.x * u_wave.y * traveling * 0.4;
+
+        if (u_band.y > 0.5) {
+            light += mix(u_a, u_c, clamp(
+                0.5 + d / (thickness * 2.0),
+                0.0, 1.0
+            )) * body * u_band.z;
+        }
+
+        if (u_glass.x > 0.5) {
+            float inside = 1.0 - smoothstep(
+                thickness * 0.9,
+                thickness,
+                abs(d)
+            );
+
+            float edgeDistance = abs(abs(d) - thickness);
+            float edge = exp(-edgeDistance * edgeDistance / 5.0);
+
+            float hue = 0.5 + 0.5 * sin(
+                along * 0.005 +
+                u_time * 0.25 +
+                fi * 1.3 +
+                d / thickness * 2.0
+            );
+
+            vec3 iridescent = mix(u_a, u_c, hue);
+            vec3 glassColor = mix(u_b, iridescent, u_glass.w);
+
+            light += glassColor * inside *
+                u_glass.y * waveLight * (0.35 + body * 0.65);
+
+            light += mix(u_a, u_c, step(0.0, d)) *
+                edge * u_glass.z * waveLight;
+        }
     }
 
-    function makeDrop() {
-      return {
-        x: Math.random() * width,
-        y: Math.random() * height,
+    float mouseDistance = length(p - u_mouse.xy);
+    float mouseRadius = max(1.0, u_mouse.z);
+    float mouseFade = u_mouse.w;
+
+    if (u_band.w > 0.5) {
+        float halo = exp(
+            -mouseDistance * mouseDistance /
+            (mouseRadius * mouseRadius * 0.65)
+        );
+
+        light += mix(u_b, u_a, clamp(
+            mouseDistance / mouseRadius, 0.0, 1.0
+        )) * halo * mouseFade * 0.035;
+    }
+
+    if (u_lens.x > 0.5) {
+        float ring = exp(
+            -pow((mouseDistance - mouseRadius * 0.7) / 2.5, 2.0)
+        );
+
+        light += mix(u_a, u_c, 0.5) *
+            ring * mouseFade * u_lens.y;
+    }
+
+    for (int i = 0; i < 8; i++) {
+        vec4 r = u_ripples[i];
+
+        float d = length(p - r.xy) - r.z;
+
+        float ring = exp(
+            -d * d /
+            max(1.0, u_rippleWidth * u_rippleWidth * 0.08)
+        );
+
+        light += mix(u_a, u_c, 0.5) *
+            ring * r.w * u_rippleOpacity;
+    }
+
+    gl_FragColor = vec4(u_background + light, 1.0);
+}
+`;
+
+function compile(type, source) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const message = gl.getShaderInfoLog(shader);
+        gl.deleteShader(shader);
+        throw new Error(message);
+    }
+
+    return shader;
+}
+
+function makeProgram(vs, fs) {
+    const vertex = compile(gl.VERTEX_SHADER, vs);
+    const fragment = compile(gl.FRAGMENT_SHADER, fs);
+    const program = gl.createProgram();
+
+    gl.attachShader(program, vertex);
+    gl.attachShader(program, fragment);
+    gl.linkProgram(program);
+
+    gl.deleteShader(vertex);
+    gl.deleteShader(fragment);
+
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(program));
+    }
+
+    return {
+        program,
+        locations: new Map()
+    };
+}
+
+function uniform(program, name) {
+    if (!program.locations.has(name)) {
+        program.locations.set(
+            name,
+            gl.getUniformLocation(program.program, "u_" + name)
+        );
+    }
+
+    return program.locations.get(name);
+}
+
+function initializeGL() {
+    programs = {
+        lines: makeProgram(lineVertex, lineFragment),
+        screen: makeProgram(screenVertex, screenFragment)
+    };
+
+    geometryBuffer = gl.createBuffer();
+    screenBuffer = gl.createBuffer();
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, screenBuffer);
+    gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array([
+            -1, -1, 1, -1, -1, 1,
+            -1, 1, 1, -1, 1, 1
+        ]),
+        gl.STATIC_DRAW
+    );
+
+    gl.disable(gl.DEPTH_TEST);
+    gl.clearColor(0, 0, 0, 1);
+}
+
+initializeGL();
+
+// ==================================================
+// DROP STATE
+// ==================================================
+
+function makeDrop() {
+    return {
+        x: random(0, width),
+        y: random(0, height),
         depth: Math.random(),
-        phase: random(0, Math.PI * 2),
-        lengthFactor: random(0.65, 1.35)
-      };
-    }
+        phase: random(0, TAU),
+        lengthFactor: random(0.65, 1.35),
+        heroSeed: Math.random(),
+        crossings: new Map()
+    };
+}
 
-    function syncDrops() {
-      const count = Math.round(config.rain.count);
+function syncDrops() {
+    const count = clamp(Math.round(config.rain.count), 1, 600);
 
-      while (drops.length < count) {
-        drops.push(makeDrop());
-      }
+    while (drops.length < count) drops.push(makeDrop());
+    drops.length = count;
 
-      drops.length = count;
-    }
+    // Distant drops are drawn first.
+    drops.sort((a, b) => a.depth - b.depth);
+}
 
-    function reset() {
-      drops = [];
-      syncDrops();
-    }
+function reset() {
+    drops = [];
+    particles = [];
+    ripples = [];
+    syncDrops();
+}
 
-    function resize() {
-      const oldWidth = width;
-      const oldHeight = height;
+function resize() {
+    const oldWidth = width;
+    const oldHeight = height;
 
-      width = innerWidth;
-      height = innerHeight;
+    width = Math.max(1, innerWidth);
+    height = Math.max(1, innerHeight);
 
-      const dpr = Math.min(devicePixelRatio || 1, 2);
+    const dpr = Math.min(
+        devicePixelRatio || 1,
+        config.rendering.pixelRatio
+    );
 
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    canvas.width = Math.max(1, Math.round(width * dpr));
+    canvas.height = Math.max(1, Math.round(height * dpr));
 
-      for (const drop of drops) {
+    for (const drop of drops) {
         drop.x *= width / oldWidth;
         drop.y *= height / oldHeight;
-      }
-
-      if (!drops.length) reset();
+        drop.crossings.clear();
     }
 
-    function getBands() {
-      const angle = radians(config.prisms.angle);
+    if (!drops.length) syncDrops();
+}
 
-      return {
+// ==================================================
+// REFRACTION FIELDS
+// ==================================================
+
+function getBasis() {
+    const angle = radians(config.prisms.angle);
+
+    return {
         nx: Math.cos(angle),
         ny: Math.sin(angle),
         tx: -Math.sin(angle),
         ty: Math.cos(angle)
-      };
-    }
+    };
+}
 
-    function bandOffset(index) {
-      return (
+function bandOffset(index) {
+    return (
         (index - (config.prisms.bands - 1) / 2) *
         config.prisms.spacing +
         Math.sin(time * 0.15 + index * 1.7) *
         config.prisms.drift
-      );
-    }
+    );
+}
 
-    function fieldAt(x, y, basis) {
-      let bendX = 0;
-      let bendY = 0;
-      let splitX = 0;
-      let splitY = 0;
+function fieldAt(x, y, basis) {
+    let bx = 0;
+    let by = 0;
+    let sx = 0;
+    let sy = 0;
 
-      const coordinate =
-        (x - width / 2) * basis.nx +
-        (y - height / 2) * basis.ny;
+    const cx = x - width / 2;
+    const cy = y - height / 2;
 
-      for (let i = 0; i < config.prisms.bands; i++) {
-        const distance = coordinate - bandOffset(i);
-        const normalized = distance / config.prisms.thickness;
+    const across = cx * basis.nx + cy * basis.ny;
+    const along = cx * basis.tx + cy * basis.ty;
+
+    for (let i = 0; i < config.prisms.bands; i++) {
+        const d = across - bandOffset(i);
+        const normalized = d / Math.max(1, config.prisms.thickness);
         const influence = Math.exp(-normalized * normalized * 2);
         const polarity = i % 2 ? -1 : 1;
 
-        bendX += basis.tx * influence *
-          config.prisms.strength * polarity;
+        const wave = config.waves.enabled
+            ? 1 + config.waves.amplitude * Math.sin(
+                along / config.waves.wavelength * TAU -
+                time * config.waves.speed /
+                config.waves.wavelength * TAU +
+                i * 1.7
+            )
+            : 1;
 
-        bendY += basis.ty * influence *
-          config.prisms.strength * polarity;
+        bx += basis.tx * influence *
+            config.prisms.strength * polarity * wave;
 
-        splitX += basis.nx * influence * config.prisms.separation;
-        splitY += basis.ny * influence * config.prisms.separation;
-      }
+        by += basis.ty * influence *
+            config.prisms.strength * polarity * wave;
 
-      if (config.mouse.enabled && mouse.influence > 0.001) {
+        sx += basis.nx * influence *
+            config.prisms.separation * wave;
+
+        sy += basis.ny * influence *
+            config.prisms.separation * wave;
+    }
+
+    if (config.mouse.enabled && mouse.influence > 0.001) {
         const dx = x - mouse.x;
         const dy = y - mouse.y;
         const distance = Math.hypot(dx, dy);
-        const normalized = distance / config.mouse.radius;
+        const radius = Math.max(1, config.mouse.radius);
+        const normalized = distance / radius;
 
         const influence =
-          Math.exp(-normalized * normalized * 2.5) *
-          mouse.influence;
+            Math.exp(-normalized * normalized * 2.5) *
+            mouse.influence;
 
-        // A small denominator prevents a singularity at the pointer.
-        const denominator = Math.max(distance, 18);
-        const nx = dx / denominator;
-        const ny = dy / denominator;
+        const nx = dx / Math.max(distance, 18);
+        const ny = dy / Math.max(distance, 18);
 
-        bendX += nx * config.mouse.strength * influence;
-        bendY += ny * config.mouse.strength * influence;
+        bx += nx * config.mouse.strength * influence;
+        by += ny * config.mouse.strength * influence;
 
-        splitX += -ny * config.mouse.separation * influence;
-        splitY += nx * config.mouse.separation * influence;
-      }
+        sx -= ny * config.mouse.separation * influence;
+        sy += nx * config.mouse.separation * influence;
 
-      return { bendX, bendY, splitX, splitY };
+        if (config.lens.enabled) {
+            // Smooth radial lens with a curved shoulder.
+            const lens = influence *
+                Math.sin(Math.min(1, normalized) * Math.PI);
+
+            bx += nx * config.lens.strength * lens;
+            by += ny * config.lens.strength * lens;
+
+            sx += nx * config.lens.separation * influence;
+            sy += ny * config.lens.separation * influence;
+        }
     }
 
-    function drawBands(basis) {
-      if (!config.prisms.showBands) return;
+    if (config.ripples.enabled) {
+        for (const ripple of ripples) {
+            const dx = x - ripple.x;
+            const dy = y - ripple.y;
+            const distance = Math.hypot(dx, dy);
+            const d = distance - ripple.radius;
 
-      const extent = Math.hypot(width, height) + 200;
+            const influence = Math.exp(
+                -d * d / (2 * config.ripples.width ** 2)
+            ) * ripple.fade;
 
-      ctx.save();
-      ctx.translate(width / 2, height / 2);
-      ctx.rotate(radians(config.prisms.angle));
+            const nx = dx / Math.max(1, distance);
+            const ny = dy / Math.max(1, distance);
 
-      for (let i = 0; i < config.prisms.bands; i++) {
-        const offset = bandOffset(i);
-        const thickness = config.prisms.thickness;
+            bx += nx * influence * config.ripples.strength;
+            by += ny * influence * config.ripples.strength;
 
-        const gradient = ctx.createLinearGradient(
-          offset - thickness,
-          0,
-          offset + thickness,
-          0
-        );
-
-        gradient.addColorStop(
-          0,
-          rgba(config.appearance.colorA, 0)
-        );
-        gradient.addColorStop(
-          0.5,
-          rgba(
-            config.appearance.colorB,
-            config.prisms.bandOpacity
-          )
-        );
-        gradient.addColorStop(
-          1,
-          rgba(config.appearance.colorC, 0)
-        );
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(
-          offset - thickness,
-          -extent / 2,
-          thickness * 2,
-          extent
-        );
-
-        ctx.strokeStyle = rgba(
-          config.appearance.coreColor,
-          config.prisms.bandOpacity
-        );
-        ctx.lineWidth = 0.5;
-        ctx.beginPath();
-        ctx.moveTo(offset, -extent / 2);
-        ctx.lineTo(offset, extent / 2);
-        ctx.stroke();
-      }
-
-      ctx.restore();
+            sx -= ny * influence * config.ripples.separation;
+            sy += nx * influence * config.ripples.separation;
+        }
     }
 
-    function drawHalo() {
-      if (
-        !config.mouse.enabled ||
-        !config.mouse.showHalo ||
-        mouse.influence < 0.001
-      ) return;
+    return { bx, by, sx, sy };
+}
 
-      const radius = config.mouse.radius;
+// ==================================================
+// LIGHT GEOMETRY
+// Antialiased capsules with optional Gaussian halos.
+// ==================================================
 
-      const gradient = ctx.createRadialGradient(
-        mouse.x, mouse.y, 0,
-        mouse.x, mouse.y, radius
-      );
+let data = new Float32Array(262144);
+let offset = 0;
 
-      gradient.addColorStop(
-        0,
-        rgba(
-          config.appearance.colorB,
-          0.035 * mouse.influence
-        )
-      );
-      gradient.addColorStop(
-        0.65,
-        rgba(
-          config.appearance.colorA,
-          0.015 * mouse.influence
-        )
-      );
-      gradient.addColorStop(1, rgba(config.appearance.colorA, 0));
-
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, width, height);
+function vertex(x, y, lx, ly, length, radius, blur, alpha, color) {
+    if (offset + 11 > data.length) {
+        const larger = new Float32Array(data.length * 2);
+        larger.set(data);
+        data = larger;
     }
 
-    function drawDrop(drop, dt, direction, basis) {
-      const depth =
+    data[offset++] = x;
+    data[offset++] = y;
+    data[offset++] = lx;
+    data[offset++] = ly;
+    data[offset++] = length;
+    data[offset++] = radius;
+    data[offset++] = blur;
+    data[offset++] = alpha;
+    data[offset++] = color[0] / 255;
+    data[offset++] = color[1] / 255;
+    data[offset++] = color[2] / 255;
+}
+
+function capsule(a, b, lineWidth, color, alpha, blur = 0) {
+    if (alpha <= 0.0001 || lineWidth <= 0) return;
+
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let length = Math.hypot(dx, dy);
+
+    if (length < 0.001) {
+        dx = 0.001;
+        dy = 0;
+        length = 0.001;
+    }
+
+    const ux = dx / length;
+    const uy = dy / length;
+    const radius = lineWidth / 2;
+    const padding = radius + blur * 3 + 1.5;
+
+    const corners = [
+        [-padding, -padding],
+        [length + padding, -padding],
+        [length + padding, padding],
+        [-padding, padding]
+    ];
+
+    for (const i of [0, 1, 2, 0, 2, 3]) {
+        const [x, y] = corners[i];
+
+        vertex(
+            a.x + ux * x - uy * y,
+            a.y + uy * x + ux * y,
+            x, y,
+            length,
+            radius,
+            blur,
+            alpha,
+            color
+        );
+    }
+}
+
+function lightSegment(a, b, width, color, alpha, blur, softness = 0) {
+    if (config.bloom.enabled && blur > 0) {
+        capsule(
+            a, b, width, color,
+            alpha * config.bloom.intensity * 0.3,
+            blur * config.bloom.spread
+        );
+    }
+
+    capsule(a, b, width, color, alpha, softness);
+}
+
+function mixColor(a, b, t) {
+    return a.map((v, i) => v + (b[i] - v) * t);
+}
+
+function spectralColor(t) {
+    const stops = [
+        [135, 90, 255],
+        [80, 135, 255],
+        [80, 220, 255],
+        [110, 255, 190],
+        [255, 240, 125],
+        [255, 165, 110],
+        [255, 105, 160]
+    ];
+
+    const p = clamp(t, 0, 1) * (stops.length - 1);
+    const i = Math.min(stops.length - 2, Math.floor(p));
+    const color = mixColor(stops[i], stops[i + 1], p - i);
+
+    return mixColor(
+        config.appearance.coreColor,
+        color,
+        config.spectrum.saturation
+    );
+}
+
+// ==================================================
+// FLASHES AND FRAGMENTS
+// ==================================================
+
+function spawnFlash(x, y, hero) {
+    if (!config.flashes.enabled) return;
+
+    const scale = hero ? 1.4 : 1;
+
+    particles.push({
+        x, y,
+        vx: 0,
+        vy: 0,
+        age: 0,
+        life: config.flashes.lifetime,
+        size: config.flashes.size * scale,
+        color: [...config.appearance.coreColor],
+        flash: true
+    });
+
+    for (let i = 0; i < config.flashes.fragments; i++) {
+        const angle = random(0, TAU);
+        const speed = random(15, 70) * scale;
+
+        particles.push({
+            x, y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            age: 0,
+            life: config.flashes.lifetime * random(0.7, 1.8),
+            size: random(0.5, 1.4),
+            color: spectralColor(Math.random()),
+            flash: false
+        });
+    }
+
+    if (particles.length > 1200) {
+        particles.splice(0, particles.length - 1200);
+    }
+}
+
+function detectCrossings(drop, head, basis, hero, dt) {
+    if (!config.flashes.enabled) {
+        drop.crossings.clear();
+        return;
+    }
+
+    const across =
+        (drop.x - width / 2) * basis.nx +
+        (drop.y - height / 2) * basis.ny;
+
+    for (let i = 0; i < config.prisms.bands; i++) {
+        const inside = Math.abs(across - bandOffset(i)) <
+            config.prisms.thickness;
+
+        if (
+            dt > 0 &&
+            drop.crossings.has(i) &&
+            drop.crossings.get(i) !== inside
+        ) {
+            spawnFlash(head.x, head.y, hero);
+        }
+
+        drop.crossings.set(i, inside);
+    }
+}
+
+function updateParticles(dt) {
+    if (!config.flashes.enabled) {
+        particles = [];
+        return;
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+
+        p.age += dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+
+        const drag = Math.exp(-dt * 2);
+        p.vx *= drag;
+        p.vy *= drag;
+
+        if (p.age >= p.life) {
+            particles.splice(i, 1);
+            continue;
+        }
+
+        const fade = Math.max(0, 1 - p.age / p.life);
+        const alpha = fade * fade * config.flashes.brightness;
+
+        const a = {
+            x: p.x - p.vx * 0.025,
+            y: p.y - p.vy * 0.025
+        };
+
+        lightSegment(
+            a, p,
+            p.size * 2,
+            p.color,
+            alpha,
+            p.flash ? 10 : 4
+        );
+
+        if (p.flash) {
+            const reach = p.size * (2 + fade * 3);
+
+            lightSegment(
+                { x: p.x - reach, y: p.y },
+                { x: p.x + reach, y: p.y },
+                0.6,
+                p.color,
+                alpha * 0.55,
+                3
+            );
+
+            lightSegment(
+                { x: p.x, y: p.y - reach },
+                { x: p.x, y: p.y + reach },
+                0.6,
+                p.color,
+                alpha * 0.55,
+                3
+            );
+        }
+    }
+}
+
+// ==================================================
+// RAIN
+// ==================================================
+
+function drawDrop(drop, dt, direction, basis) {
+    const baseDepth =
         1 - config.rain.depthVariation * (1 - drop.depth);
 
-      const speed = config.rain.speed * depth;
+    const cinematic = config.depth.enabled
+        ? 1 + (drop.depth - 0.5) * config.depth.strength
+        : 1;
 
-      drop.x += direction.x * speed * dt;
-      drop.y += direction.y * speed * dt;
+    const depth = Math.max(0.08, baseDepth * cinematic);
+    const hero = config.heroes.enabled &&
+        drop.heroSeed < config.heroes.chance;
 
-      const length =
-        config.rain.length * drop.lengthFactor * depth;
+    const speed = config.rain.speed * depth;
 
-      const margin = config.rain.length * 1.5 +
-        config.prisms.strength +
-        config.prisms.separation +
+    drop.x += direction.x * speed * dt;
+    drop.y += direction.y * speed * dt;
+
+    const length = config.rain.length *
+        drop.lengthFactor * depth *
+        (hero ? config.heroes.length : 1);
+
+    // Include all displacement sources to hide wrapping.
+    const margin =
+        config.rain.length * 4 +
+        config.prisms.bands * (
+            config.prisms.strength +
+            config.prisms.separation * 2
+        ) +
         config.mouse.strength +
-        config.mouse.separation + 40;
+        config.mouse.separation * 2 +
+        config.lens.strength +
+        config.lens.separation +
+        config.ripples.strength +
+        config.ripples.separation + 100;
 
-      const spanX = width + margin * 2;
-      const spanY = height + margin * 2;
+    let wrapped = false;
 
-      if (drop.x < -margin) drop.x += spanX;
-      if (drop.x > width + margin) drop.x -= spanX;
-      if (drop.y < -margin) drop.y += spanY;
-      if (drop.y > height + margin) drop.y -= spanY;
+    const spanX = width + margin * 2;
+    const spanY = height + margin * 2;
 
-      const points = [];
-      const samples = 22;
+    if (drop.x < -margin) {
+        drop.x += spanX;
+        wrapped = true;
+    }
 
-      for (let i = 0; i <= samples; i++) {
+    if (drop.x > width + margin) {
+        drop.x -= spanX;
+        wrapped = true;
+    }
+
+    if (drop.y < -margin) {
+        drop.y += spanY;
+        wrapped = true;
+    }
+
+    if (drop.y > height + margin) {
+        drop.y -= spanY;
+        wrapped = true;
+    }
+
+    if (wrapped) {
+        drop.heroSeed = Math.random();
+        drop.crossings.clear();
+    }
+
+    const parallax = config.depth.enabled
+        ? (drop.depth - 0.5) *
+            config.depth.parallax *
+            mouse.influence
+        : 0;
+
+    const px = (mouse.x / width - 0.5) * parallax;
+    const py = (mouse.y / height - 0.5) * parallax;
+
+    const points = [];
+    const samples = Math.round(config.rendering.samples);
+
+    for (let i = 0; i <= samples; i++) {
         const u = i / samples;
 
         const x = drop.x - direction.x * length * (1 - u);
@@ -358,199 +1022,444 @@
         const field = fieldAt(x, y, basis);
 
         points.push({
-          x: x + field.bendX * depth,
-          y: y + field.bendY * depth,
-          splitX: field.splitX * depth,
-          splitY: field.splitY * depth
+            x: x + field.bx * depth + px,
+            y: y + field.by * depth + py,
+            sx: field.sx * depth,
+            sy: field.sy * depth
         });
-      }
+    }
 
-      const shimmer =
+    const head = points[points.length - 1];
+    detectCrossings(drop, head, basis, hero, dt);
+
+    const shimmer =
         0.85 + Math.sin(time * 0.7 + drop.phase) * 0.15;
 
-      const opacity =
-        config.rain.opacity * depth * shimmer;
+    const opacity =
+        config.rain.opacity * depth * shimmer *
+        (hero ? config.heroes.brightness : 1);
 
-      function strokeTrail(color, channel, alpha, lineWidth) {
-        const first = points[0];
-        const last = points[points.length - 1];
+    const lineWidth =
+        config.rain.width * depth *
+        (hero ? config.heroes.width : 1);
 
-        const startX = first.x + first.splitX * channel;
-        const startY = first.y + first.splitY * channel;
-        const endX = last.x + last.splitX * channel;
-        const endY = last.y + last.splitY * channel;
+    const softness = config.depth.enabled
+        ? Math.max(0, (drop.depth - 0.78) / 0.22) *
+            config.depth.foregroundBlur
+        : 0;
 
-        const gradient = ctx.createLinearGradient(
-          startX, startY, endX, endY
+    const blur = config.appearance.glow * depth;
+    const channels = config.spectrum.enabled
+        ? Math.round(config.spectrum.channels)
+        : 3;
+
+    function drawChannel(channel, color, brightness, thickness) {
+        for (let i = 1; i < points.length; i++) {
+            const a = points[i - 1];
+            const b = points[i];
+
+            const u = (i - 0.5) / samples;
+            const fade = u < 0.45
+                ? u / 0.45 * 0.3
+                : 0.3 + (u - 0.45) / 0.55 * 0.7;
+
+            lightSegment(
+                {
+                    x: a.x + a.sx * channel,
+                    y: a.y + a.sy * channel
+                },
+                {
+                    x: b.x + b.sx * channel,
+                    y: b.y + b.sy * channel
+                },
+                thickness,
+                color,
+                opacity * brightness * fade,
+                blur,
+                softness
+            );
+        }
+    }
+
+    for (let c = 0; c < channels; c++) {
+        const t = channels === 1 ? 0.5 : c / (channels - 1);
+
+        const channel = (t * 2 - 1) *
+            (config.spectrum.enabled ? config.spectrum.spread : 1);
+
+        const color = config.spectrum.enabled
+            ? spectralColor(t)
+            : [
+                config.appearance.colorA,
+                config.appearance.colorB,
+                config.appearance.colorC
+            ][c];
+
+        drawChannel(
+            channel,
+            color,
+            config.spectrum.enabled ? 1.6 / channels : 0.6,
+            lineWidth
         );
+    }
 
-        gradient.addColorStop(0, rgba(color, 0));
-        gradient.addColorStop(0.45, rgba(color, alpha * 0.3));
-        gradient.addColorStop(1, rgba(color, alpha));
-
-        ctx.strokeStyle = gradient;
-        ctx.lineWidth = lineWidth;
-        ctx.shadowColor = rgba(color);
-        ctx.shadowBlur = config.appearance.glow * depth;
-
-        ctx.beginPath();
-
-        points.forEach((point, i) => {
-          const x = point.x + point.splitX * channel;
-          const y = point.y + point.splitY * channel;
-
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        });
-
-        ctx.stroke();
-      }
-
-      strokeTrail(
-        config.appearance.colorA,
-        -1,
-        opacity * 0.65,
-        config.rain.width * depth
-      );
-
-      strokeTrail(
-        config.appearance.colorB,
+    drawChannel(
         0,
-        opacity * 0.5,
-        config.rain.width * depth
-      );
-
-      strokeTrail(
-        config.appearance.colorC,
-        1,
-        opacity * 0.65,
-        config.rain.width * depth
-      );
-
-      strokeTrail(
         config.appearance.coreColor,
-        0,
-        opacity * 0.6,
-        config.rain.width * depth * 0.45
-      );
+        0.6,
+        lineWidth * 0.45
+    );
+}
+
+// ==================================================
+// BACKGROUND GLASS, HALO AND RIPPLE LIGHT
+// ==================================================
+
+function drawBackground() {
+    const p = programs.screen;
+
+    gl.disable(gl.BLEND);
+    gl.useProgram(p.program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, screenBuffer);
+
+    const location = gl.getAttribLocation(p.program, "a_position");
+    gl.enableVertexAttribArray(location);
+    gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
+
+    gl.uniform2f(uniform(p, "resolution"), width, height);
+    gl.uniform1f(uniform(p, "time"), time);
+
+    for (const [name, color] of [
+        ["background", config.appearance.backgroundColor],
+        ["a", config.appearance.colorA],
+        ["b", config.appearance.colorB],
+        ["c", config.appearance.colorC]
+    ]) {
+        gl.uniform3fv(
+            uniform(p, name),
+            color.map(v => v / 255)
+        );
     }
 
-    function frame(timestamp) {
-      const realDt = previous === null
-        ? 0
-        : Math.min((timestamp - previous) / 1000, 0.05);
+    gl.uniform4f(
+        uniform(p, "prisms"),
+        config.prisms.bands,
+        radians(config.prisms.angle),
+        config.prisms.spacing,
+        config.prisms.thickness
+    );
 
-      previous = timestamp;
+    gl.uniform4f(
+        uniform(p, "band"),
+        config.prisms.drift,
+        config.prisms.showBands ? 1 : 0,
+        config.prisms.bandOpacity,
+        config.mouse.enabled && config.mouse.showHalo ? 1 : 0
+    );
 
-      const still =
-        config.animation.paused ||
-        (
-          config.animation.respectReducedMotion &&
-          reducedMotion.matches
+    gl.uniform4f(
+        uniform(p, "glass"),
+        config.glass.enabled ? 1 : 0,
+        config.glass.opacity,
+        config.glass.edgeBrightness,
+        config.glass.iridescence
+    );
+
+    gl.uniform4f(
+        uniform(p, "wave"),
+        config.waves.enabled ? 1 : 0,
+        config.waves.amplitude,
+        config.waves.wavelength,
+        config.waves.speed
+    );
+
+    gl.uniform4f(
+        uniform(p, "mouse"),
+        mouse.x,
+        mouse.y,
+        config.mouse.radius,
+        config.mouse.enabled ? mouse.influence : 0
+    );
+
+    gl.uniform4f(
+        uniform(p, "lens"),
+        config.mouse.enabled && config.lens.enabled ? 1 : 0,
+        config.lens.ringOpacity,
+        0, 0
+    );
+
+    const rippleData = new Float32Array(32);
+
+    if (config.ripples.enabled) {
+        ripples.forEach((r, i) => {
+            rippleData.set(
+                [r.x, r.y, r.radius, r.fade],
+                i * 4
+            );
+        });
+    }
+
+    gl.uniform4fv(uniform(p, "ripples[0]"), rippleData);
+
+    gl.uniform1f(
+        uniform(p, "rippleWidth"),
+        config.ripples.width
+    );
+
+    gl.uniform1f(
+        uniform(p, "rippleOpacity"),
+        config.ripples.opacity
+    );
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.disableVertexAttribArray(location);
+}
+
+function drawGeometry() {
+    if (!offset) return;
+
+    const p = programs.lines;
+
+    gl.useProgram(p.program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, geometryBuffer);
+
+    gl.bufferData(
+        gl.ARRAY_BUFFER,
+        data.subarray(0, offset),
+        gl.DYNAMIC_DRAW
+    );
+
+    const enabled = [];
+
+    for (const [name, size, start] of [
+        ["a_position", 2, 0],
+        ["a_local", 2, 2],
+        ["a_shape", 4, 4],
+        ["a_color", 3, 8]
+    ]) {
+        const location = gl.getAttribLocation(p.program, name);
+
+        gl.enableVertexAttribArray(location);
+        gl.vertexAttribPointer(
+            location, size, gl.FLOAT, false, 44, start * 4
         );
 
-      const dt = still ? 0 : realDt * config.animation.speed;
-      time += dt;
-
-      const smoothing =
-        1 - Math.exp(-config.mouse.smoothing * realDt);
-
-      mouse.x += (mouse.targetX - mouse.x) * smoothing;
-      mouse.y += (mouse.targetY - mouse.y) * smoothing;
-
-      mouse.influence +=
-        ((mouse.active ? 1 : 0) - mouse.influence) * smoothing;
-
-      ctx.globalCompositeOperation = "source-over";
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = rgba(config.appearance.backgroundColor);
-      ctx.fillRect(0, 0, width, height);
-
-      const basis = getBands();
-      const angle = radians(config.rain.direction);
-
-      const direction = {
-        x: Math.sin(angle),
-        y: Math.cos(angle)
-      };
-
-      drawBands(basis);
-      drawHalo();
-
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-
-      for (const drop of drops) {
-        drawDrop(drop, dt, direction, basis);
-      }
-
-      ctx.restore();
-
-      requestAnimationFrame(frame);
+        enabled.push(location);
     }
 
-    function updatePointer(event) {
-      if (event.target.closest?.("[data-background-editor]")) {
-        mouse.active = false;
+    gl.uniform2f(uniform(p, "resolution"), width, height);
+    gl.uniform1f(uniform(p, "pixel"), width / canvas.width);
+
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+
+    gl.drawArrays(gl.TRIANGLES, 0, offset / 11);
+
+    enabled.forEach(location => {
+        gl.disableVertexAttribArray(location);
+    });
+}
+
+// ==================================================
+// ANIMATION
+// ==================================================
+
+function isStill() {
+    return config.animation.paused || (
+        config.animation.respectReducedMotion &&
+        reducedMotion.matches
+    );
+}
+
+function updateRipples(dt) {
+    if (!config.ripples.enabled) {
+        ripples = [];
         return;
-      }
-
-      if (!mouse.active) {
-        mouse.x = event.clientX;
-        mouse.y = event.clientY;
-      }
-
-      mouse.targetX = event.clientX;
-      mouse.targetY = event.clientY;
-      mouse.active = true;
     }
 
-    addEventListener("pointermove", updatePointer);
-    addEventListener("pointerdown", updatePointer);
+    for (let i = ripples.length - 1; i >= 0; i--) {
+        const r = ripples[i];
 
-    addEventListener("pointerup", event => {
-      if (event.pointerType !== "mouse") {
-        mouse.active = false;
-      }
-    });
+        r.age += dt;
+        r.radius += dt * config.ripples.speed;
+        r.fade = Math.max(
+            0,
+            1 - r.age / config.ripples.lifetime
+        ) ** 2;
 
-    addEventListener("pointercancel", () => {
-      mouse.active = false;
-    });
+        if (r.age >= config.ripples.lifetime) {
+            ripples.splice(i, 1);
+        }
+    }
+}
 
-    document.documentElement.addEventListener("pointerleave", () => {
-      mouse.active = false;
-    });
-
-    addEventListener("blur", () => {
-      mouse.active = false;
-    });
-
-    document.addEventListener("visibilitychange", () => {
-      previous = null;
-      mouse.active = false;
-    });
-
-    addEventListener("resize", resize);
-
-    resize();
+function frame(timestamp) {
     requestAnimationFrame(frame);
 
-    if (config.panel.enabled) {
-      import("./settings-editor.js")
+    if (lost) {
+        previous = null;
+        return;
+    }
+
+    const realDt = previous === null
+        ? 0
+        : clamp((timestamp - previous) / 1000, 0, 0.05);
+
+    previous = timestamp;
+
+    const dt = isStill()
+        ? 0
+        : realDt * config.animation.speed;
+
+    time += dt;
+
+    const smoothing =
+        1 - Math.exp(-config.mouse.smoothing * realDt);
+
+    mouse.x += (mouse.targetX - mouse.x) * smoothing;
+    mouse.y += (mouse.targetY - mouse.y) * smoothing;
+
+    mouse.influence += (
+        (mouse.active && config.mouse.enabled ? 1 : 0) -
+        mouse.influence
+    ) * smoothing;
+
+    updateRipples(dt);
+
+    const basis = getBasis();
+    const angle = radians(config.rain.direction);
+
+    const direction = {
+        x: Math.sin(angle),
+        y: Math.cos(angle)
+    };
+
+    offset = 0;
+
+    for (const drop of drops) {
+        drawDrop(drop, dt, direction, basis);
+    }
+
+    updateParticles(dt);
+
+    gl.viewport(0, 0, canvas.width, canvas.height);
+
+    drawBackground();
+    drawGeometry();
+}
+
+// ==================================================
+// INTERACTION AND CONTEXT RECOVERY
+// ==================================================
+
+function editorTarget(event) {
+    return event.target instanceof Element &&
+        event.target.closest("[data-background-editor]");
+}
+
+function updatePointer(event) {
+    if (editorTarget(event)) {
+        mouse.active = false;
+        return;
+    }
+
+    if (!mouse.initialized) {
+        mouse.x = event.clientX;
+        mouse.y = event.clientY;
+        mouse.initialized = true;
+    }
+
+    mouse.targetX = event.clientX;
+    mouse.targetY = event.clientY;
+    mouse.active = true;
+}
+
+function deactivatePointer() {
+    mouse.active = false;
+}
+
+addEventListener("pointermove", updatePointer);
+
+addEventListener("pointerdown", event => {
+    if (editorTarget(event)) return;
+
+    updatePointer(event);
+
+    if (config.ripples.enabled && !isStill()) {
+        ripples.push({
+            x: event.clientX,
+            y: event.clientY,
+            radius: 0,
+            age: 0,
+            fade: 1
+        });
+
+        if (ripples.length > 8) ripples.shift();
+    }
+});
+
+addEventListener("pointerup", event => {
+    if (event.pointerType !== "mouse") deactivatePointer();
+});
+
+addEventListener("pointercancel", deactivatePointer);
+addEventListener("blur", deactivatePointer);
+
+document.documentElement.addEventListener(
+    "pointerleave",
+    deactivatePointer
+);
+
+document.addEventListener("visibilitychange", () => {
+    previous = null;
+    deactivatePointer();
+});
+
+canvas.addEventListener("webglcontextlost", event => {
+    event.preventDefault();
+    lost = true;
+});
+
+canvas.addEventListener("webglcontextrestored", () => {
+    initializeGL();
+    lost = false;
+    previous = null;
+    resize();
+});
+
+addEventListener("resize", resize);
+
+// ==================================================
+// START AND EDITOR
+// ==================================================
+
+resize();
+requestAnimationFrame(frame);
+
+if (config.panel.enabled) {
+    import("./settings-editor.js?v=prismatic-webgl-1")
         .then(({ createSettingsEditor }) => {
-          createSettingsEditor({
-            config,
-            onChange: syncDrops,
-            onReset: reset
-          });
+            createSettingsEditor({
+                config,
+
+                onChange(path) {
+                    if (path === "rain.count") syncDrops();
+                    if (path === "rendering.pixelRatio") resize();
+
+                    if (path.startsWith("prisms.")) {
+                        drops.forEach(drop => drop.crossings.clear());
+                    }
+
+                    deactivatePointer();
+                },
+
+                onReset: reset
+            });
         })
         .catch(error => {
-          console.error("Editor could not load:", error);
+            console.error("Editor could not load:", error);
         });
-    }
-  </script>
+}
+</script>
 </body>
 </html>
