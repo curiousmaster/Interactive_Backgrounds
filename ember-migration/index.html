@@ -38,143 +38,131 @@
 // ==================================================
 
 const config = {
-    embers: {
-        count: 192,
-        size: 3.8,
-        speed: 91,
-        trailLength: 2.8,
-        opacity: 0.8,
-        glow: 8
+    "embers": {
+        "count": 600,
+        "size": 2.6,
+        "speed": 91,
+        "trailLength": 2.8,
+        "opacity": 0.8,
+        "glow": 8
     },
-
-    flock: {
-        neighborRadius: 79,
-        separationDistance: 28,
-        cohesion: 0.6,
-        alignment: 0.9,
-        separation: 1.5,
-        formationStrength: 0.35
+    "flock": {
+        "neighborRadius": 100,
+        "separationDistance": 34,
+        "cohesion": 1,
+        "alignment": 0.4,
+        "separation": 1.5,
+        "formationStrength": 0.3
     },
-
-    mouse: {
-        enabled: true,
-        radius: 240,
-        beaconStrength: 100,
-        smoothing: 8,
-        showHalo: true
+    "mouse": {
+        "enabled": true,
+        "radius": 240,
+        "beaconStrength": 100,
+        "smoothing": 8,
+        "showHalo": true
     },
-
-    cooling: {
-        enabled: true,
-        scattering: 101,
-        waveSpeed: 260,
-        waveWidth: 70,
-        waveLifetime: 2.5,
-
-        // Half-life of an ember's cooling.
-        coolingTime: 8.2
+    "cooling": {
+        "enabled": true,
+        "scattering": 101,
+        "waveSpeed": 260,
+        "waveWidth": 70,
+        "waveLifetime": 2.5,
+        "coolingTime": 8.2
     },
-
-    // Smooth currents layered over the original flock flow.
-    wind: {
-        enabled: true,
-        strength: 24,
-        scale: 280,
-        speed: 0.3
+    "wind": {
+        "enabled": true,
+        "strength": 26,
+        "scale": 280,
+        "speed": 0.3
     },
-
-    // Slowly drifting whirlpools gently curl the flock.
-    vortices: {
-        enabled: true,
-        count: 2,
-        radius: 260,
-        strength: 42,
-        drift: 0.18,
-        showHalo: true
+    "vortices": {
+        "enabled": true,
+        "count": 3,
+        "radius": 260,
+        "strength": 42,
+        "drift": 0.18,
+        "showHalo": true
     },
-
-    // Warm regions lift and reheat passing embers.
-    thermal: {
-        enabled: true,
-        strength: 26,
-        scale: 320,
-        reheating: 0.35
+    "thermal": {
+        "enabled": true,
+        "strength": 26,
+        "scale": 320,
+        "reheating": 0.35
     },
-
-    // Individual depths affect apparent size and movement.
-    depth: {
-        enabled: true,
-        strength: 0.55,
-        foregroundBlur: 1.1,
-        parallax: 18
+    "depth": {
+        "enabled": false,
+        "strength": 0.55,
+        "foregroundBlur": 1.1,
+        "parallax": 18
     },
-
-    // Tiny particles occasionally shed from hot embers.
-    sparks: {
-        enabled: true,
-
-        // Expected emissions per ember per second.
-        rate: 0.35,
-
-        speed: 30,
-        lifetime: 0.9,
-        size: 0.75,
-        maxCount: 700
+    "sparks": {
+        "enabled": true,
+        "rate": 3,
+        "speed": 30,
+        "lifetime": 0.9,
+        "size": 2.05,
+        "maxCount": 60
     },
-
-    // A small fraction of larger, brighter embers.
-    heroes: {
-        enabled: true,
-        chance: 0.04,
-        size: 1.65,
-        brightness: 1.5
+    "heroes": {
+        "enabled": true,
+        "chance": 0.04,
+        "size": 1.65,
+        "brightness": 1.5
     },
-
-    // Individual embers breathe rather than flashing together.
-    breathing: {
-        enabled: true,
-        strength: 0.3,
-        speed: 1.2
+    "breathing": {
+        "enabled": true,
+        "strength": 0.3,
+        "speed": 1.2
     },
-
-    // Soft animated smoke behind the flock.
-    smoke: {
-        enabled: true,
-        opacity: 0.065,
-        scale: 420,
-        speed: 0.16,
-        color: [118, 52, 77]
+    "smoke": {
+        "enabled": true,
+        "opacity": 0.055,
+        "scale": 400,
+        "speed": 0.16,
+        "color": [
+            118,
+            52,
+            77
+        ]
     },
-
-    // Analytic Gaussian light halos.
-    bloom: {
-        enabled: true,
-        intensity: 0.55,
-        spread: 1.2
+    "bloom": {
+        "enabled": true,
+        "intensity": 0.55,
+        "spread": 1.2
     },
-
-    appearance: {
-        backgroundColor: [16, 11, 19],
-        hotColor: [255, 174, 91],
-        warmColor: [228, 99, 117],
-        coolColor: [102, 160, 205]
+    "appearance": {
+        "backgroundColor": [
+            16,
+            11,
+            19
+        ],
+        "hotColor": [
+            255,
+            174,
+            91
+        ],
+        "warmColor": [
+            228,
+            99,
+            117
+        ],
+        "coolColor": [
+            102,
+            160,
+            205
+        ]
     },
-
-    animation: {
-        speed: 1,
-        paused: false,
-        respectReducedMotion: true
+    "animation": {
+        "speed": 2,
+        "paused": false,
+        "respectReducedMotion": true
     },
-
-    rendering: {
-        pixelRatio: 1.5,
-
-        // History samples recorded per simulated second.
-        trailSamples: 25
+    "rendering": {
+        "pixelRatio": 1.5,
+        "trailSamples": 25
     },
-
-    panel: {
-        enabled: true
+    "panel": {
+        "enabled": true
     }
 };
 
