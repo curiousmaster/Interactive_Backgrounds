@@ -565,7 +565,7 @@ export function createSettingsEditor({
       .join("");
 
   const exportCode = () =>
-    `const config = ${JSON.stringify(config, null, 2)};`;
+    `const default = ${JSON.stringify(config, null, 2)};`;
 
   // ============================================================
   // SETTINGS CHANGE HANDLING
