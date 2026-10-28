@@ -1,9 +1,15 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Floating Tesserae</title>
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
+  <title>Floating Tesserae — WebGL2</title>
 
   <style>
     html,
@@ -18,26 +24,89 @@
     #background {
       position: fixed;
       inset: 0;
+      display: block;
       width: 100%;
       height: 100%;
+      touch-action: none;
+    }
+
+    #notice {
+      position: fixed;
+      bottom: 12px;
+      left: 12px;
+      color: #dce8f4;
+      font: 12px system-ui, sans-serif;
       pointer-events: none;
     }
   </style>
 </head>
 
 <body>
-  <canvas id="background" aria-hidden="true"></canvas>
+  <canvas
+    id="background"
+    aria-label="Interactive floating tesserae background"
+  ></canvas>
+
+  <div id="notice" role="status"></div>
 
   <script type="module">
+
+    // ============================================================
+    // DEFAULT CONFIGURATION
+    // ============================================================
+
     const config = {
       tiles: {
         size: 28,
         spacing: 5,
         sizeVariation: 0.15,
-        rotation: 14,
-        opacity: 0.38,
-        edgeOpacity: 0.2,
-        edgeWidth: 0.6
+        thickness: 5,
+        bevel: 0.16,
+        shape: "square",
+        morph: 0,
+        opacity: 0.8,
+        edgeOpacity: 0.65,
+        edgeWidth: 0.06,
+        heroChance: 0.035,
+        heroScale: 1.4,
+        personality: 0.45
+      },
+
+      camera: {
+        mode: "perspective",
+        tiltX: 0,
+        tiltY: 0,
+        perspective: 850,
+        zoom: 1,
+        minZoom: 0.85,
+        maxZoom: 2.5,
+        wheelZoom: true,
+        parallax: 12,
+        depth: 35,
+        autoOrbit: false,
+        orbitSpeed: 0.07
+      },
+
+      materials: {
+        type: "iridescent",
+        metallic: 0.45,
+        roughness: 0.32,
+        glass: 0.25,
+        iridescence: 0.55,
+        fresnel: 0.5,
+        backContrast: 0.35,
+        environment: 0.35
+      },
+
+      lighting: {
+        directionX: -0.45,
+        directionY: -0.5,
+        directionZ: 0.8,
+        intensity: 1.3,
+        ambient: 0.3,
+        specular: 1.4,
+        glints: true,
+        glintStrength: 0.6
       },
 
       motion: {
@@ -45,32 +114,92 @@
         speed: 0.3,
         assemblySpeed: 3,
         separation: 0.65,
-        cycleDuration: 18
+        cycleDuration: 18,
+        mode: "wave",
+        rotation: 14,
+        breathing: 0.15,
+        explode: false,
+        explodeStrength: 90,
+        domino: false,
+        dominoSpeed: 2
       },
 
-      mouse: {
+      physics: {
         enabled: true,
+        repulsion: true,
+        attraction: false,
+        vortex: false,
+        dragBend: true,
         radius: 180,
-        displacement: 100,
+        displacement: 95,
         rotation: 40,
-        smoothing: 7
+        stiffness: 22,
+        damping: 8,
+        wavePropagation: true,
+        waveSpeed: 250,
+        shockwaves: true,
+        shockStrength: 65,
+        gravityWells: false,
+        gravityStrength: 55
       },
 
-      appearance: {
+      colors: {
         backgroundColor: [9, 14, 25],
         colorA: [70, 157, 177],
         colorB: [166, 111, 183],
         colorC: [211, 165, 112],
         highlightColor: [215, 229, 235],
-        colorScale: 350,
-        colorSpeed: 0.15,
-        sheen: 0.35
+        scale: 350,
+        speed: 0.15,
+        flow: true,
+        flowStrength: 0.35,
+        aurora: true,
+        heightInfluence: 0.2,
+        chromaticRipple: true
+      },
+
+      atmosphere: {
+        enabled: true,
+        haze: 0.12,
+        dust: true,
+        dustCount: 130,
+        dustOpacity: 0.32,
+        bloom: true,
+        bloomStrength: 0.7,
+        bloomThreshold: 0.65,
+        depthOfField: false,
+        dofStrength: 0.22,
+        vignette: 0.25,
+        grain: 0.035,
+        chromaticAberration: false,
+        aberration: 0.002,
+        trails: false,
+        trailPersistence: 0.85
+      },
+
+      effects: {
+        fractures: false,
+        fractureIntensity: 0.45,
+        connections: false,
+        connectionDistance: 1.5,
+        portal: false,
+        portalRadius: 140,
+        portalStrength: 0.8,
+        scan: false,
+        scanSpeed: 0.2,
+        lightTrails: false,
+        mirrorUndersides: true,
+        hologram: false
       },
 
       animation: {
         speed: 1,
         paused: false,
-        respectReducedMotion: true
+        respectReducedMotion: true,
+        quality: "auto",
+        maxDpr: 1.75,
+        maxFps: 60,
+        adaptiveQuality: true
       },
 
       panel: {
@@ -78,341 +207,4430 @@
       }
     };
 
-    window.getBackgroundConfig = () =>
-      JSON.parse(JSON.stringify(config));
+    const defaults = structuredClone(config);
 
-    const canvas = document.querySelector("#background");
-    const ctx = canvas.getContext("2d");
-    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-
-    let width = 1;
-    let height = 1;
-    let tiles = [];
-    let meshKey = "";
-    let time = 0;
-    let previous = null;
-
-    const mouse = {
-      x: 0,
-      y: 0,
-      targetX: 0,
-      targetY: 0,
-      active: false,
-      influence: 0
+    window.getBackgroundConfig = () => {
+      return structuredClone(config);
     };
 
-    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-    const radians = degrees => degrees * Math.PI / 180;
+    // ============================================================
+    // WEBGL INITIALIZATION
+    // ============================================================
 
-    const rgba = (color, alpha = 1) =>
-      `rgba(${color.join(",")},${clamp(alpha, 0, 1)})`;
+    const canvas = document.querySelector(
+      "#background"
+    );
 
-    function mix(a, b, amount) {
-      return a.map((value, index) =>
-        Math.round(value + (b[index] - value) * amount)
-      );
+    const notice = document.querySelector(
+      "#notice"
+    );
+
+    const gl = canvas.getContext("webgl2", {
+      alpha: false,
+      antialias: true,
+      depth: true,
+      premultipliedAlpha: false
+    });
+
+    if (!gl) {
+      notice.textContent =
+        "WebGL2 is unavailable in this browser.";
+
+      throw new Error("WebGL2 required");
     }
 
-    function buildTiles() {
-      tiles = [];
+    // ============================================================
+    // TILE VERTEX SHADER
+    // ============================================================
 
-      const step = config.tiles.size + config.tiles.spacing;
-      const margin = step * 2;
-      const columns = Math.ceil((width + margin * 2) / step);
-      const rows = Math.ceil((height + margin * 2) / step);
+    const vertex = `#version 300 es
+      precision highp float;
 
-      for (let row = 0; row <= rows; row++) {
-        for (let column = 0; column <= columns; column++) {
-          tiles.push({
-            homeX: column * step - margin,
-            homeY: row * step - margin,
-            size: Math.random(),
-            phase: Math.random() * Math.PI * 2,
-            rotationSign: Math.random() < 0.5 ? -1 : 1,
-            offsetX: 0,
-            offsetY: 0,
-            angle: 0,
-            mouseX: 0,
-            mouseY: 0,
-            mouseAngle: 0
-          });
-        }
+      layout(location = 0) in vec3 aPos;
+      layout(location = 1) in vec3 aNormal;
+
+      layout(location = 2) in vec4 iPositionSize;
+      layout(location = 3) in vec4 iRotation;
+      layout(location = 4) in vec4 iColor;
+      layout(location = 5) in vec4 iExtra;
+
+      uniform mat4 uProjection;
+      uniform mat4 uView;
+
+      uniform float uTime;
+      uniform float uBevel;
+      uniform float uThickness;
+      uniform float uMorph;
+      uniform float uShape;
+      uniform float uHero;
+
+      out vec3 vNormal;
+      out vec3 vWorld;
+      out vec3 vColor;
+
+      out vec2 vLocal;
+
+      out float vHero;
+      out float vBack;
+      out float vPhase;
+
+      mat3 rotationMatrix(vec3 angles) {
+        vec3 c = cos(angles);
+        vec3 s = sin(angles);
+
+        mat3 rx = mat3(
+          1.0, 0.0, 0.0,
+          0.0, c.x, s.x,
+          0.0, -s.x, c.x
+        );
+
+        mat3 ry = mat3(
+          c.y, 0.0, -s.y,
+          0.0, 1.0, 0.0,
+          s.y, 0.0, c.y
+        );
+
+        mat3 rz = mat3(
+          c.z, s.z, 0.0,
+          -s.z, c.z, 0.0,
+          0.0, 0.0, 1.0
+        );
+
+        return rz * ry * rx;
       }
 
-      meshKey = JSON.stringify([
-        width,
-        height,
-        config.tiles.size,
-        config.tiles.spacing
-      ]);
-    }
+      void main() {
+        vec3 position = aPos;
+        vec3 normal = aNormal;
 
-    function refresh() {
-      const key = JSON.stringify([
-        width,
-        height,
-        config.tiles.size,
-        config.tiles.spacing
-      ]);
+        // Approximate polygon morphing.
+        float angle = atan(
+          position.y,
+          position.x
+        );
 
-      if (key !== meshKey) buildTiles();
-    }
+        float sides = mix(
+          4.0,
+          mix(
+            6.0,
+            3.0,
+            step(0.5, uShape)
+          ),
+          step(0.01, uShape)
+        );
 
-    function resize() {
-      width = innerWidth;
-      height = innerHeight;
+        float segment =
+          6.28318530718 / sides;
 
-      const dpr = Math.min(devicePixelRatio || 1, 2);
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        float radial =
+          cos(segment * 0.5) /
+          max(
+            0.25,
+            cos(
+              mod(
+                angle + segment * 0.5,
+                segment
+              ) - segment * 0.5
+            )
+          );
 
-      buildTiles();
-    }
+        float factor = mix(
+          1.0,
+          radial,
+          uMorph
+        );
 
-    function colorAt(x, y) {
-      const scale = config.appearance.colorScale;
-      const clock = time * config.appearance.colorSpeed;
+        position.xy *= factor;
+        position.xy *= iPositionSize.w;
 
-      const field =
-        Math.sin(x / scale + clock) * 0.45 +
-        Math.cos(y / scale * 1.3 - clock * 0.7) * 0.35 +
-        Math.sin((x + y) / scale * 0.6 + clock * 0.4) * 0.2;
+        position.z *=
+          uThickness *
+          (0.65 + 0.35 * iExtra.y);
 
-      const position = clamp((field + 1) / 2, 0, 1);
+        mat3 rotation = rotationMatrix(
+          iRotation.xyz
+        );
 
-      if (position < 0.5) {
-        return mix(
-          config.appearance.colorA,
-          config.appearance.colorB,
-          position * 2
+        vec3 worldPosition =
+          rotation * position +
+          iPositionSize.xyz;
+
+        vWorld = worldPosition;
+
+        vNormal = normalize(
+          rotation * normal
+        );
+
+        vColor = iColor.rgb;
+        vLocal = aPos.xy;
+        vHero = iExtra.x;
+
+        vBack = step(
+          0.0,
+          -aNormal.z
+        );
+
+        vPhase = iExtra.z;
+
+        gl_Position =
+          uProjection *
+          uView *
+          vec4(worldPosition, 1.0);
+      }
+    `;
+
+    // ============================================================
+    // TILE FRAGMENT SHADER
+    // ============================================================
+
+    const fragment = `#version 300 es
+      precision highp float;
+
+      in vec3 vNormal;
+      in vec3 vWorld;
+      in vec3 vColor;
+
+      in vec2 vLocal;
+
+      in float vHero;
+      in float vBack;
+      in float vPhase;
+
+      out vec4 outColor;
+
+      uniform vec3 uEye;
+      uniform vec3 uLight;
+      uniform vec3 uHighlight;
+      uniform vec3 uBackColor;
+
+      // metallic, roughness, glass, iridescence
+      uniform vec4 uMaterial;
+
+      // intensity, ambient, specular, glint
+      uniform vec4 uLightParams;
+
+      // fresnel, environment, edge opacity, scan
+      uniform vec4 uEffects;
+
+      // hologram, mirror, scan, glints
+      uniform vec4 uFlags;
+
+      uniform float uTime;
+      uniform float uOpacity;
+      uniform float uEdgeWidth;
+
+      void main() {
+        vec3 N = normalize(vNormal);
+        vec3 V = normalize(uEye - vWorld);
+        vec3 L = normalize(uLight);
+        vec3 H = normalize(L + V);
+
+        float ndl = max(
+          dot(N, L),
+          0.0
+        );
+
+        float ndv = abs(
+          dot(N, V)
+        );
+
+        float specular = pow(
+          max(dot(N, H), 0.0),
+          mix(
+            96.0,
+            6.0,
+            uMaterial.y
+          )
+        ) * uLightParams.z;
+
+        float fresnel = pow(
+          1.0 - ndv,
+          3.0
+        ) * uEffects.x;
+
+        float iridescence =
+          sin(
+            7.0 * ndv +
+            vPhase +
+            uTime * 0.25
+          ) * 0.5 + 0.5;
+
+        vec3 color = vColor;
+
+        color = mix(
+          color,
+          color.brg,
+          uMaterial.w *
+          iridescence *
+          0.7
+        );
+
+        if (
+          uFlags.y > 0.5 &&
+          vBack > 0.5
+        ) {
+          color = mix(
+            color,
+            uBackColor,
+            0.65
+          );
+        }
+
+        float edge = max(
+          abs(vLocal.x),
+          abs(vLocal.y)
+        );
+
+        float rim = smoothstep(
+          0.5 - uEdgeWidth,
+          0.5,
+          edge
+        ) * uEffects.z;
+
+        color *=
+          uLightParams.y +
+          ndl * uLightParams.x;
+
+        color +=
+          vec3(specular) *
+          (1.0 - uMaterial.y * 0.5);
+
+        color +=
+          uHighlight *
+          (rim + fresnel + specular * 0.2) *
+          (0.4 + uMaterial.x * 0.6);
+
+        color +=
+          uMaterial.z *
+          fresnel *
+          uHighlight *
+          0.35;
+
+        color +=
+          uEffects.y *
+          pow(1.0 - ndv, 2.0) *
+          0.18;
+
+        // Holographic scan line.
+        if (uFlags.z > 0.5) {
+          float scan = exp(
+            -pow(
+              (
+                vWorld.y -
+                sin(uTime * 0.3) * 420.0
+              ) / 14.0,
+              2.0
+            )
+          );
+
+          color +=
+            uHighlight *
+            scan *
+            uEffects.w;
+        }
+
+        // Holographic surface variation.
+        if (uFlags.x > 0.5) {
+          color +=
+            vec3(0.06, 0.2, 0.3) *
+            (
+              sin(
+                vWorld.y * 0.14 +
+                uTime * 2.0
+              ) * 0.5 + 0.5
+            );
+        }
+
+        // Sharp reflected glints.
+        if (uFlags.w > 0.5) {
+          float glint = pow(
+            max(
+              dot(
+                N,
+                normalize(L + V)
+              ),
+              0.0
+            ),
+            150.0
+          ) * uLightParams.w;
+
+          color +=
+            uHighlight * glint;
+        }
+
+        float alpha =
+          uOpacity *
+          (1.0 - uMaterial.z * 0.22);
+
+        outColor = vec4(
+          color,
+          alpha
+        );
+      }
+    `;
+
+    // ============================================================
+    // SHADER COMPILATION
+    // ============================================================
+
+    function compileShader(type, source) {
+      const shader = gl.createShader(type);
+
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+
+      if (!gl.getShaderParameter(
+        shader,
+        gl.COMPILE_STATUS
+      )) {
+        const error = gl.getShaderInfoLog(shader);
+
+        gl.deleteShader(shader);
+
+        throw new Error(
+          "Shader compilation failed:\n" + error
         );
       }
 
-      return mix(
-        config.appearance.colorB,
-        config.appearance.colorC,
-        (position - 0.5) * 2
+      return shader;
+    }
+
+    function createProgram(vertexSource, fragmentSource) {
+      const vertexShader = compileShader(
+        gl.VERTEX_SHADER,
+        vertexSource
+      );
+
+      const fragmentShader = compileShader(
+        gl.FRAGMENT_SHADER,
+        fragmentSource
+      );
+
+      const program = gl.createProgram();
+
+      gl.attachShader(program, vertexShader);
+      gl.attachShader(program, fragmentShader);
+      gl.linkProgram(program);
+
+      gl.deleteShader(vertexShader);
+      gl.deleteShader(fragmentShader);
+
+      if (!gl.getProgramParameter(
+        program,
+        gl.LINK_STATUS
+      )) {
+        const error = gl.getProgramInfoLog(program);
+
+        gl.deleteProgram(program);
+
+        throw new Error(
+          "Program linking failed:\n" + error
+        );
+      }
+
+      return program;
+    }
+
+    function uniformLocations(program, names) {
+      const locations = {};
+
+      for (const name of names) {
+        locations[name] = gl.getUniformLocation(
+          program,
+          name
+        );
+      }
+
+      return locations;
+    }
+
+    const tileProgram = createProgram(
+      vertex,
+      fragment
+    );
+
+    const tileUniforms = uniformLocations(
+      tileProgram,
+      [
+        "uProjection",
+        "uView",
+        "uTime",
+        "uBevel",
+        "uThickness",
+        "uMorph",
+        "uShape",
+        "uHero",
+        "uEye",
+        "uLight",
+        "uHighlight",
+        "uBackColor",
+        "uMaterial",
+        "uLightParams",
+        "uEffects",
+        "uFlags",
+        "uOpacity",
+        "uEdgeWidth"
+      ]
+    );
+
+    // ============================================================
+    // MATHEMATICAL HELPERS
+    // ============================================================
+
+    const TAU = Math.PI * 2;
+
+    function clamp(value, min, max) {
+      return Math.max(
+        min,
+        Math.min(max, value)
       );
     }
 
-    function drawTile(tile, dt, interactionDt) {
-      const clock = time * config.motion.speed;
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
 
-      // Broad regions separate together instead of moving independently.
-      const cycle =
-        time / config.motion.cycleDuration * Math.PI * 2 +
-        tile.homeX / 500 +
-        tile.homeY / 650;
-
-      const separation =
-        (0.5 + 0.5 * Math.sin(cycle)) *
-        config.motion.separation;
-
-      const targetX =
-        Math.sin(
-          tile.homeY / 230 + clock + tile.phase * 0.15
-        ) * config.motion.drift * separation;
-
-      const targetY =
-        Math.cos(
-          tile.homeX / 270 - clock * 0.8 + tile.phase * 0.15
-        ) * config.motion.drift * separation;
-
-      const targetAngle =
-        radians(config.tiles.rotation) *
-        Math.sin(clock * 0.7 + tile.phase) *
-        separation;
-
-      const assembly =
-        1 - Math.exp(-config.motion.assemblySpeed * dt);
-
-      tile.offsetX += (targetX - tile.offsetX) * assembly;
-      tile.offsetY += (targetY - tile.offsetY) * assembly;
-      tile.angle += (targetAngle - tile.angle) * assembly;
-
-      const naturalX = tile.homeX + tile.offsetX;
-      const naturalY = tile.homeY + tile.offsetY;
-
-      const dx = naturalX - mouse.x;
-      const dy = naturalY - mouse.y;
-      const distance = Math.hypot(dx, dy);
-
-      const proximity = clamp(
-        1 - distance / config.mouse.radius,
+    function smoothstep(edge0, edge1, x) {
+      const t = clamp(
+        (x - edge0) / (edge1 - edge0),
         0,
         1
       );
 
-      const influence = config.mouse.enabled
-        ? proximity * proximity * mouse.influence
-        : 0;
-
-      const nx = distance > 0.001
-        ? dx / distance
-        : Math.cos(tile.phase);
-
-      const ny = distance > 0.001
-        ? dy / distance
-        : Math.sin(tile.phase);
-
-      const mouseSmoothing =
-        1 - Math.exp(-config.mouse.smoothing * interactionDt);
-
-      tile.mouseX +=
-        (
-          nx * config.mouse.displacement * influence -
-          tile.mouseX
-        ) * mouseSmoothing;
-
-      tile.mouseY +=
-        (
-          ny * config.mouse.displacement * influence -
-          tile.mouseY
-        ) * mouseSmoothing;
-
-      tile.mouseAngle +=
-        (
-          radians(config.mouse.rotation) *
-          tile.rotationSign * influence -
-          tile.mouseAngle
-        ) * mouseSmoothing;
-
-      const x = naturalX + tile.mouseX;
-      const y = naturalY + tile.mouseY;
-      const angle = tile.angle + tile.mouseAngle;
-
-      const size =
-        config.tiles.size *
-        (1 - config.tiles.sizeVariation * (1 - tile.size));
-
-      const half = size / 2;
-      const color = colorAt(tile.homeX, tile.homeY);
-
-      const highlight = mix(
-        color,
-        config.appearance.highlightColor,
-        config.appearance.sheen
-      );
-
-      const opacity =
-        config.tiles.opacity *
-        (0.65 + tile.size * 0.35);
-
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(angle);
-
-      const gradient = ctx.createLinearGradient(
-        -half, -half,
-        half, half
-      );
-
-      gradient.addColorStop(0, rgba(highlight, opacity));
-      gradient.addColorStop(1, rgba(color, opacity * 0.75));
-
-      ctx.fillStyle = gradient;
-      ctx.fillRect(-half, -half, size, size);
-
-      ctx.strokeStyle = rgba(
-        highlight,
-        config.tiles.edgeOpacity
-      );
-
-      ctx.lineWidth = config.tiles.edgeWidth;
-      ctx.strokeRect(-half, -half, size, size);
-
-      ctx.restore();
+      return t * t * (3 - 2 * t);
     }
 
-    function frame(timestamp) {
-      const realDt = previous === null
-        ? 0
-        : Math.min((timestamp - previous) / 1000, 0.05);
+    function radians(degrees) {
+      return degrees * Math.PI / 180;
+    }
 
-      previous = timestamp;
+    function random(min, max) {
+      return min + Math.random() * (max - min);
+    }
 
-      const still =
-        config.animation.paused ||
-        (
-          config.animation.respectReducedMotion &&
-          reducedMotion.matches
-        );
+    function normalize3(x, y, z) {
+      const length = Math.hypot(x, y, z) || 1;
 
-      const dt = still ? 0 : realDt * config.animation.speed;
-      time += dt;
+      return [
+        x / length,
+        y / length,
+        z / length
+      ];
+    }
 
-      const smoothing =
-        1 - Math.exp(-config.mouse.smoothing * realDt);
+    function rgb(color) {
+      return [
+        color[0] / 255,
+        color[1] / 255,
+        color[2] / 255
+      ];
+    }
 
-      mouse.x += (mouse.targetX - mouse.x) * smoothing;
-      mouse.y += (mouse.targetY - mouse.y) * smoothing;
+    function mixColor(a, b, t) {
+      return [
+        lerp(a[0], b[0], t),
+        lerp(a[1], b[1], t),
+        lerp(a[2], b[2], t)
+      ];
+    }
 
-      mouse.influence +=
-        ((mouse.active ? 1 : 0) - mouse.influence) * smoothing;
+    // ============================================================
+    // 4x4 MATRIX HELPERS
+    // ============================================================
 
-      ctx.fillStyle = rgba(config.appearance.backgroundColor);
-      ctx.fillRect(0, 0, width, height);
+    function identity() {
+      return new Float32Array([
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1
+      ]);
+    }
 
-      for (const tile of tiles) {
-        drawTile(tile, dt, realDt);
+    function perspective(
+      fov,
+      aspect,
+      near,
+      far
+    ) {
+      const f = 1 / Math.tan(fov / 2);
+
+      const out = new Float32Array(16);
+
+      out[0] = f / aspect;
+      out[5] = f;
+      out[10] = (far + near) / (near - far);
+      out[11] = -1;
+      out[14] = (2 * far * near) / (near - far);
+
+      return out;
+    }
+
+    function orthographic(
+      left,
+      right,
+      bottom,
+      top,
+      near,
+      far
+    ) {
+      const out = identity();
+
+      out[0] = 2 / (right - left);
+      out[5] = 2 / (top - bottom);
+      out[10] = -2 / (far - near);
+
+      out[12] = -(right + left) / (right - left);
+      out[13] = -(top + bottom) / (top - bottom);
+      out[14] = -(far + near) / (far - near);
+
+      return out;
+    }
+
+    function lookAt(eye, center, up) {
+      const z = normalize3(
+        eye[0] - center[0],
+        eye[1] - center[1],
+        eye[2] - center[2]
+      );
+
+      const x = normalize3(
+        up[1] * z[2] - up[2] * z[1],
+        up[2] * z[0] - up[0] * z[2],
+        up[0] * z[1] - up[1] * z[0]
+      );
+
+      const y = [
+        z[1] * x[2] - z[2] * x[1],
+        z[2] * x[0] - z[0] * x[2],
+        z[0] * x[1] - z[1] * x[0]
+      ];
+
+      const out = identity();
+
+      out[0] = x[0];
+      out[1] = y[0];
+      out[2] = z[0];
+
+      out[4] = x[1];
+      out[5] = y[1];
+      out[6] = z[1];
+
+      out[8] = x[2];
+      out[9] = y[2];
+      out[10] = z[2];
+
+      out[12] = -(
+        x[0] * eye[0] +
+        x[1] * eye[1] +
+        x[2] * eye[2]
+      );
+
+      out[13] = -(
+        y[0] * eye[0] +
+        y[1] * eye[1] +
+        y[2] * eye[2]
+      );
+
+      out[14] = -(
+        z[0] * eye[0] +
+        z[1] * eye[1] +
+        z[2] * eye[2]
+      );
+
+      return out;
+    }
+
+    function multiplyMatrix4(a, b) {
+      const out = new Float32Array(16);
+
+      for (let column = 0; column < 4; column++) {
+        for (let row = 0; row < 4; row++) {
+          let sum = 0;
+
+          for (let k = 0; k < 4; k++) {
+            sum +=
+              a[k * 4 + row] *
+              b[column * 4 + k];
+          }
+
+          out[column * 4 + row] = sum;
+        }
       }
 
-      requestAnimationFrame(frame);
+      return out;
     }
 
-    function updatePointer(event) {
-      if (event.target.closest?.("[data-background-editor]")) {
-        mouse.active = false;
+    // ============================================================
+    // MATRIX INVERSION
+    // ============================================================
+
+    function invertMatrix4(matrix) {
+      const augmented = Array.from(
+        { length: 4 },
+        (_, row) => [
+          ...Array.from(
+            { length: 4 },
+            (_, column) =>
+              matrix[column * 4 + row]
+          ),
+          ...Array.from(
+            { length: 4 },
+            (_, column) =>
+              row === column ? 1 : 0
+          )
+        ]
+      );
+
+      for (let column = 0; column < 4; column++) {
+        let pivot = column;
+
+        for (let row = column + 1; row < 4; row++) {
+          if (
+            Math.abs(augmented[row][column]) >
+            Math.abs(augmented[pivot][column])
+          ) {
+            pivot = row;
+          }
+        }
+
+        if (
+          Math.abs(augmented[pivot][column]) <
+          1e-12
+        ) {
+          return null;
+        }
+
+        [
+          augmented[column],
+          augmented[pivot]
+        ] = [
+          augmented[pivot],
+          augmented[column]
+        ];
+
+        const divisor =
+          augmented[column][column];
+
+        for (let j = 0; j < 8; j++) {
+          augmented[column][j] /= divisor;
+        }
+
+        for (let row = 0; row < 4; row++) {
+          if (row === column) {
+            continue;
+          }
+
+          const factor =
+            augmented[row][column];
+
+          for (let j = 0; j < 8; j++) {
+            augmented[row][j] -=
+              factor * augmented[column][j];
+          }
+        }
+      }
+
+      const inverse = new Float32Array(16);
+
+      for (let row = 0; row < 4; row++) {
+        for (let column = 0; column < 4; column++) {
+          inverse[column * 4 + row] =
+            augmented[row][column + 4];
+        }
+      }
+
+      return inverse;
+    }
+
+    function transformPoint(matrix, x, y, z) {
+      const w =
+        matrix[3] * x +
+        matrix[7] * y +
+        matrix[11] * z +
+        matrix[15];
+
+      if (Math.abs(w) < 1e-10) {
+        return null;
+      }
+
+      return {
+        x: (
+          matrix[0] * x +
+          matrix[4] * y +
+          matrix[8] * z +
+          matrix[12]
+        ) / w,
+
+        y: (
+          matrix[1] * x +
+          matrix[5] * y +
+          matrix[9] * z +
+          matrix[13]
+        ) / w,
+
+        z: (
+          matrix[2] * x +
+          matrix[6] * y +
+          matrix[10] * z +
+          matrix[14]
+        ) / w
+      };
+    }
+
+    // ============================================================
+    // CAMERA-AWARE SCREEN-TO-WORLD RAYCASTING
+    // ============================================================
+
+    function screenToWorld(
+      screenX,
+      screenY,
+      planeZ = 0
+    ) {
+      const rect = canvas.getBoundingClientRect();
+
+      if (rect.width <= 0 || rect.height <= 0) {
+        return null;
+      }
+
+      // Convert pointer coordinates into clip-space.
+      const ndcX =
+        ((screenX - rect.left) / rect.width) *
+        2 - 1;
+
+      const ndcY =
+        1 -
+        ((screenY - rect.top) / rect.height) *
+        2;
+
+      // Unproject using the same matrices as rendering.
+      const viewProjection = multiplyMatrix4(
+        projectionMatrix,
+        viewMatrix
+      );
+
+      const inverse = invertMatrix4(
+        viewProjection
+      );
+
+      if (!inverse) {
+        return null;
+      }
+
+      const near = transformPoint(
+        inverse,
+        ndcX,
+        ndcY,
+        -1
+      );
+
+      const far = transformPoint(
+        inverse,
+        ndcX,
+        ndcY,
+        1
+      );
+
+      if (!near || !far) {
+        return null;
+      }
+
+      const dx = far.x - near.x;
+      const dy = far.y - near.y;
+      const dz = far.z - near.z;
+
+      // Ray parallel to the XY plane.
+      if (Math.abs(dz) < 1e-8) {
+        return null;
+      }
+
+      // Intersect ray with the mosaic plane.
+      const t = (planeZ - near.z) / dz;
+
+      if (t < 0 || t > 1) {
+        return null;
+      }
+
+      return {
+        x: near.x + dx * t,
+        y: near.y + dy * t,
+        z: planeZ
+      };
+    }
+
+    // ============================================================
+    // CUBE GEOMETRY
+    // ============================================================
+
+    function createCubeGeometry() {
+      const positions = [];
+      const normals = [];
+      const indices = [];
+
+      const faces = [
+        {
+          normal: [0, 0, 1],
+          corners: [
+            [-0.5, -0.5, 0.5],
+            [0.5, -0.5, 0.5],
+            [0.5, 0.5, 0.5],
+            [-0.5, 0.5, 0.5]
+          ]
+        },
+        {
+          normal: [0, 0, -1],
+          corners: [
+            [0.5, -0.5, -0.5],
+            [-0.5, -0.5, -0.5],
+            [-0.5, 0.5, -0.5],
+            [0.5, 0.5, -0.5]
+          ]
+        },
+        {
+          normal: [1, 0, 0],
+          corners: [
+            [0.5, -0.5, 0.5],
+            [0.5, -0.5, -0.5],
+            [0.5, 0.5, -0.5],
+            [0.5, 0.5, 0.5]
+          ]
+        },
+        {
+          normal: [-1, 0, 0],
+          corners: [
+            [-0.5, -0.5, -0.5],
+            [-0.5, -0.5, 0.5],
+            [-0.5, 0.5, 0.5],
+            [-0.5, 0.5, -0.5]
+          ]
+        },
+        {
+          normal: [0, 1, 0],
+          corners: [
+            [-0.5, 0.5, 0.5],
+            [0.5, 0.5, 0.5],
+            [0.5, 0.5, -0.5],
+            [-0.5, 0.5, -0.5]
+          ]
+        },
+        {
+          normal: [0, -1, 0],
+          corners: [
+            [-0.5, -0.5, -0.5],
+            [0.5, -0.5, -0.5],
+            [0.5, -0.5, 0.5],
+            [-0.5, -0.5, 0.5]
+          ]
+        }
+      ];
+
+      for (const face of faces) {
+        const base = positions.length / 3;
+
+        for (const corner of face.corners) {
+          positions.push(...corner);
+          normals.push(...face.normal);
+        }
+
+        indices.push(
+          base,
+          base + 1,
+          base + 2,
+          base,
+          base + 2,
+          base + 3
+        );
+      }
+
+      return {
+        positions: new Float32Array(positions),
+        normals: new Float32Array(normals),
+        indices: new Uint16Array(indices)
+      };
+    }
+
+    const geometry = createCubeGeometry();
+
+    // ============================================================
+    // GPU GEOMETRY AND INSTANCE BUFFERS
+    // ============================================================
+
+    const tileVAO = gl.createVertexArray();
+
+    const positionBuffer = gl.createBuffer();
+    const rotationBuffer = gl.createBuffer();
+    const colorBuffer = gl.createBuffer();
+    const extraBuffer = gl.createBuffer();
+
+    const indexBuffer = gl.createBuffer();
+
+    function createAttribute(
+      location,
+      size,
+      data,
+      divisor = 0
+    ) {
+      const buffer = gl.createBuffer();
+
+      gl.bindBuffer(
+        gl.ARRAY_BUFFER,
+        buffer
+      );
+
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        data,
+        gl.STATIC_DRAW
+      );
+
+      gl.enableVertexAttribArray(location);
+
+      gl.vertexAttribPointer(
+        location,
+        size,
+        gl.FLOAT,
+        false,
+        0,
+        0
+      );
+
+      gl.vertexAttribDivisor(
+        location,
+        divisor
+      );
+
+      return buffer;
+    }
+
+    function createInstanceAttribute(
+      location,
+      buffer
+    ) {
+      gl.bindBuffer(
+        gl.ARRAY_BUFFER,
+        buffer
+      );
+
+      gl.enableVertexAttribArray(location);
+
+      gl.vertexAttribPointer(
+        location,
+        4,
+        gl.FLOAT,
+        false,
+        0,
+        0
+      );
+
+      gl.vertexAttribDivisor(
+        location,
+        1
+      );
+    }
+
+    gl.bindVertexArray(tileVAO);
+
+    createAttribute(
+      0,
+      3,
+      geometry.positions
+    );
+
+    createAttribute(
+      1,
+      3,
+      geometry.normals
+    );
+
+    createInstanceAttribute(
+      2,
+      positionBuffer
+    );
+
+    createInstanceAttribute(
+      3,
+      rotationBuffer
+    );
+
+    createInstanceAttribute(
+      4,
+      colorBuffer
+    );
+
+    createInstanceAttribute(
+      5,
+      extraBuffer
+    );
+
+    gl.bindBuffer(
+      gl.ELEMENT_ARRAY_BUFFER,
+      indexBuffer
+    );
+
+    gl.bufferData(
+      gl.ELEMENT_ARRAY_BUFFER,
+      geometry.indices,
+      gl.STATIC_DRAW
+    );
+
+    gl.bindVertexArray(null);
+
+    function uploadBuffer(buffer, data) {
+      gl.bindBuffer(
+        gl.ARRAY_BUFFER,
+        buffer
+      );
+
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        data,
+        gl.DYNAMIC_DRAW
+      );
+    }
+
+    // ============================================================
+    // SIMULATION STATE
+    // ============================================================
+
+    let tiles = [];
+
+    let columns = 0;
+    let rows = 0;
+
+    let viewportWidth = 1;
+    let viewportHeight = 1;
+
+    let simulationTime = 0;
+    let previousTime = null;
+
+    let positionData = new Float32Array(0);
+    let rotationData = new Float32Array(0);
+    let colorData = new Float32Array(0);
+    let extraData = new Float32Array(0);
+
+    let meshKey = "";
+
+    let projectionMatrix = identity();
+    let viewMatrix = identity();
+
+    let cameraEye = [0, 0, 850];
+
+    const pointer = {
+      x: 0,
+      y: 0,
+      targetX: 0,
+      targetY: 0,
+      previousX: 0,
+      previousY: 0,
+      active: false,
+      down: false,
+      influence: 0
+    };
+
+    const shockwaves = [];
+    const gravityWells = [];
+
+    // ============================================================
+    // TILE CREATION
+    // ============================================================
+
+    function createTile(x, y, row, column) {
+      const variation =
+        config.tiles.sizeVariation;
+
+      const size = 1 + random(
+        -variation,
+        variation
+      );
+
+      const hero =
+        Math.random() <
+        config.tiles.heroChance;
+
+      return {
+        homeX: x,
+        homeY: y,
+
+        row,
+        column,
+
+        x,
+        y,
+        z: 0,
+
+        vx: 0,
+        vy: 0,
+        vz: 0,
+
+        rx: 0,
+        ry: 0,
+        rz: 0,
+
+        vrx: 0,
+        vry: 0,
+        vrz: 0,
+
+        size,
+        mass: hero ? 1.6 : 1,
+
+        hero,
+
+        phase: random(0, TAU),
+        phase2: random(0, TAU),
+
+        personality: Math.random(),
+        inertia: random(0.75, 1.35),
+
+        reflectivity: Math.random(),
+        emissive: Math.random(),
+
+        rotationSign:
+          Math.random() < 0.5 ? -1 : 1,
+
+        colorOffset: random(-0.5, 0.5)
+      };
+    }
+
+    // ============================================================
+    // BUILD TILE GRID
+    // ============================================================
+
+    function buildTiles() {
+      const pitch = Math.max(
+        1,
+        config.tiles.size +
+        config.tiles.spacing
+      );
+
+      const margin = Math.max(
+        250,
+        config.physics.radius +
+        config.physics.displacement +
+        config.camera.depth
+      );
+
+      const width =
+        viewportWidth + margin * 2;
+
+      const height =
+        viewportHeight + margin * 2;
+
+      columns = Math.ceil(width / pitch);
+      rows = Math.ceil(height / pitch);
+
+      tiles = [];
+
+      const offsetX =
+        (columns - 1) * pitch * 0.5;
+
+      const offsetY =
+        (rows - 1) * pitch * 0.5;
+
+      for (let row = 0; row < rows; row++) {
+        for (
+          let column = 0;
+          column < columns;
+          column++
+        ) {
+          const x =
+            column * pitch - offsetX;
+
+          const y =
+            row * pitch - offsetY;
+
+          tiles.push(
+            createTile(
+              x,
+              y,
+              row,
+              column
+            )
+          );
+        }
+      }
+
+      const count = tiles.length;
+
+      positionData = new Float32Array(
+        count * 4
+      );
+
+      rotationData = new Float32Array(
+        count * 4
+      );
+
+      colorData = new Float32Array(
+        count * 4
+      );
+
+      extraData = new Float32Array(
+        count * 4
+      );
+
+      meshKey = [
+        viewportWidth,
+        viewportHeight,
+        config.tiles.size,
+        config.tiles.spacing,
+        config.tiles.sizeVariation,
+        config.tiles.heroChance,
+        config.tiles.heroScale
+      ].join(":");
+    }
+
+    function refreshMesh() {
+      const currentKey = [
+        viewportWidth,
+        viewportHeight,
+        config.tiles.size,
+        config.tiles.spacing,
+        config.tiles.sizeVariation,
+        config.tiles.heroChance,
+        config.tiles.heroScale
+      ].join(":");
+
+      if (currentKey !== meshKey) {
+        buildTiles();
+      }
+    }
+
+    // ============================================================
+    // CAMERA
+    // ============================================================
+
+    function updateCamera() {
+      const aspect =
+        viewportWidth / viewportHeight;
+
+      const zoom = clamp(
+        config.camera.zoom,
+        config.camera.minZoom,
+        config.camera.maxZoom
+      );
+
+      const distance =
+        config.camera.perspective / zoom;
+
+      const tiltX = radians(
+        config.camera.tiltX
+      );
+
+      const tiltY = radians(
+        config.camera.tiltY
+      );
+
+      const orbit =
+        config.camera.autoOrbit
+          ? simulationTime *
+            config.camera.orbitSpeed
+          : 0;
+
+      const horizontalAngle =
+        tiltY + orbit;
+
+      const verticalAngle =
+        tiltX;
+
+      const parallaxX =
+        pointer.active
+          ? (
+              pointer.x / viewportWidth -
+              0.5
+            ) * config.camera.parallax
+          : 0;
+
+      const parallaxY =
+        pointer.active
+          ? (
+              0.5 -
+              pointer.y / viewportHeight
+            ) * config.camera.parallax
+          : 0;
+
+      const eye = [
+        Math.sin(horizontalAngle) *
+          Math.cos(verticalAngle) *
+          distance +
+          parallaxX,
+
+        Math.sin(verticalAngle) *
+          distance +
+          parallaxY,
+
+        Math.cos(horizontalAngle) *
+          Math.cos(verticalAngle) *
+          distance
+      ];
+
+      cameraEye = eye;
+
+      viewMatrix = lookAt(
+        eye,
+        [0, 0, 0],
+        [0, 1, 0]
+      );
+
+      if (
+        config.camera.mode ===
+        "orthographic"
+      ) {
+        projectionMatrix = orthographic(
+          -viewportWidth / (2 * zoom),
+          viewportWidth / (2 * zoom),
+          -viewportHeight / (2 * zoom),
+          viewportHeight / (2 * zoom),
+          1,
+          10000
+        );
+      } else {
+        const fov =
+          2 * Math.atan(
+            viewportHeight /
+            (2 * config.camera.perspective)
+          );
+
+        projectionMatrix = perspective(
+          fov,
+          aspect,
+          1,
+          10000
+        );
+      }
+    }
+
+    // ============================================================
+    // RESIZE
+    // ============================================================
+
+    function resize() {
+      viewportWidth =
+        window.innerWidth;
+
+      viewportHeight =
+        window.innerHeight;
+
+      const dpr = Math.min(
+        window.devicePixelRatio || 1,
+        config.animation.maxDpr
+      );
+
+      canvas.width = Math.max(
+        1,
+        Math.round(
+          viewportWidth * dpr
+        )
+      );
+
+      canvas.height = Math.max(
+        1,
+        Math.round(
+          viewportHeight * dpr
+        )
+      );
+
+      gl.viewport(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+      buildTiles();
+      updateCamera();
+    }
+
+
+    // ============================================================
+    // PROCEDURAL NOISE
+    // ============================================================
+
+    function hash2(x, y) {
+      const value = Math.sin(
+        x * 127.1 +
+        y * 311.7
+      ) * 43758.5453123;
+
+      return value - Math.floor(value);
+    }
+
+    function noise2(x, y) {
+      const ix = Math.floor(x);
+      const iy = Math.floor(y);
+
+      const fx = x - ix;
+      const fy = y - iy;
+
+      const ux = fx * fx * (3 - 2 * fx);
+      const uy = fy * fy * (3 - 2 * fy);
+
+      const a = hash2(ix, iy);
+      const b = hash2(ix + 1, iy);
+      const c = hash2(ix, iy + 1);
+      const d = hash2(ix + 1, iy + 1);
+
+      return lerp(
+        lerp(a, b, ux),
+        lerp(c, d, ux),
+        uy
+      );
+    }
+
+    function fbm(x, y) {
+      let value = 0;
+      let amplitude = 0.5;
+      let frequency = 1;
+
+      for (let i = 0; i < 4; i++) {
+        value += noise2(
+          x * frequency,
+          y * frequency
+        ) * amplitude;
+
+        frequency *= 2.03;
+        amplitude *= 0.5;
+      }
+
+      return value;
+    }
+
+    // ============================================================
+    // PROCEDURAL TILE COLORS
+    // ============================================================
+
+    function colorAt(x, y, z, tile) {
+      const scale = Math.max(
+        1,
+        config.colors.scale
+      );
+
+      const clock =
+        simulationTime *
+        config.colors.speed;
+
+      let px = x / scale;
+      let py = y / scale;
+
+      if (config.colors.flow) {
+        const flow = fbm(
+          px * 1.4 + clock * 0.35,
+          py * 1.4 - clock * 0.25
+        );
+
+        const distortion =
+          (flow - 0.5) *
+          config.colors.flowStrength;
+
+        px += distortion;
+        py -= distortion * 0.7;
+      }
+
+      let field =
+        Math.sin(px + clock) * 0.45 +
+        Math.cos(
+          py * 1.3 - clock * 0.7
+        ) * 0.35 +
+        Math.sin(
+          (px + py) * 0.6 +
+          clock * 0.4
+        ) * 0.2;
+
+      if (config.colors.aurora) {
+        field += (
+          fbm(
+            px * 1.8 + clock * 0.3,
+            py * 0.7
+          ) - 0.5
+        ) * 0.45;
+      }
+
+      field +=
+        z *
+        config.colors.heightInfluence /
+        150;
+
+      field +=
+        tile.colorOffset *
+        config.tiles.personality;
+
+      const position = clamp(
+        (field + 1) * 0.5,
+        0,
+        1
+      );
+
+      const a = rgb(config.colors.colorA);
+      const b = rgb(config.colors.colorB);
+      const c = rgb(config.colors.colorC);
+
+      let color;
+
+      if (position < 0.5) {
+        color = mixColor(
+          a,
+          b,
+          position * 2
+        );
+      } else {
+        color = mixColor(
+          b,
+          c,
+          (position - 0.5) * 2
+        );
+      }
+
+      if (tile.hero) {
+        color = mixColor(
+          color,
+          rgb(config.colors.highlightColor),
+          0.12
+        );
+      }
+
+      return color;
+    }
+
+    // ============================================================
+    // ANIMATION CYCLES
+    // ============================================================
+
+    function assemblyCycle(tile) {
+      const duration = Math.max(
+        0.1,
+        config.motion.cycleDuration
+      );
+
+      const phase =
+        simulationTime /
+        duration *
+        TAU +
+        tile.homeX / 500 +
+        tile.homeY / 650;
+
+      return (
+        0.5 +
+        0.5 * Math.sin(phase)
+      ) * config.motion.separation;
+    }
+
+    function breathingOffset(tile) {
+      const distance = Math.hypot(
+        tile.homeX,
+        tile.homeY
+      );
+
+      const phase =
+        simulationTime *
+        config.motion.speed *
+        1.5 -
+        distance / 230;
+
+      return Math.sin(phase) *
+        config.motion.breathing *
+        config.camera.depth;
+    }
+
+    // ============================================================
+    // ANIMATION MODES
+    // ============================================================
+
+    function calculateMotion(tile) {
+      const clock =
+        simulationTime *
+        config.motion.speed;
+
+      const separation =
+        assemblyCycle(tile);
+
+      const drift =
+        config.motion.drift;
+
+      let x = tile.homeX;
+      let y = tile.homeY;
+      let z = 0;
+
+      let rx = 0;
+      let ry = 0;
+      let rz = 0;
+
+      const mode = config.motion.mode;
+
+      // ----------------------------------------------------------
+      // Wave assembly
+      // ----------------------------------------------------------
+
+      if (mode === "wave") {
+        x += Math.sin(
+          tile.homeY / 230 +
+          clock +
+          tile.phase * 0.15
+        ) * drift * separation;
+
+        y += Math.cos(
+          tile.homeX / 270 -
+          clock * 0.8 +
+          tile.phase * 0.15
+        ) * drift * separation;
+
+        z += Math.sin(
+          tile.homeX / 180 +
+          tile.homeY / 240 -
+          clock * 2
+        ) *
+        config.camera.depth *
+        separation;
+
+        rz =
+          radians(config.motion.rotation) *
+          Math.sin(
+            clock * 0.7 +
+            tile.phase
+          ) *
+          separation;
+      }
+
+      // ----------------------------------------------------------
+      // Magnetic assembly
+      // ----------------------------------------------------------
+
+      else if (mode === "magnetic") {
+        const pulse = Math.pow(
+          separation,
+          1.5
+        );
+
+        x +=
+          Math.sin(tile.phase) *
+          drift *
+          pulse;
+
+        y +=
+          Math.cos(tile.phase2) *
+          drift *
+          pulse;
+
+        z += Math.sin(
+          tile.phase + clock
+        ) *
+        config.camera.depth *
+        pulse;
+
+        ry =
+          radians(config.motion.rotation) *
+          pulse *
+          tile.rotationSign;
+      }
+
+      // ----------------------------------------------------------
+      // Vortex assembly
+      // ----------------------------------------------------------
+
+      else if (mode === "vortex") {
+        const distance = Math.hypot(
+          tile.homeX,
+          tile.homeY
+        );
+
+        const angle =
+          clock *
+          0.45 *
+          separation *
+          Math.exp(-distance / 650);
+
+        const cosine = Math.cos(angle);
+        const sine = Math.sin(angle);
+
+        x =
+          tile.homeX * cosine -
+          tile.homeY * sine;
+
+        y =
+          tile.homeX * sine +
+          tile.homeY * cosine;
+
+        z =
+          config.camera.depth *
+          separation *
+          Math.sin(
+            distance / 120 -
+            clock
+          );
+
+        rz = angle;
+      }
+
+      // ----------------------------------------------------------
+      // Explosive disintegration
+      // ----------------------------------------------------------
+
+      else if (mode === "explosion") {
+        const distance = Math.hypot(
+          tile.homeX,
+          tile.homeY
+        );
+
+        const nx =
+          distance > 0.001
+            ? tile.homeX / distance
+            : Math.cos(tile.phase);
+
+        const ny =
+          distance > 0.001
+            ? tile.homeY / distance
+            : Math.sin(tile.phase);
+
+        const pulse = Math.pow(
+          separation,
+          2
+        );
+
+        x +=
+          nx *
+          config.motion.explodeStrength *
+          pulse;
+
+        y +=
+          ny *
+          config.motion.explodeStrength *
+          pulse;
+
+        z +=
+          config.camera.depth *
+          3 *
+          pulse *
+          Math.sin(tile.phase);
+
+        rx =
+          radians(config.motion.rotation) *
+          pulse *
+          tile.rotationSign;
+
+        ry =
+          radians(config.motion.rotation) *
+          pulse *
+          Math.sin(tile.phase2);
+      }
+
+      // ----------------------------------------------------------
+      // Breathing mosaic
+      // ----------------------------------------------------------
+
+      else if (mode === "breathing") {
+        const scale =
+          1 +
+          Math.sin(clock * 1.5) *
+          separation *
+          0.08;
+
+        x *= scale;
+        y *= scale;
+
+        z += breathingOffset(tile);
+
+        rx =
+          Math.sin(
+            clock + tile.phase
+          ) *
+          0.08 *
+          separation;
+      }
+
+      // ----------------------------------------------------------
+      // Domino cascade
+      // ----------------------------------------------------------
+
+      else if (mode === "domino") {
+        const phase =
+          tile.column * 0.22 +
+          tile.row * 0.08 -
+          simulationTime *
+          config.motion.dominoSpeed;
+
+        const flip = Math.sin(phase);
+
+        ry =
+          Math.PI *
+          smoothstep(
+            -0.7,
+            0.7,
+            flip
+          ) *
+          separation;
+
+        z =
+          Math.sin(phase) *
+          config.camera.depth *
+          separation;
+      }
+
+      // ----------------------------------------------------------
+      // Classic drifting
+      // ----------------------------------------------------------
+
+      else {
+        x += Math.sin(
+          tile.homeY / 230 +
+          clock +
+          tile.phase * 0.15
+        ) * drift * separation;
+
+        y += Math.cos(
+          tile.homeX / 270 -
+          clock * 0.8 +
+          tile.phase * 0.15
+        ) * drift * separation;
+
+        rz =
+          radians(config.motion.rotation) *
+          Math.sin(
+            clock * 0.7 +
+            tile.phase
+          ) *
+          separation;
+      }
+
+      // ----------------------------------------------------------
+      // Optional global disintegration
+      // ----------------------------------------------------------
+
+      if (config.motion.explode) {
+        const pulse =
+          0.5 +
+          0.5 * Math.sin(
+            simulationTime * 0.35
+          );
+
+        const direction = normalize3(
+          tile.homeX,
+          tile.homeY,
+          Math.sin(tile.phase) * 100
+        );
+
+        x +=
+          direction[0] *
+          config.motion.explodeStrength *
+          pulse;
+
+        y +=
+          direction[1] *
+          config.motion.explodeStrength *
+          pulse;
+
+        z +=
+          direction[2] *
+          config.motion.explodeStrength *
+          pulse;
+      }
+
+      // ----------------------------------------------------------
+      // Optional domino overlay
+      // ----------------------------------------------------------
+
+      if (
+        config.motion.domino &&
+        mode !== "domino"
+      ) {
+        ry +=
+          Math.sin(
+            tile.column * 0.25 -
+            simulationTime *
+            config.motion.dominoSpeed
+          ) *
+          radians(config.motion.rotation);
+      }
+
+      // ----------------------------------------------------------
+      // Individual tile personalities
+      // ----------------------------------------------------------
+
+      const personality =
+        config.tiles.personality;
+
+      z +=
+        Math.sin(
+          clock *
+          tile.inertia +
+          tile.phase
+        ) *
+        config.camera.depth *
+        personality *
+        0.22;
+
+      rx +=
+        Math.sin(
+          clock * 0.65 +
+          tile.phase2
+        ) *
+        personality *
+        0.12;
+
+      ry +=
+        Math.cos(
+          clock * 0.5 +
+          tile.phase
+        ) *
+        personality *
+        0.12;
+
+      return {
+        x,
+        y,
+        z,
+        rx,
+        ry,
+        rz
+      };
+    }
+
+    // ============================================================
+    // CORRECTED POINTER WORLD POSITION
+    // ============================================================
+
+    function pointerWorldPosition() {
+      return screenToWorld(
+        pointer.x,
+        pointer.y,
+        0
+      );
+    }
+
+    // ============================================================
+    // POINTER FORCES
+    // ============================================================
+
+    function calculatePointerForce(tile, world) {
+      if (
+        !config.physics.enabled ||
+        !pointer.active ||
+        !world
+      ) {
+        return {
+          x: 0,
+          y: 0,
+          z: 0,
+          rotation: 0
+        };
+      }
+
+      const dx = tile.x - world.x;
+      const dy = tile.y - world.y;
+
+      const distance = Math.hypot(
+        dx,
+        dy
+      );
+
+      const radius = Math.max(
+        1,
+        config.physics.radius
+      );
+
+      const proximity = Math.pow(
+        clamp(
+          1 - distance / radius,
+          0,
+          1
+        ),
+        2
+      ) * pointer.influence;
+
+      if (proximity <= 0) {
+        return {
+          x: 0,
+          y: 0,
+          z: 0,
+          rotation: 0
+        };
+      }
+
+      const nx =
+        distance > 0.001
+          ? dx / distance
+          : Math.cos(tile.phase);
+
+      const ny =
+        distance > 0.001
+          ? dy / distance
+          : Math.sin(tile.phase);
+
+      let direction = 0;
+
+      if (config.physics.repulsion) {
+        direction += 1;
+      }
+
+      if (config.physics.attraction) {
+        direction -= 1;
+      }
+
+      const strength =
+        config.physics.displacement *
+        proximity;
+
+      let fx =
+        nx *
+        strength *
+        direction;
+
+      let fy =
+        ny *
+        strength *
+        direction;
+
+      if (config.physics.vortex) {
+        fx +=
+          -ny *
+          strength *
+          0.8;
+
+        fy +=
+          nx *
+          strength *
+          0.8;
+      }
+
+      // ----------------------------------------------------------
+      // Drag bending in world-space coordinates
+      // ----------------------------------------------------------
+
+      if (
+        config.physics.dragBend &&
+        pointer.down
+      ) {
+        const previousWorld = screenToWorld(
+          pointer.previousX,
+          pointer.previousY,
+          0
+        );
+
+        if (previousWorld) {
+          fx +=
+            (world.x - previousWorld.x) *
+            proximity *
+            2;
+
+          fy +=
+            (world.y - previousWorld.y) *
+            proximity *
+            2;
+        }
+      }
+
+      return {
+        x: fx,
+        y: fy,
+        z: strength * 0.35,
+        rotation:
+          radians(config.physics.rotation) *
+          proximity *
+          tile.rotationSign
+      };
+    }
+
+    // ============================================================
+    // SHOCKWAVES
+    // ============================================================
+
+    function createShockwave(x, y) {
+      if (!config.physics.shockwaves) {
         return;
       }
 
-      if (!mouse.active) {
-        mouse.x = event.clientX;
-        mouse.y = event.clientY;
-      }
+      shockwaves.push({
+        x,
+        y,
+        radius: 0,
+        age: 0,
+        strength:
+          config.physics.shockStrength
+      });
 
-      mouse.targetX = event.clientX;
-      mouse.targetY = event.clientY;
-      mouse.active = true;
+      if (shockwaves.length > 12) {
+        shockwaves.shift();
+      }
     }
 
-    addEventListener("pointermove", updatePointer);
-    addEventListener("pointerdown", updatePointer);
+    function updateShockwaves(dt) {
+      const speed = Math.max(
+        1,
+        config.physics.waveSpeed
+      );
 
-    addEventListener("pointerup", event => {
-      if (event.pointerType !== "mouse") mouse.active = false;
-    });
+      for (
+        let i = shockwaves.length - 1;
+        i >= 0;
+        i--
+      ) {
+        const wave = shockwaves[i];
 
-    addEventListener("pointercancel", () => mouse.active = false);
-    addEventListener("blur", () => mouse.active = false);
+        wave.age += dt;
+        wave.radius += speed * dt;
+
+        if (
+          wave.age > 3 ||
+          wave.radius >
+            Math.hypot(
+              viewportWidth,
+              viewportHeight
+            )
+        ) {
+          shockwaves.splice(i, 1);
+        }
+      }
+    }
+
+    function calculateShockwaveForce(tile) {
+      if (!config.physics.shockwaves) {
+        return {
+          x: 0,
+          y: 0,
+          z: 0,
+          rotation: 0
+        };
+      }
+
+      let fx = 0;
+      let fy = 0;
+      let fz = 0;
+      let rotation = 0;
+
+      for (const wave of shockwaves) {
+        const dx = tile.x - wave.x;
+        const dy = tile.y - wave.y;
+
+        const distance = Math.hypot(
+          dx,
+          dy
+        );
+
+        const width =
+          config.physics.wavePropagation
+            ? 45
+            : 100;
+
+        const delta =
+          distance - wave.radius;
+
+        const influence = Math.exp(
+          -(delta * delta) /
+          (2 * width * width)
+        ) * Math.exp(
+          -wave.age * 0.65
+        );
+
+        const nx =
+          distance > 0.001
+            ? dx / distance
+            : Math.cos(tile.phase);
+
+        const ny =
+          distance > 0.001
+            ? dy / distance
+            : Math.sin(tile.phase);
+
+        fx +=
+          nx *
+          wave.strength *
+          influence;
+
+        fy +=
+          ny *
+          wave.strength *
+          influence;
+
+        fz +=
+          wave.strength *
+          influence *
+          0.75;
+
+        rotation +=
+          radians(
+            config.physics.rotation
+          ) *
+          influence *
+          tile.rotationSign;
+      }
+
+      return {
+        x: fx,
+        y: fy,
+        z: fz,
+        rotation
+      };
+    }
+
+    // ============================================================
+    // GRAVITY WELLS
+    // ============================================================
+
+    function createGravityWell(x, y) {
+      gravityWells.push({
+        x,
+        y,
+        age: 0,
+        life: 5,
+        strength:
+          config.physics.gravityStrength
+      });
+
+      if (gravityWells.length > 5) {
+        gravityWells.shift();
+      }
+    }
+
+    function updateGravityWells(dt) {
+      for (
+        let i = gravityWells.length - 1;
+        i >= 0;
+        i--
+      ) {
+        const well = gravityWells[i];
+
+        well.age += dt;
+
+        if (well.age >= well.life) {
+          gravityWells.splice(i, 1);
+        }
+      }
+    }
+
+    function calculateGravityForce(tile) {
+      if (!config.physics.gravityWells) {
+        return {
+          x: 0,
+          y: 0,
+          z: 0
+        };
+      }
+
+      let fx = 0;
+      let fy = 0;
+      let fz = 0;
+
+      for (const well of gravityWells) {
+        const dx = well.x - tile.x;
+        const dy = well.y - tile.y;
+
+        const distance = Math.hypot(
+          dx,
+          dy
+        );
+
+        const radius = 350;
+
+        const influence = Math.pow(
+          clamp(
+            1 - distance / radius,
+            0,
+            1
+          ),
+          2
+        );
+
+        const lifetime =
+          1 - well.age / well.life;
+
+        const strength =
+          well.strength *
+          influence *
+          lifetime;
+
+        const nx =
+          distance > 0.001
+            ? dx / distance
+            : 0;
+
+        const ny =
+          distance > 0.001
+            ? dy / distance
+            : 0;
+
+        fx += nx * strength;
+        fy += ny * strength;
+        fz -= strength * 0.7;
+      }
+
+      return {
+        x: fx,
+        y: fy,
+        z: fz
+      };
+    }
+
+    // ============================================================
+    // PORTAL EFFECT
+    // ============================================================
+
+    function calculatePortalForce(tile) {
+      if (!config.effects.portal) {
+        return {
+          x: 0,
+          y: 0,
+          z: 0,
+          rotation: 0
+        };
+      }
+
+      const radius = Math.max(
+        1,
+        config.effects.portalRadius
+      );
+
+      const dx = tile.homeX;
+      const dy = tile.homeY;
+
+      const distance = Math.hypot(
+        dx,
+        dy
+      );
+
+      const influence =
+        1 -
+        smoothstep(
+          radius * 0.4,
+          radius * 1.8,
+          distance
+        );
+
+      const pulse =
+        0.75 +
+        0.25 * Math.sin(
+          simulationTime * 0.8
+        );
+
+      const strength =
+        config.effects.portalStrength *
+        influence *
+        pulse;
+
+      const angle = Math.atan2(
+        dy,
+        dx
+      );
+
+      const swirl =
+        simulationTime *
+        0.3 *
+        strength;
+
+      const displacement =
+        radius *
+        strength *
+        0.35;
+
+      return {
+        x:
+          Math.cos(angle + swirl) *
+          displacement,
+
+        y:
+          Math.sin(angle + swirl) *
+          displacement,
+
+        z:
+          -config.camera.depth *
+          4 *
+          strength,
+
+        rotation:
+          swirl * 0.5
+      };
+    }
+
+    // ============================================================
+    // SPRING PHYSICS
+    // ============================================================
+
+    function integrateSpring(
+      position,
+      velocity,
+      target,
+      stiffness,
+      damping,
+      mass,
+      dt
+    ) {
+      const acceleration = (
+        (target - position) *
+        stiffness -
+        velocity * damping
+      ) / Math.max(
+        0.1,
+        mass
+      );
+
+      velocity += acceleration * dt;
+      position += velocity * dt;
+
+      return {
+        position,
+        velocity
+      };
+    }
+
+    function updateTilePhysics(
+      tile,
+      dt,
+      pointerWorld
+    ) {
+      const natural =
+        calculateMotion(tile);
+
+      const mouseForce =
+        calculatePointerForce(
+          tile,
+          pointerWorld
+        );
+
+      const shockForce =
+        calculateShockwaveForce(tile);
+
+      const gravityForce =
+        calculateGravityForce(tile);
+
+      const portalForce =
+        calculatePortalForce(tile);
+
+      const targetX =
+        natural.x +
+        mouseForce.x +
+        shockForce.x +
+        gravityForce.x +
+        portalForce.x;
+
+      const targetY =
+        natural.y +
+        mouseForce.y +
+        shockForce.y +
+        gravityForce.y +
+        portalForce.y;
+
+      const targetZ =
+        natural.z +
+        mouseForce.z +
+        shockForce.z +
+        gravityForce.z +
+        portalForce.z;
+
+      const targetRX =
+        natural.rx +
+        shockForce.rotation * 0.35;
+
+      const targetRY =
+        natural.ry +
+        mouseForce.rotation * 0.35;
+
+      const targetRZ =
+        natural.rz +
+        mouseForce.rotation +
+        shockForce.rotation +
+        portalForce.rotation;
+
+      const stiffness =
+        config.physics.enabled
+          ? config.physics.stiffness
+          : config.motion.assemblySpeed * 15;
+
+      const damping =
+        config.physics.enabled
+          ? config.physics.damping
+          : config.motion.assemblySpeed * 8;
+
+      const mass =
+        tile.mass *
+        tile.inertia;
+
+      let result;
+
+      result = integrateSpring(
+        tile.x,
+        tile.vx,
+        targetX,
+        stiffness,
+        damping,
+        mass,
+        dt
+      );
+
+      tile.x = result.position;
+      tile.vx = result.velocity;
+
+      result = integrateSpring(
+        tile.y,
+        tile.vy,
+        targetY,
+        stiffness,
+        damping,
+        mass,
+        dt
+      );
+
+      tile.y = result.position;
+      tile.vy = result.velocity;
+
+      result = integrateSpring(
+        tile.z,
+        tile.vz,
+        targetZ,
+        stiffness,
+        damping,
+        mass,
+        dt
+      );
+
+      tile.z = result.position;
+      tile.vz = result.velocity;
+
+      const rotationStiffness =
+        stiffness * 0.75;
+
+      result = integrateSpring(
+        tile.rx,
+        tile.vrx,
+        targetRX,
+        rotationStiffness,
+        damping,
+        mass,
+        dt
+      );
+
+      tile.rx = result.position;
+      tile.vrx = result.velocity;
+
+      result = integrateSpring(
+        tile.ry,
+        tile.vry,
+        targetRY,
+        rotationStiffness,
+        damping,
+        mass,
+        dt
+      );
+
+      tile.ry = result.position;
+      tile.vry = result.velocity;
+
+      result = integrateSpring(
+        tile.rz,
+        tile.vrz,
+        targetRZ,
+        rotationStiffness,
+        damping,
+        mass,
+        dt
+      );
+
+      tile.rz = result.position;
+      tile.vrz = result.velocity;
+    }
+
+    // ============================================================
+    // SPECIAL EFFECTS
+    // ============================================================
+
+    function calculateSpecialEffects(tile) {
+      let glow = 0;
+      let colorBoost = 0;
+
+      if (config.effects.fractures) {
+        const line = Math.sin(
+          tile.homeX * 0.018 +
+          Math.sin(
+            tile.homeY * 0.012 +
+            simulationTime * 0.3
+          ) * 3
+        );
+
+        const fracture = Math.pow(
+          1 - Math.abs(line),
+          12
+        );
+
+        glow +=
+          fracture *
+          config.effects.fractureIntensity;
+      }
+
+      if (config.effects.connections) {
+        const connection = Math.sin(
+          tile.row * 0.8 +
+          tile.column * 0.6 +
+          simulationTime * 1.2
+        );
+
+        glow +=
+          Math.pow(
+            Math.max(connection, 0),
+            8
+          ) * 0.3;
+      }
+
+      if (config.effects.scan) {
+        const scanPosition =
+          Math.sin(
+            simulationTime *
+            config.effects.scanSpeed
+          ) *
+          viewportHeight *
+          0.5;
+
+        const distance = Math.abs(
+          tile.homeY - scanPosition
+        );
+
+        glow += Math.exp(
+          -(distance * distance) /
+          (2 * 35 * 35)
+        ) * 0.6;
+      }
+
+      if (config.colors.chromaticRipple) {
+        for (const wave of shockwaves) {
+          const distance = Math.hypot(
+            tile.homeX - wave.x,
+            tile.homeY - wave.y
+          );
+
+          const delta = Math.abs(
+            distance - wave.radius
+          );
+
+          colorBoost += Math.exp(
+            -(delta * delta) /
+            (2 * 35 * 35)
+          ) * 0.4;
+        }
+      }
+
+      return {
+        glow,
+        colorBoost
+      };
+    }
+
+    // ============================================================
+    // UPDATE GPU INSTANCE DATA
+    // ============================================================
+
+    function updateInstanceData(dt) {
+      const count = tiles.length;
+
+      // Calculate the pointer's world position once per frame,
+      // not separately for every tile.
+      const pointerWorld =
+        pointer.active
+          ? pointerWorldPosition()
+          : null;
+
+      for (let i = 0; i < count; i++) {
+        const tile = tiles[i];
+
+        if (dt > 0) {
+          updateTilePhysics(
+            tile,
+            dt,
+            pointerWorld
+          );
+        }
+
+        const special =
+          calculateSpecialEffects(tile);
+
+        const color = colorAt(
+          tile.homeX,
+          tile.homeY,
+          tile.z,
+          tile
+        );
+
+        const offset = i * 4;
+
+        const size =
+          config.tiles.size *
+          tile.size *
+          (
+            tile.hero
+              ? config.tiles.heroScale
+              : 1
+          );
+
+        positionData[offset] = tile.x;
+        positionData[offset + 1] = tile.y;
+        positionData[offset + 2] = tile.z;
+        positionData[offset + 3] = size;
+
+        rotationData[offset] = tile.rx;
+        rotationData[offset + 1] = tile.ry;
+        rotationData[offset + 2] = tile.rz;
+        rotationData[offset + 3] = 0;
+
+        const boost =
+          1 +
+          special.glow +
+          special.colorBoost;
+
+        colorData[offset] =
+          color[0] * boost;
+
+        colorData[offset + 1] =
+          color[1] * boost;
+
+        colorData[offset + 2] =
+          color[2] * boost;
+
+        colorData[offset + 3] = 1;
+
+        extraData[offset] =
+          tile.hero ? 1 : 0;
+
+        extraData[offset + 1] =
+          tile.reflectivity;
+
+        extraData[offset + 2] =
+          tile.phase;
+
+        extraData[offset + 3] =
+          tile.emissive;
+      }
+
+      uploadBuffer(
+        positionBuffer,
+        positionData
+      );
+
+      uploadBuffer(
+        rotationBuffer,
+        rotationData
+      );
+
+      uploadBuffer(
+        colorBuffer,
+        colorData
+      );
+
+      uploadBuffer(
+        extraBuffer,
+        extraData
+      );
+    }
+
+    // ============================================================
+    // POINTER INTERACTION
+    // ============================================================
+
+    function isEditorTarget(target) {
+      return (
+        target instanceof Element &&
+        Boolean(
+          target.closest(
+            "[data-background-editor]"
+          )
+        )
+      );
+    }
+
+    function updatePointer(event) {
+      if (isEditorTarget(event.target)) {
+        pointer.active = false;
+        return;
+      }
+
+      pointer.targetX = event.clientX;
+      pointer.targetY = event.clientY;
+
+      if (!pointer.active) {
+        pointer.x = event.clientX;
+        pointer.y = event.clientY;
+
+        pointer.previousX = pointer.x;
+        pointer.previousY = pointer.y;
+      }
+
+      pointer.active = true;
+    }
+
+    function pointerDown(event) {
+      if (isEditorTarget(event.target)) {
+        return;
+      }
+
+      updatePointer(event);
+
+      pointer.down = true;
+
+      // Update camera matrices before unprojecting the click.
+      updateCamera();
+
+      const world = screenToWorld(
+        event.clientX,
+        event.clientY,
+        0
+      );
+
+      if (!world) {
+        return;
+      }
+
+      if (config.physics.shockwaves) {
+        createShockwave(
+          world.x,
+          world.y
+        );
+      }
+
+      if (
+        config.physics.gravityWells &&
+        event.shiftKey
+      ) {
+        createGravityWell(
+          world.x,
+          world.y
+        );
+      }
+    }
+
+    function pointerUp() {
+      pointer.down = false;
+    }
+
+    function pointerLeave() {
+      pointer.active = false;
+      pointer.down = false;
+    }
+
+    function updatePointerSmoothing(dt) {
+      const smoothing =
+        1 - Math.exp(-10 * dt);
+
+      pointer.previousX = pointer.x;
+      pointer.previousY = pointer.y;
+
+      pointer.x +=
+        (pointer.targetX - pointer.x) *
+        smoothing;
+
+      pointer.y +=
+        (pointer.targetY - pointer.y) *
+        smoothing;
+
+      pointer.influence += (
+        (pointer.active ? 1 : 0) -
+        pointer.influence
+      ) * smoothing;
+    }
+
+    window.addEventListener(
+      "pointermove",
+      updatePointer
+    );
+
+    window.addEventListener(
+      "pointerdown",
+      pointerDown
+    );
+
+    window.addEventListener(
+      "pointerup",
+      pointerUp
+    );
+
+    window.addEventListener(
+      "pointercancel",
+      pointerLeave
+    );
+
+    window.addEventListener(
+      "blur",
+      pointerLeave
+    );
 
     document.documentElement.addEventListener(
       "pointerleave",
-      () => mouse.active = false
+      pointerLeave
     );
 
-    document.addEventListener("visibilitychange", () => {
-      previous = null;
-      mouse.active = false;
-    });
+    // ============================================================
+    // MOUSE-WHEEL ZOOM
+    // ============================================================
 
-    addEventListener("resize", resize);
+    canvas.addEventListener(
+      "wheel",
+      event => {
+        if (!config.camera.wheelZoom) {
+          return;
+        }
+
+        event.preventDefault();
+
+        const factor = Math.exp(
+          -event.deltaY * 0.001
+        );
+
+        config.camera.zoom = clamp(
+          config.camera.zoom * factor,
+          config.camera.minZoom,
+          config.camera.maxZoom
+        );
+
+        updateCamera();
+      },
+      {
+        passive: false
+      }
+    );
+
+
+    // ============================================================
+    // FULLSCREEN POST-PROCESSING SHADERS
+    // ============================================================
+
+    const fullscreenVertex = `#version 300 es
+      precision highp float;
+
+      out vec2 vUV;
+
+      void main() {
+        vec2 position = vec2(
+          float((gl_VertexID << 1) & 2),
+          float(gl_VertexID & 2)
+        );
+
+        vUV = position;
+
+        gl_Position = vec4(
+          position * 2.0 - 1.0,
+          0.0,
+          1.0
+        );
+      }
+    `;
+
+    const bloomFragment = `#version 300 es
+      precision highp float;
+
+      in vec2 vUV;
+
+      out vec4 outColor;
+
+      uniform sampler2D uScene;
+      uniform vec2 uResolution;
+      uniform float uThreshold;
+      uniform float uBlurRadius;
+
+      void main() {
+        vec2 texel =
+          uBlurRadius /
+          uResolution;
+
+        vec3 result = vec3(0.0);
+        float total = 0.0;
+
+        for (int x = -4; x <= 4; x++) {
+          for (int y = -4; y <= 4; y++) {
+            vec2 offset =
+              vec2(float(x), float(y));
+
+            float weight = exp(
+              -dot(offset, offset) / 8.0
+            );
+
+            vec3 sampleColor = texture(
+              uScene,
+              vUV + offset * texel
+            ).rgb;
+
+            float brightness = max(
+              max(
+                sampleColor.r,
+                sampleColor.g
+              ),
+              sampleColor.b
+            );
+
+            float contribution = smoothstep(
+              uThreshold,
+              uThreshold + 0.5,
+              brightness
+            );
+
+            result +=
+              sampleColor *
+              contribution *
+              weight;
+
+            total += weight;
+          }
+        }
+
+        outColor = vec4(
+          result / max(total, 0.0001),
+          1.0
+        );
+      }
+    `;
+
+    const compositeFragment = `#version 300 es
+      precision highp float;
+
+      in vec2 vUV;
+
+      out vec4 outColor;
+
+      uniform sampler2D uScene;
+      uniform sampler2D uBloom;
+
+      uniform vec2 uResolution;
+
+      uniform float uTime;
+      uniform float uBloomStrength;
+      uniform float uVignette;
+      uniform float uGrain;
+      uniform float uAberration;
+      uniform float uHaze;
+      uniform float uDofStrength;
+
+      uniform vec3 uBackground;
+
+      uniform vec4 uFlags;
+
+      float hash(vec2 p) {
+        return fract(
+          sin(
+            dot(
+              p,
+              vec2(127.1, 311.7)
+            )
+          ) * 43758.5453
+        );
+      }
+
+      vec3 sampleScene(vec2 uv) {
+        if (uFlags.y > 0.5) {
+          vec2 direction =
+            uv - vec2(0.5);
+
+          vec2 offset =
+            direction *
+            uAberration;
+
+          return vec3(
+            texture(
+              uScene,
+              uv + offset
+            ).r,
+
+            texture(
+              uScene,
+              uv
+            ).g,
+
+            texture(
+              uScene,
+              uv - offset
+            ).b
+          );
+        }
+
+        return texture(
+          uScene,
+          uv
+        ).rgb;
+      }
+
+      void main() {
+        vec3 color = sampleScene(vUV);
+
+        // Approximate depth-of-field-like blur.
+        if (uFlags.z > 0.5) {
+          vec2 texel =
+            1.0 / uResolution;
+
+          vec3 blurred = vec3(0.0);
+
+          blurred += sampleScene(
+            vUV + texel * vec2(-2.0, 0.0)
+          );
+
+          blurred += sampleScene(
+            vUV + texel * vec2(2.0, 0.0)
+          );
+
+          blurred += sampleScene(
+            vUV + texel * vec2(0.0, -2.0)
+          );
+
+          blurred += sampleScene(
+            vUV + texel * vec2(0.0, 2.0)
+          );
+
+          blurred *= 0.25;
+
+          float distanceFromCenter =
+            length(vUV - 0.5);
+
+          float amount =
+            smoothstep(
+              0.15,
+              0.7,
+              distanceFromCenter
+            ) * uDofStrength;
+
+          color = mix(
+            color,
+            blurred,
+            amount
+          );
+        }
+
+        // Bloom composite.
+        if (uFlags.x > 0.5) {
+          color += texture(
+            uBloom,
+            vUV
+          ).rgb * uBloomStrength;
+        }
+
+        // Atmospheric haze.
+        color = mix(
+          color,
+          uBackground * 1.5,
+          uHaze * 0.12
+        );
+
+        // Vignette.
+        vec2 centered =
+          vUV * 2.0 - 1.0;
+
+        float vignette = 1.0 -
+          dot(centered, centered) *
+          uVignette *
+          0.35;
+
+        color *= clamp(
+          vignette,
+          0.0,
+          1.0
+        );
+
+        // Animated film grain.
+        float grain = hash(
+          vUV * uResolution +
+          vec2(uTime * 73.1)
+        ) - 0.5;
+
+        color += grain * uGrain;
+
+        // Soft tone mapping.
+        color = max(
+          color,
+          vec3(0.0)
+        );
+
+        color = color / (
+          vec3(1.0) + color * 0.25
+        );
+
+        color = pow(
+          color,
+          vec3(1.0 / 1.1)
+        );
+
+        outColor = vec4(
+          color,
+          1.0
+        );
+      }
+    `;
+
+    const bloomProgram = createProgram(
+      fullscreenVertex,
+      bloomFragment
+    );
+
+    const compositeProgram = createProgram(
+      fullscreenVertex,
+      compositeFragment
+    );
+
+    const bloomUniforms = uniformLocations(
+      bloomProgram,
+      [
+        "uScene",
+        "uResolution",
+        "uThreshold",
+        "uBlurRadius"
+      ]
+    );
+
+    const compositeUniforms = uniformLocations(
+      compositeProgram,
+      [
+        "uScene",
+        "uBloom",
+        "uResolution",
+        "uTime",
+        "uBloomStrength",
+        "uVignette",
+        "uGrain",
+        "uAberration",
+        "uHaze",
+        "uDofStrength",
+        "uBackground",
+        "uFlags"
+      ]
+    );
+
+    const fullscreenVAO =
+      gl.createVertexArray();
+
+    // ============================================================
+    // FRAMEBUFFER CREATION
+    // ============================================================
+
+    function createRenderTarget(
+      width,
+      height,
+      withDepth = false
+    ) {
+      const framebuffer =
+        gl.createFramebuffer();
+
+      const texture =
+        gl.createTexture();
+
+      gl.bindTexture(
+        gl.TEXTURE_2D,
+        texture
+      );
+
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA8,
+        width,
+        height,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        null
+      );
+
+      gl.texParameteri(
+        gl.TEXTURE_2D,
+        gl.TEXTURE_MIN_FILTER,
+        gl.LINEAR
+      );
+
+      gl.texParameteri(
+        gl.TEXTURE_2D,
+        gl.TEXTURE_MAG_FILTER,
+        gl.LINEAR
+      );
+
+      gl.texParameteri(
+        gl.TEXTURE_2D,
+        gl.TEXTURE_WRAP_S,
+        gl.CLAMP_TO_EDGE
+      );
+
+      gl.texParameteri(
+        gl.TEXTURE_2D,
+        gl.TEXTURE_WRAP_T,
+        gl.CLAMP_TO_EDGE
+      );
+
+      gl.bindFramebuffer(
+        gl.FRAMEBUFFER,
+        framebuffer
+      );
+
+      gl.framebufferTexture2D(
+        gl.FRAMEBUFFER,
+        gl.COLOR_ATTACHMENT0,
+        gl.TEXTURE_2D,
+        texture,
+        0
+      );
+
+      let depthBuffer = null;
+
+      if (withDepth) {
+        depthBuffer =
+          gl.createRenderbuffer();
+
+        gl.bindRenderbuffer(
+          gl.RENDERBUFFER,
+          depthBuffer
+        );
+
+        gl.renderbufferStorage(
+          gl.RENDERBUFFER,
+          gl.DEPTH_COMPONENT16,
+          width,
+          height
+        );
+
+        gl.framebufferRenderbuffer(
+          gl.FRAMEBUFFER,
+          gl.DEPTH_ATTACHMENT,
+          gl.RENDERBUFFER,
+          depthBuffer
+        );
+      }
+
+      const status =
+        gl.checkFramebufferStatus(
+          gl.FRAMEBUFFER
+        );
+
+      if (
+        status !==
+        gl.FRAMEBUFFER_COMPLETE
+      ) {
+        throw new Error(
+          "Framebuffer incomplete: " +
+          status
+        );
+      }
+
+      gl.bindFramebuffer(
+        gl.FRAMEBUFFER,
+        null
+      );
+
+      return {
+        framebuffer,
+        texture,
+        depthBuffer,
+        width,
+        height
+      };
+    }
+
+    function deleteRenderTarget(target) {
+      if (!target) {
+        return;
+      }
+
+      gl.deleteFramebuffer(
+        target.framebuffer
+      );
+
+      gl.deleteTexture(
+        target.texture
+      );
+
+      if (target.depthBuffer) {
+        gl.deleteRenderbuffer(
+          target.depthBuffer
+        );
+      }
+    }
+
+    let sceneTarget = null;
+    let bloomTarget = null;
+
+    function resizeRenderTargets() {
+      deleteRenderTarget(sceneTarget);
+      deleteRenderTarget(bloomTarget);
+
+      sceneTarget = createRenderTarget(
+        canvas.width,
+        canvas.height,
+        true
+      );
+
+      bloomTarget = createRenderTarget(
+        Math.max(
+          1,
+          Math.floor(canvas.width / 2)
+        ),
+        Math.max(
+          1,
+          Math.floor(canvas.height / 2)
+        )
+      );
+    }
+
+    // ============================================================
+    // ATMOSPHERIC DUST
+    // ============================================================
+
+    const dustVertex = `#version 300 es
+      precision highp float;
+
+      layout(location = 0) in vec4 aDust;
+
+      uniform mat4 uProjection;
+      uniform mat4 uView;
+
+      uniform float uTime;
+      uniform float uPointScale;
+
+      out float vAlpha;
+
+      void main() {
+        vec3 position = aDust.xyz;
+
+        position.x +=
+          sin(
+            uTime * 0.25 +
+            aDust.w * 17.0
+          ) * 15.0;
+
+        position.y +=
+          cos(
+            uTime * 0.2 +
+            aDust.w * 11.0
+          ) * 18.0;
+
+        vec4 clipPosition =
+          uProjection *
+          uView *
+          vec4(position, 1.0);
+
+        gl_Position = clipPosition;
+
+        gl_PointSize = clamp(
+          aDust.w *
+          uPointScale *
+          900.0 /
+          max(
+            1.0,
+            clipPosition.w
+          ),
+          1.0,
+          12.0
+        );
+
+        vAlpha =
+          0.3 +
+          0.7 * aDust.w;
+      }
+    `;
+
+    const dustFragment = `#version 300 es
+      precision highp float;
+
+      in float vAlpha;
+
+      out vec4 outColor;
+
+      uniform vec3 uColor;
+      uniform float uOpacity;
+
+      void main() {
+        vec2 centered =
+          gl_PointCoord * 2.0 - 1.0;
+
+        float radius = dot(
+          centered,
+          centered
+        );
+
+        float alpha = exp(
+          -radius * 4.0
+        );
+
+        outColor = vec4(
+          uColor,
+          alpha *
+          vAlpha *
+          uOpacity
+        );
+      }
+    `;
+
+    const dustProgram = createProgram(
+      dustVertex,
+      dustFragment
+    );
+
+    const dustUniforms = uniformLocations(
+      dustProgram,
+      [
+        "uProjection",
+        "uView",
+        "uTime",
+        "uPointScale",
+        "uColor",
+        "uOpacity"
+      ]
+    );
+
+    const dustVAO =
+      gl.createVertexArray();
+
+    const dustBuffer =
+      gl.createBuffer();
+
+    let dustCount = 0;
+
+    function buildDust() {
+      dustCount =
+        Math.max(
+          0,
+          Math.floor(
+            config.atmosphere.dustCount
+          )
+        );
+
+      const data = new Float32Array(
+        dustCount * 4
+      );
+
+      for (let i = 0; i < dustCount; i++) {
+        const offset = i * 4;
+
+        data[offset] = random(
+          -viewportWidth * 0.8,
+          viewportWidth * 0.8
+        );
+
+        data[offset + 1] = random(
+          -viewportHeight * 0.8,
+          viewportHeight * 0.8
+        );
+
+        data[offset + 2] = random(
+          -150,
+          200
+        );
+
+        data[offset + 3] = random(
+          0.3,
+          1
+        );
+      }
+
+      gl.bindVertexArray(dustVAO);
+
+      gl.bindBuffer(
+        gl.ARRAY_BUFFER,
+        dustBuffer
+      );
+
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        data,
+        gl.STATIC_DRAW
+      );
+
+      gl.enableVertexAttribArray(0);
+
+      gl.vertexAttribPointer(
+        0,
+        4,
+        gl.FLOAT,
+        false,
+        0,
+        0
+      );
+
+      gl.bindVertexArray(null);
+    }
+
+    function renderDust() {
+      if (
+        !config.atmosphere.enabled ||
+        !config.atmosphere.dust ||
+        dustCount === 0
+      ) {
+        return;
+      }
+
+      gl.useProgram(dustProgram);
+
+      gl.uniformMatrix4fv(
+        dustUniforms.uProjection,
+        false,
+        projectionMatrix
+      );
+
+      gl.uniformMatrix4fv(
+        dustUniforms.uView,
+        false,
+        viewMatrix
+      );
+
+      gl.uniform1f(
+        dustUniforms.uTime,
+        simulationTime
+      );
+
+      gl.uniform1f(
+        dustUniforms.uPointScale,
+        5
+      );
+
+      gl.uniform3fv(
+        dustUniforms.uColor,
+        rgb(config.colors.highlightColor)
+      );
+
+      gl.uniform1f(
+        dustUniforms.uOpacity,
+        config.atmosphere.dustOpacity
+      );
+
+      gl.depthMask(false);
+
+      gl.enable(gl.BLEND);
+
+      gl.blendFunc(
+        gl.SRC_ALPHA,
+        gl.ONE
+      );
+
+      gl.bindVertexArray(dustVAO);
+
+      gl.drawArrays(
+        gl.POINTS,
+        0,
+        dustCount
+      );
+
+      gl.bindVertexArray(null);
+
+      gl.disable(gl.BLEND);
+
+      gl.depthMask(true);
+    }
+
+    // ============================================================
+    // TILE RENDERING
+    // ============================================================
+
+    function renderTiles() {
+      gl.useProgram(tileProgram);
+
+      gl.uniformMatrix4fv(
+        tileUniforms.uProjection,
+        false,
+        projectionMatrix
+      );
+
+      gl.uniformMatrix4fv(
+        tileUniforms.uView,
+        false,
+        viewMatrix
+      );
+
+      gl.uniform1f(
+        tileUniforms.uTime,
+        simulationTime
+      );
+
+      gl.uniform1f(
+        tileUniforms.uBevel,
+        config.tiles.bevel
+      );
+
+      gl.uniform1f(
+        tileUniforms.uThickness,
+        config.tiles.thickness
+      );
+
+      gl.uniform1f(
+        tileUniforms.uMorph,
+        config.tiles.morph
+      );
+
+      const shapeValue =
+        config.tiles.shape === "hexagon"
+          ? 0.5
+          : config.tiles.shape === "triangle"
+            ? 1
+            : 0;
+
+      gl.uniform1f(
+        tileUniforms.uShape,
+        shapeValue
+      );
+
+      gl.uniform1f(
+        tileUniforms.uHero,
+        config.tiles.heroScale
+      );
+
+      gl.uniform3fv(
+        tileUniforms.uEye,
+        cameraEye
+      );
+
+      gl.uniform3fv(
+        tileUniforms.uLight,
+        normalize3(
+          config.lighting.directionX,
+          config.lighting.directionY,
+          config.lighting.directionZ
+        )
+      );
+
+      gl.uniform3fv(
+        tileUniforms.uHighlight,
+        rgb(config.colors.highlightColor)
+      );
+
+      gl.uniform3fv(
+        tileUniforms.uBackColor,
+        rgb(config.colors.colorB)
+      );
+
+      gl.uniform4f(
+        tileUniforms.uMaterial,
+        config.materials.metallic,
+        config.materials.roughness,
+        config.materials.glass,
+        config.materials.iridescence
+      );
+
+      gl.uniform4f(
+        tileUniforms.uLightParams,
+        config.lighting.intensity,
+        config.lighting.ambient,
+        config.lighting.specular,
+        config.lighting.glintStrength
+      );
+
+      gl.uniform4f(
+        tileUniforms.uEffects,
+        config.materials.fresnel,
+        config.materials.environment,
+        config.tiles.edgeOpacity,
+        config.effects.scanSpeed
+      );
+
+      gl.uniform4f(
+        tileUniforms.uFlags,
+        config.effects.hologram ? 1 : 0,
+        config.effects.mirrorUndersides ? 1 : 0,
+        config.effects.scan ? 1 : 0,
+        config.lighting.glints ? 1 : 0
+      );
+
+      gl.uniform1f(
+        tileUniforms.uOpacity,
+        config.tiles.opacity
+      );
+
+      gl.uniform1f(
+        tileUniforms.uEdgeWidth,
+        config.tiles.edgeWidth
+      );
+
+      gl.enable(gl.DEPTH_TEST);
+
+      gl.depthFunc(gl.LEQUAL);
+
+      gl.enable(gl.CULL_FACE);
+
+      gl.cullFace(gl.BACK);
+
+      gl.enable(gl.BLEND);
+
+      gl.blendFunc(
+        gl.SRC_ALPHA,
+        gl.ONE_MINUS_SRC_ALPHA
+      );
+
+      gl.bindVertexArray(tileVAO);
+
+      gl.drawElementsInstanced(
+        gl.TRIANGLES,
+        geometry.indices.length,
+        gl.UNSIGNED_SHORT,
+        0,
+        tiles.length
+      );
+
+      gl.bindVertexArray(null);
+
+      gl.disable(gl.BLEND);
+      gl.disable(gl.CULL_FACE);
+    }
+
+    // ============================================================
+    // SCENE RENDERING
+    // ============================================================
+
+    function renderScene() {
+      gl.bindFramebuffer(
+        gl.FRAMEBUFFER,
+        sceneTarget.framebuffer
+      );
+
+      gl.viewport(
+        0,
+        0,
+        sceneTarget.width,
+        sceneTarget.height
+      );
+
+      const background = rgb(
+        config.colors.backgroundColor
+      );
+
+      gl.clearColor(
+        background[0],
+        background[1],
+        background[2],
+        1
+      );
+
+      gl.clear(
+        gl.COLOR_BUFFER_BIT |
+        gl.DEPTH_BUFFER_BIT
+      );
+
+      renderTiles();
+      renderDust();
+    }
+
+    // ============================================================
+    // BLOOM RENDERING
+    // ============================================================
+
+    function renderBloom() {
+      gl.bindFramebuffer(
+        gl.FRAMEBUFFER,
+        bloomTarget.framebuffer
+      );
+
+      gl.viewport(
+        0,
+        0,
+        bloomTarget.width,
+        bloomTarget.height
+      );
+
+      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.BLEND);
+
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      if (
+        !config.atmosphere.enabled ||
+        !config.atmosphere.bloom
+      ) {
+        return;
+      }
+
+      gl.useProgram(bloomProgram);
+
+      gl.activeTexture(gl.TEXTURE0);
+
+      gl.bindTexture(
+        gl.TEXTURE_2D,
+        sceneTarget.texture
+      );
+
+      gl.uniform1i(
+        bloomUniforms.uScene,
+        0
+      );
+
+      gl.uniform2f(
+        bloomUniforms.uResolution,
+        sceneTarget.width,
+        sceneTarget.height
+      );
+
+      gl.uniform1f(
+        bloomUniforms.uThreshold,
+        config.atmosphere.bloomThreshold
+      );
+
+      gl.uniform1f(
+        bloomUniforms.uBlurRadius,
+        2
+      );
+
+      gl.bindVertexArray(fullscreenVAO);
+
+      gl.drawArrays(
+        gl.TRIANGLES,
+        0,
+        3
+      );
+
+      gl.bindVertexArray(null);
+    }
+
+    // ============================================================
+    // FINAL POST-PROCESSING COMPOSITE
+    // ============================================================
+
+    function renderComposite() {
+      gl.bindFramebuffer(
+        gl.FRAMEBUFFER,
+        null
+      );
+
+      gl.viewport(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.BLEND);
+
+      gl.useProgram(compositeProgram);
+
+      gl.activeTexture(gl.TEXTURE0);
+
+      gl.bindTexture(
+        gl.TEXTURE_2D,
+        sceneTarget.texture
+      );
+
+      gl.uniform1i(
+        compositeUniforms.uScene,
+        0
+      );
+
+      gl.activeTexture(gl.TEXTURE1);
+
+      gl.bindTexture(
+        gl.TEXTURE_2D,
+        bloomTarget.texture
+      );
+
+      gl.uniform1i(
+        compositeUniforms.uBloom,
+        1
+      );
+
+      gl.uniform2f(
+        compositeUniforms.uResolution,
+        canvas.width,
+        canvas.height
+      );
+
+      gl.uniform1f(
+        compositeUniforms.uTime,
+        simulationTime
+      );
+
+      gl.uniform1f(
+        compositeUniforms.uBloomStrength,
+        config.atmosphere.bloomStrength
+      );
+
+      gl.uniform1f(
+        compositeUniforms.uVignette,
+        config.atmosphere.enabled
+          ? config.atmosphere.vignette
+          : 0
+      );
+
+      gl.uniform1f(
+        compositeUniforms.uGrain,
+        config.atmosphere.enabled
+          ? config.atmosphere.grain
+          : 0
+      );
+
+      gl.uniform1f(
+        compositeUniforms.uAberration,
+        config.atmosphere.aberration
+      );
+
+      gl.uniform1f(
+        compositeUniforms.uHaze,
+        config.atmosphere.enabled
+          ? config.atmosphere.haze
+          : 0
+      );
+
+      gl.uniform1f(
+        compositeUniforms.uDofStrength,
+        config.atmosphere.dofStrength
+      );
+
+      gl.uniform3fv(
+        compositeUniforms.uBackground,
+        rgb(config.colors.backgroundColor)
+      );
+
+      gl.uniform4f(
+        compositeUniforms.uFlags,
+        config.atmosphere.enabled &&
+        config.atmosphere.bloom ? 1 : 0,
+
+        config.atmosphere.enabled &&
+        config.atmosphere.chromaticAberration ? 1 : 0,
+
+        config.atmosphere.enabled &&
+        config.atmosphere.depthOfField ? 1 : 0,
+
+        0
+      );
+
+      gl.bindVertexArray(fullscreenVAO);
+
+      gl.drawArrays(
+        gl.TRIANGLES,
+        0,
+        3
+      );
+
+      gl.bindVertexArray(null);
+    }
+
+    // ============================================================
+    // MAIN RENDER FUNCTION
+    // ============================================================
+
+    function render() {
+      renderScene();
+      renderBloom();
+      renderComposite();
+    }
+
+    // ============================================================
+    // CONFIGURATION CHANGES
+    // ============================================================
+
+    function onConfigChange() {
+      const desiredDpr = Math.min(
+        window.devicePixelRatio || 1,
+        config.animation.maxDpr
+      );
+
+      const desiredWidth = Math.max(
+        1,
+        Math.round(
+          window.innerWidth * desiredDpr
+        )
+      );
+
+      const desiredHeight = Math.max(
+        1,
+        Math.round(
+          window.innerHeight * desiredDpr
+        )
+      );
+
+      if (
+        canvas.width !== desiredWidth ||
+        canvas.height !== desiredHeight
+      ) {
+        resize();
+        resizeRenderTargets();
+      }
+
+      if (
+        dustCount !==
+        Math.floor(config.atmosphere.dustCount)
+      ) {
+        buildDust();
+      }
+
+      refreshMesh();
+      updateCamera();
+    }
+
+    function resetMosaic() {
+      buildTiles();
+      buildDust();
+
+      shockwaves.length = 0;
+      gravityWells.length = 0;
+    }
+
+    // ============================================================
+    // VISUAL PRESETS
+    // ============================================================
+
+    const presets = {
+      classic: {
+        camera: {
+          mode: "orthographic",
+          tiltX: 0,
+          tiltY: 0,
+          depth: 0,
+          zoom: 1
+        },
+
+        materials: {
+          type: "satin",
+          metallic: 0.05,
+          roughness: 0.8,
+          glass: 0,
+          iridescence: 0
+        },
+
+        motion: {
+          mode: "classic",
+          drift: 15,
+          separation: 0.65
+        },
+
+        atmosphere: {
+          bloom: false,
+          dust: false,
+          depthOfField: false
+        }
+      },
+
+      cinematic: {
+        camera: {
+          mode: "perspective",
+          tiltX: 8,
+          tiltY: -6,
+          depth: 45,
+          zoom: 1
+        },
+
+        materials: {
+          type: "iridescent",
+          metallic: 0.55,
+          roughness: 0.25,
+          glass: 0.35,
+          iridescence: 0.8
+        },
+
+        motion: {
+          mode: "wave",
+          separation: 0.8
+        },
+
+        atmosphere: {
+          bloom: true,
+          bloomStrength: 0.85,
+          dust: true,
+          vignette: 0.3
+        }
+      },
+
+      chaos: {
+        camera: {
+          mode: "perspective",
+          tiltX: 14,
+          tiltY: 10,
+          depth: 75
+        },
+
+        motion: {
+          mode: "explosion",
+          explodeStrength: 180,
+          separation: 1,
+          rotation: 45
+        },
+
+        physics: {
+          vortex: true,
+          shockwaves: true,
+          shockStrength: 120
+        },
+
+        effects: {
+          fractures: true,
+          connections: true
+        }
+      },
+
+      portal: {
+        camera: {
+          mode: "perspective",
+          tiltX: 0,
+          tiltY: 0,
+          depth: 80
+        },
+
+        motion: {
+          mode: "vortex",
+          separation: 0.9
+        },
+
+        effects: {
+          portal: true,
+          portalRadius: 220,
+          portalStrength: 1,
+          hologram: true
+        },
+
+        atmosphere: {
+          bloom: true,
+          bloomStrength: 1.1
+        }
+      }
+    };
+
+    function applyPreset(name) {
+      const preset = presets[name];
+
+      if (!preset) {
+        return;
+      }
+
+      // Restore defaults first so presets do not
+      // inherit unrelated effects from one another.
+      for (
+        const [groupName, values] of
+        Object.entries(defaults)
+      ) {
+        if (!config[groupName]) {
+          continue;
+        }
+
+        for (
+          const [key, value] of
+          Object.entries(values)
+        ) {
+          config[groupName][key] =
+            structuredClone(value);
+        }
+      }
+
+      // Apply the selected preset.
+      for (
+        const [groupName, values] of
+        Object.entries(preset)
+      ) {
+        if (!config[groupName]) {
+          continue;
+        }
+
+        Object.assign(
+          config[groupName],
+          values
+        );
+      }
+
+      onConfigChange();
+      resetMosaic();
+    }
+
+    // ============================================================
+    // ANIMATION LOOP
+    // ============================================================
+
+    let lastRenderedTime = 0;
+
+    function animate(timestamp) {
+      requestAnimationFrame(animate);
+
+      const now = timestamp * 0.001;
+
+      if (previousTime === null) {
+        previousTime = now;
+      }
+
+      const rawDt = clamp(
+        now - previousTime,
+        0,
+        0.05
+      );
+
+      previousTime = now;
+
+      const maxFps = Math.max(
+        1,
+        config.animation.maxFps
+      );
+
+      const frameInterval =
+        1 / maxFps;
+
+      if (
+        now - lastRenderedTime <
+        frameInterval
+      ) {
+        return;
+      }
+
+      lastRenderedTime = now;
+
+      const reducedMotion =
+        config.animation.respectReducedMotion &&
+        window.matchMedia(
+          "(prefers-reduced-motion: reduce)"
+        ).matches;
+
+      const paused =
+        config.animation.paused ||
+        reducedMotion;
+
+      const dt = paused
+        ? 0
+        : rawDt *
+          config.animation.speed;
+
+      if (!paused) {
+        simulationTime += dt;
+
+        updatePointerSmoothing(dt);
+        updateShockwaves(dt);
+        updateGravityWells(dt);
+      }
+
+      refreshMesh();
+
+      // IMPORTANT:
+      // Update camera BEFORE calculating physics.
+      // Mouse raycasting and rendering now use
+      // exactly the same view/projection matrices.
+      updateCamera();
+
+      updateInstanceData(dt);
+
+      render();
+    }
+
+    // ============================================================
+    // RESIZE HANDLING
+    // ============================================================
+
+    window.addEventListener(
+      "resize",
+      () => {
+        resize();
+        resizeRenderTargets();
+        buildDust();
+      }
+    );
+
+    // ============================================================
+    // INITIALIZATION
+    // ============================================================
 
     resize();
-    requestAnimationFrame(frame);
+    resizeRenderTargets();
+    buildDust();
+
+    updateCamera();
+    updateInstanceData(0);
+
+    requestAnimationFrame(animate);
+
+    // ============================================================
+    // SETTINGS EDITOR
+    // ============================================================
 
     if (config.panel.enabled) {
       import("./settings-editor.js")
         .then(({ createSettingsEditor }) => {
           createSettingsEditor({
             config,
-            onChange: refresh,
-            onReset: buildTiles
+            defaults,
+            presets,
+            onChange: onConfigChange,
+            onReset: resetMosaic,
+            onPreset: applyPreset
           });
         })
-        .catch(error => console.error("Editor could not load:", error));
+        .catch(error => {
+          console.error(
+            "Settings editor could not load:",
+            error
+          );
+        });
     }
+
   </script>
 </body>
 </html>
