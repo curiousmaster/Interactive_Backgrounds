@@ -1,197 +1,205 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Floating Tesserae — WebGL2</title>
-    <style>
-      html,
-      body {
-        margin: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        background: #090e19
-      }
-
-      #background {
-        position: fixed;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        display: block;
-        touch-action: none
-      }
-
-      #notice {
-        position: fixed;
-        bottom: 12px;
-        left: 12px;
-        color: #dce8f4;
-        font: 12px system-ui;
-        pointer-events: none
-      }
-    </style>
-  </head>
-  <body><canvas id="background" aria-label="Interactive floating tesserae background"></canvas>
-    <div id="notice" role="status"></div>
-    <script type="module">
-      const defaults = {
-        tiles: {
-          size: 19,
-          spacing: 2,
-          sizeVariation: 0,
-          thickness: 10,
-          bevel: .36,
-          shape: 'hexagon',
-          morph: .51,
-          opacity: .8,
-          edgeOpacity: .43,
-          edgeWidth: .075,
-          heroChance: .06,
-          heroScale: 1.4,
-          personality: .2
-        },
-        camera: {
-          mode: 'orthographic',
-          tiltX: 0,
-          tiltY: 0,
-          perspective: 640,
-          zoom: 1.52,
-          minZoom: 1.52,
-          maxZoom: 4,
-          wheelZoom: true,
-          parallax: 12,
-          depth: 0,
-          autoOrbit: false,
-          orbitSpeed: .05
-        },
-        materials: {
-          type: 'metal',
-          metallic: .15,
-          roughness: .43,
-          glass: 0,
-          iridescence: 0,
-          fresnel: .41,
-          backContrast: .3,
-          environment: .44
-        },
-        lighting: {
-          directionX: -.26,
-          directionY: -.5,
-          directionZ: 1,
-          intensity: 1,
-          ambient: .21,
-          specular: 0,
-          glints: false,
-          glintStrength: 0
-        },
-        motion: {
-          drift: 0,
-          speed: .23,
-          assemblySpeed: 1.1,
-          separation: .42,
-          cycleDuration: 18,
-          mode: 'wave',
-          rotation: 14,
-          breathing: .4,
-          explode: false,
-          explodeStrength: 90,
-          domino: false,
-          dominoSpeed: 2
-        },
-        physics: {
-          enabled: true,
-          repulsion: true,
-          attraction: false,
-          vortex: false,
-          dragBend: false,
-          radius: 180,
-          displacement: 95,
-          rotation: 40,
-          stiffness: 22,
-          damping: 8,
-          wavePropagation: true,
-          waveSpeed: 250,
-          shockwaves: true,
-          shockStrength: 65,
-          gravityWells: false,
-          gravityStrength: 55
-        },
-        colors: {
-          backgroundColor: [0, 0, 0],
-          colorA: [120, 23, 23],
-          colorB: [159, 65, 65],
-          colorC: [211, 121, 111],
-          highlightColor: [219, 149, 149],
-          scale: 350,
-          speed: .48,
-          flow: false,
-          flowStrength: .35,
-          aurora: true,
-          heightInfluence: .2,
-          chromaticRipple: true
-        },
-        atmosphere: {
-          enabled: false,
-          haze: .12,
-          dust: false,
-          dustCount: 130,
-          dustOpacity: .32,
-          bloom: true,
-          bloomStrength: .5,
-          bloomThreshold: .65,
-          depthOfField: true,
-          dofStrength: .18,
-          vignette: .25,
-          grain: .035,
-          chromaticAberration: false,
-          aberration: .002,
-          trails: false,
-          trailPersistence: .85
-        },
-        effects: {
-          fractures: false,
-          fractureIntensity: .65,
-          connections: false,
-          connectionDistance: 3,
-          portal: false,
-          portalRadius: 140,
-          portalStrength: .8,
-          scan: false,
-          scanSpeed: .2,
-          lightTrails: false,
-          mirrorUndersides: false,
-          hologram: false
-        },
-        animation: {
-          speed: 1.85,
-          paused: false,
-          respectReducedMotion: true,
-          quality: 'medium',
-          maxDpr: 1.75,
-          maxFps: 60,
-          adaptiveQuality: true
-        },
-        panel: {
-          enabled: true
-        }
-      };
-      const config = structuredClone(defaults);
-      window.getBackgroundConfig = () => structuredClone(config);
-      const canvas = document.querySelector('#background'),
-        notice = document.querySelector('#notice');
-      const gl = canvas.getContext('webgl2', {
-        alpha: false,
-        antialias: true,
-        depth: true,
-        premultipliedAlpha: false
-      });
-      if (!gl) {
-        notice.textContent = 'WebGL2 is unavailable in this browser.';
-        throw Error('WebGL2 required');
-      }
-      const vertex = `#version 300 es
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floating Tesserae — WebGL2</title>
+<style>
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #090e19;
+}
+#background {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+#notice {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  color: #dce8f4;
+  font: 12px system-ui;
+  pointer-events: none;
+}
+</style>
+</head>
+<body>
+<canvas id="background" aria-label="Interactive floating tesserae background"></canvas>
+<div id="notice" role="status"></div>
+<script type="module">
+const defaults = {
+  "tiles": {
+    "size": 19,
+    "spacing": 2,
+    "sizeVariation": 0,
+    "thickness": 10,
+    "bevel": 0.36,
+    "shape": "hexagon",
+    "morph": 0.51,
+    "opacity": 0.8,
+    "edgeOpacity": 0.43,
+    "edgeWidth": 0.075,
+    "heroChance": 0.06,
+    "heroScale": 1.4,
+    "personality": 0.2
+  },
+  "camera": {
+    "mode": "orthographic",
+    "tiltX": 0,
+    "tiltY": 0,
+    "perspective": 640,
+    "zoom": 1.52,
+    "minZoom": 1.52,
+    "maxZoom": 4,
+    "wheelZoom": true,
+    "parallax": 12,
+    "depth": 0,
+    "autoOrbit": false,
+    "orbitSpeed": 0.05
+  },
+  "materials": {
+    "type": "metal",
+    "metallic": 0.15,
+    "roughness": 0.43,
+    "glass": 0,
+    "iridescence": 0,
+    "fresnel": 0.41,
+    "backContrast": 0.3,
+    "environment": 0.44
+  },
+  "lighting": {
+    "directionX": -0.26,
+    "directionY": -0.5,
+    "directionZ": 1,
+    "intensity": 1,
+    "ambient": 0.21,
+    "specular": 0,
+    "glints": false,
+    "glintStrength": 0
+  },
+  "motion": {
+    "drift": 0,
+    "speed": 0.23,
+    "assemblySpeed": 1.1,
+    "separation": 0.42,
+    "cycleDuration": 18,
+    "mode": "wave",
+    "rotation": 14,
+    "breathing": 0.4,
+    "explode": false,
+    "explodeStrength": 90,
+    "domino": false,
+    "dominoSpeed": 2
+  },
+  "physics": {
+    "enabled": true,
+    "repulsion": true,
+    "attraction": false,
+    "vortex": false,
+    "dragBend": false,
+    "radius": 180,
+    "displacement": 95,
+    "rotation": 40,
+    "stiffness": 22,
+    "damping": 8,
+    "wavePropagation": true,
+    "waveSpeed": 250,
+    "shockwaves": true,
+    "shockStrength": 65,
+    "gravityWells": false,
+    "gravityStrength": 55
+  },
+  "colors": {
+    "backgroundColor": [
+      0,
+      0,
+      0
+    ],
+    "colorA": [
+      120,
+      23,
+      23
+    ],
+    "colorB": [
+      159,
+      65,
+      65
+    ],
+    "colorC": [
+      211,
+      121,
+      111
+    ],
+    "highlightColor": [
+      219,
+      149,
+      149
+    ],
+    "scale": 350,
+    "speed": 0.48,
+    "flow": false,
+    "flowStrength": 0.35,
+    "aurora": true,
+    "heightInfluence": 0.2,
+    "chromaticRipple": true
+  },
+  "atmosphere": {
+    "enabled": false,
+    "haze": 0.12,
+    "dust": false,
+    "dustCount": 130,
+    "dustOpacity": 0.32,
+    "bloom": true,
+    "bloomStrength": 0.5,
+    "bloomThreshold": 0.65,
+    "depthOfField": true,
+    "dofStrength": 0.18,
+    "vignette": 0.25,
+    "grain": 0.035,
+    "chromaticAberration": false,
+    "aberration": 0.002,
+    "trails": false,
+    "trailPersistence": 0.85
+  },
+  "effects": {
+    "fractures": false,
+    "fractureIntensity": 0.65,
+    "connections": false,
+    "connectionDistance": 3,
+    "portal": false,
+    "portalRadius": 140,
+    "portalStrength": 0.8,
+    "scan": false,
+    "scanSpeed": 0.2,
+    "lightTrails": false,
+    "mirrorUndersides": false,
+    "hologram": false
+  },
+  "animation": {
+    "speed": 1.85,
+    "paused": false,
+    "respectReducedMotion": true,
+    "quality": "medium",
+    "maxDpr": 1.75,
+    "maxFps": 60,
+    "adaptiveQuality": true
+  },
+  "panel": {
+    "enabled": true
+  }
+};
+const config=structuredClone(defaults);window.getBackgroundConfig=()=>structuredClone(config);
+const canvas=document.querySelector('#background'),notice=document.querySelector('#notice');
+const gl=canvas.getContext('webgl2',{alpha:false,antialias:true,depth:true,premultipliedAlpha:false});
+if(!gl){notice.textContent='WebGL2 is unavailable in this browser.';throw Error('WebGL2 required');}
+const vertex=`#version 300 es
 precision highp float;
 layout(location=0) in vec3 aPos;
 layout(location=1) in vec3 aNormal;
@@ -208,7 +216,30 @@ uniform float uMorph;
 uniform float uShape;
 uniform float uHero;
 out vec3 vNormal;out vec3 vWorld;out vec3 vColor;out vec2 vLocal;out float vHero;out float vBack;out float vPhase;
-mat3 rot(vec3 a){vec3 c=cos(a),s=sin(a);mat3 rx=mat3(1,0,0,0,c.x,s.x,0,-s.x,c.x);mat3 ry=mat3(c.y,0,-s.y,0,1,0,s.y,0,c.y);mat3 rz=mat3(c.z,s.z,0,-s.z,c.z,0,0,1);return rz*ry*rx;}
+mat3 rot(vec3 a) {
+    vec3 c = cos(a);
+    vec3 s = sin(a);
+
+    mat3 rx = mat3(
+        1.0, 0.0, 0.0,
+        0.0, c.x, s.x,
+        0.0, -s.x, c.x
+    );
+
+    mat3 ry = mat3(
+        c.y, 0.0, -s.y,
+        0.0, 1.0, 0.0,
+        s.y, 0.0, c.y
+    );
+
+    mat3 rz = mat3(
+        c.z, s.z, 0.0,
+        -s.z, c.z, 0.0,
+        0.0, 0.0, 1.0
+    );
+
+    return rz * ry * rx;
+}
 void main(){
  vec3 p=aPos;vec3 n=aNormal;
  // Radial morphing produces rounded diamond/hexagonal silhouettes while retaining a solid mesh.
@@ -222,7 +253,7 @@ void main(){
  vWorld=world;vNormal=normalize(r*n);vColor=iColor.rgb;vLocal=aPos.xy;vHero=iExtra.x;vBack=step(0.,-aNormal.z);vPhase=iExtra.z;
  gl_Position=uProjection*uView*vec4(world,1.);
 }`;
-      const fragment = `#version 300 es
+const fragment=`#version 300 es
 precision highp float;
 in vec3 vNormal;in vec3 vWorld;in vec3 vColor;in vec2 vLocal;in float vHero;in float vBack;in float vPhase;
 out vec4 outColor;
@@ -258,9 +289,9 @@ void main(){
  float alpha=uOpacity*(1.-uMaterial.z*.22);
  outColor=vec4(color,alpha);
 }`;
-      const postVertex = `#version 300 es
+const postVertex=`#version 300 es
 precision highp float;const vec2 p[3]=vec2[3](vec2(-1.,-1.),vec2(3.,-1.),vec2(-1.,3.));out vec2 uv;void main(){gl_Position=vec4(p[gl_VertexID],0.,1.);uv=p[gl_VertexID]*.5+.5;}`;
-      const postFragment = `#version 300 es
+const postFragment=`#version 300 es
 precision highp float;in vec2 uv;out vec4 outColor;uniform sampler2D tex;uniform vec2 resolution;uniform vec4 post;uniform vec4 post2;uniform float time;uniform vec2 extra;uniform vec3 background;
 float rand(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 void main(){
@@ -272,723 +303,186 @@ void main(){
  c+=(rand(uv*resolution+time)-.5)*post.w;
  c=c/(1.+max(c-1.,0.));outColor=vec4(c,1.);
 }`;
-
-      function shader(type, src) {
-        const s = gl.createShader(type);
-        gl.shaderSource(s, src);
-        gl.compileShader(s);
-        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw Error(gl.getShaderInfoLog(s));
-        return s;
-      }
-
-      function program(v, f) {
-        const p = gl.createProgram();
-        gl.attachShader(p, shader(gl.VERTEX_SHADER, v));
-        gl.attachShader(p, shader(gl.FRAGMENT_SHADER, f));
-        gl.linkProgram(p);
-        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw Error(gl.getProgramInfoLog(p));
-        return p;
-      }
-      const prog = program(vertex, fragment),
-        postProg = program(postVertex, postFragment);
-
-      function loc(p, name) {
-        return gl.getUniformLocation(p, name);
-      }
-
-      function u1(p, n, x) {
-        gl.uniform1f(loc(p, n), x);
-      }
-
-      function u2(p, n, a, b) {
-        gl.uniform2f(loc(p, n), a, b);
-      }
-
-      function u3(p, n, a) {
-        gl.uniform3fv(loc(p, n), a);
-      }
-
-      function u4(p, n, a) {
-        gl.uniform4fv(loc(p, n), a);
-      }
-
-      function mat(p, n, a) {
-        gl.uniformMatrix4fv(loc(p, n), false, a);
-      }
-      const clamp = (v, a, b) => Math.max(a, Math.min(b, v)),
-        rad = v => v * Math.PI / 180,
-        mix = (a, b, t) => a + (b - a) * t;
-      const rgb = c => c.map(x => x / 255);
-
-      function perspective(fov, aspect, near, far) {
-        let f = 1 / Math.tan(fov / 2);
-        return new Float32Array([f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) / (near - far), -1, 0, 0, 2 * far * near / (near - far), 0]);
-      }
-
-      function ortho(l, r, b, t, n, f) {
-        return new Float32Array([2 / (r - l), 0, 0, 0, 0, 2 / (t - b), 0, 0, 0, 0, -2 / (f - n), 0, -(r + l) / (r - l), -(t + b) / (t - b), -(f + n) / (f - n), 1]);
-      }
-
-      function viewMatrix(rx, ry, z) {
-        let cx = Math.cos(rx),
-          sx = Math.sin(rx),
-          cy = Math.cos(ry),
-          sy = Math.sin(ry);
-        return new Float32Array([cy, sx * sy, -cx * sy, 0, 0, cx, sx, 0, sy, -sx * cy, cx * cy, 0, 0, 0, -z, 1]);
-      }
-      // Beveled polygon prisms. The mesh is rebuilt when shape, bevel or morph changes.
-      const positions = [],
-        normals = [];
-
-      function tri(a, b, c, n) {
-        for (const p of [a, b, c]) {
-          positions.push(...p);
-          normals.push(...n);
-        }
-      }
-
-      function quad(a, b, c, d, n) {
-        tri(a, b, c, n);
-        tri(a, c, d, n);
-      }
-
-      function geometry() {
-        positions.length = 0;
-        normals.length = 0;
-        const sides = config.tiles.shape === 'triangle' ? 3 : config.tiles.shape === 'hexagon' ? 6 : 4;
-        const bevel = clamp(config.tiles.bevel, 0, .48);
-        const morph = clamp(config.tiles.morph, 0, 1);
-        const radius = sides === 4 ? Math.SQRT1_2 : sides === 3 ? .58 : .5;
-        const angle0 = sides === 4 ? Math.PI / 4 : sides === 3 ? Math.PI / 2 : Math.PI / 6;
-        const ring = (r, z) => Array.from({
-          length: sides
-        }, (_, i) => {
-          let a = angle0 + i * Math.PI * 2 / sides;
-          return [Math.cos(a) * r, Math.sin(a) * r, z];
-        });
-        const top = ring(radius * (1 - bevel), .5),
-          outerTop = ring(radius, .5 - bevel * .55);
-        const outerBottom = ring(radius, -.5 + bevel * .55),
-          bottom = ring(radius * (1 - bevel), -.5);
-        for (let i = 0; i < sides; i++) {
-          const j = (i + 1) % sides;
-          tri([0, 0, .5], top[i], top[j], [0, 0, 1]);
-          tri([0, 0, -.5], bottom[j], bottom[i], [0, 0, -1]);
-          const angle = angle0 + (i + .5) * Math.PI * 2 / sides,
-            n = [Math.cos(angle), Math.sin(angle), 0];
-          quad(outerTop[i], outerBottom[i], outerBottom[j], outerTop[j], n);
-          quad(top[i], outerTop[i], outerTop[j], top[j], [n[0] * .65, n[1] * .65, .76]);
-          quad(outerBottom[i], bottom[i], bottom[j], outerBottom[j], [n[0] * .65, n[1] * .65, -.76]);
-        }
-        // Morph gives the chosen polygon a progressively more circular silhouette.
-        if (morph > 0) {
-          for (let i = 0; i < positions.length; i += 3) {
-            let x = positions[i],
-              y = positions[i + 1],
-              r = Math.hypot(x, y);
-            if (r > .001) {
-              let a = Math.atan2(y, x),
-                sector = Math.PI * 2 / sides,
-                theta = ((a - angle0 + sector * .5) % sector + sector) % sector - sector * .5;
-              let edgeRadius = radius * Math.cos(Math.PI / sides) / Math.max(.25, Math.cos(theta));
-              let target = r * radius / Math.max(edgeRadius, .001);
-              positions[i] = mix(x, x * target / r, morph);
-              positions[i + 1] = mix(y, y * target / r, morph);
-            }
-          }
-        }
-      }
-      const vao = gl.createVertexArray();
-      gl.bindVertexArray(vao);
-
-      function attribute(index, arr, size, divisor = 0) {
-        const b = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, b);
-        gl.bufferData(gl.ARRAY_BUFFER, arr, divisor ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW);
-        gl.enableVertexAttribArray(index);
-        gl.vertexAttribPointer(index, size, gl.FLOAT, false, 0, 0);
-        gl.vertexAttribDivisor(index, divisor);
-        return b;
-      }
-      const geoPosition = attribute(0, new Float32Array(0), 3),
-        geoNormal = attribute(1, new Float32Array(0), 3);
-      const instanceBuffers = [attribute(2, new Float32Array(4), 4, 1), attribute(3, new Float32Array(4), 4, 1), attribute(4, new Float32Array(4), 4, 1), attribute(5, new Float32Array(4), 4, 1)];
-      gl.bindVertexArray(null);
-      let count = 0,
-        geometrySnapshot = '';
-
-      function refreshGeometry() {
-        const key = [config.tiles.shape, config.tiles.bevel, config.tiles.morph].join('|');
-        if (key === geometrySnapshot) return;
-        geometrySnapshot = key;
-        geometry();
-        count = positions.length / 3;
-        gl.bindBuffer(gl.ARRAY_BUFFER, geoPosition);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-        gl.bindBuffer(gl.ARRAY_BUFFER, geoNormal);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
-      }
-      refreshGeometry();
-      let width = 1,
-        height = 1,
-        dpr = 1,
-        tiles = [],
-        clock = 0,
-        last = 0,
-        lastFrame = 0,
-        frameTimes = [],
-        waves = [],
-        dust = [],
-        target = null,
-        scene = null,
-        depth = null,
-        qualityScale = 1;
-      const pointer = {
-        x: 0,
-        y: 0,
-        tx: 0,
-        ty: 0,
-        active: false,
-        down: false,
-        dragX: 0,
-        dragY: 0
-      };
-
-      function createTarget() {
-        if (scene) {
-          gl.deleteFramebuffer(scene.fbo);
-          gl.deleteTexture(scene.tex);
-          gl.deleteRenderbuffer(depth);
-        }
-        const tex = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, canvas.width, canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        const rb = gl.createRenderbuffer();
-        gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
-        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, canvas.width, canvas.height);
-        const fbo = gl.createFramebuffer();
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rb);
-        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw Error('Framebuffer incomplete');
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        scene = {
-          fbo,
-          tex
-        };
-        depth = rb;
-      }
-
-      function rebuild() {
-        tiles = [];
-        const step = config.tiles.size + config.tiles.spacing,
-          margin = step * 5;
-        for (let y = -height / 2 - margin; y < height / 2 + margin; y += step)
-          for (let x = -width / 2 - margin; x < width / 2 + margin; x += step) {
-            const hero = Math.random() < config.tiles.heroChance;
-            tiles.push({
-              x,
-              y,
-              px: 0,
-              py: 0,
-              pz: 0,
-              vx: 0,
-              vy: 0,
-              vz: 0,
-              phase: Math.random() * 6.283,
-              size: (1 - config.tiles.sizeVariation * Math.random()) * (hero ? config.tiles.heroScale : 1),
-              mass: hero ? 2.5 : mix(.7, 1.5, Math.random()),
-              hero: hero ? 1 : 0,
-              axis: Math.random() * 6.283,
-              colorShift: Math.random() * 2 - 1
-            });
-          }
-        dust = Array.from({
-          length: config.atmosphere.dustCount
-        }, () => ({
-          x: (Math.random() - .5) * width,
-          y: (Math.random() - .5) * height,
-          z: Math.random() * 120,
-          phase: Math.random() * 6.28
-        }));
-      }
-
-      function resize() {
-        width = innerWidth;
-        height = innerHeight;
-        dpr = Math.min(devicePixelRatio || 1, config.animation.maxDpr) * qualityScale * ({
-          low: .6,
-          medium: .8,
-          high: 1,
-          auto: 1
-        } [config.animation.quality] || 1);
-        canvas.width = Math.max(1, Math.round(width * dpr));
-        canvas.height = Math.max(1, Math.round(height * dpr));
-        gl.viewport(0, 0, canvas.width, canvas.height);
-        createTarget();
-        rebuild();
-      }
-
-      function wave(x, y, power = 1) {
-        if (waves.length > 12) waves.shift();
-        waves.push({
-          x,
-          y,
-          age: 0,
-          power
-        });
-      }
-
-      function sampleColor(x, y, z) {
-        const c = config.colors,
-          s = c.scale,
-          t = clock * c.speed;
-        let field = Math.sin(x / s + t) * .45 + Math.cos(y / s * 1.3 - t * .7) * .35 + Math.sin((x + y) / s * .6 + t * .4) * .2;
-        if (c.flow) field += Math.sin(x / s * 1.9 + y / s * .8 + t * 1.7) * c.flowStrength * .3;
-        if (c.aurora) field += Math.sin(y / s * 2 + t * 2 + Math.sin(x / s + t)) * .18;
-        let f = clamp((field + 1) / 2 + z / 200 * c.heightInfluence, 0, 1),
-          a = f < .5 ? c.colorA : c.colorB,
-          b = f < .5 ? c.colorB : c.colorC,
-          k = f < .5 ? f * 2 : (f - .5) * 2;
-        return [mix(a[0], b[0], k) / 255, mix(a[1], b[1], k) / 255, mix(a[2], b[2], k) / 255];
-      }
-
-      function update(dt) {
-        pointer.x = pointer.tx;
-        pointer.y = pointer.ty;
-        for (const w of waves) w.age += dt;
-        waves = waves.filter(w => w.age < 4);
-        const p = config.physics,
-          m = config.motion,
-          step = config.tiles.size + config.tiles.spacing,
-          spin = clock * m.speed,
-          cycle = clock / m.cycleDuration * 6.283;
-        for (const t of tiles) {
-          let sep = (.5 + .5 * Math.sin(cycle + t.x / 500 + t.y / 650)) * m.separation;
-          let tx = Math.sin(t.y / 230 + spin + t.phase * .15) * m.drift * sep,
-            ty = Math.cos(t.x / 270 - spin * .8 + t.phase * .15) * m.drift * sep,
-            tz = Math.sin(spin + t.phase) * config.camera.depth * sep;
-          tz += Math.sin(clock * 1.5 + t.phase) * m.breathing * 8;
-          if (m.mode === 'vortex') {
-            let a = spin + t.phase * .1;
-            tx += Math.cos(a) * m.drift * sep;
-            ty += Math.sin(a) * m.drift * sep;
-          }
-          if (m.mode === 'explosion' || m.explode) {
-            let a = Math.atan2(t.y, t.x),
-              burst = Math.pow(Math.max(0, Math.sin(cycle)), 3) * m.explodeStrength;
-            tx += Math.cos(a) * burst;
-            ty += Math.sin(a) * burst;
-            tz += burst * .7;
-          }
-          if (m.mode === 'magnetic') {
-            let k = Math.sin(cycle + t.phase) * .5 + .5;
-            tx += Math.sin(t.phase * 3) * m.drift * k;
-            ty += Math.cos(t.phase * 2) * m.drift * k;
-          }
-          if (m.mode === 'domino' || m.domino) {
-            tz += Math.pow(Math.max(0, Math.sin(t.x / step * .25 + t.y / step * .2 - clock * m.dominoSpeed)), 8) * config.camera.depth * 2;
-          }
-          if (m.breathing) tz += Math.sin(clock * .7 + t.x / 300 + t.y / 300) * m.breathing * 20;
-          const dx = t.x - pointer.x,
-            dy = t.y - pointer.y,
-            dist = Math.hypot(dx, dy) + .001,
-            influence = p.enabled && pointer.active ? Math.pow(clamp(1 - dist / p.radius, 0, 1), 2) : 0;
-          if (p.enabled) {
-            const sign = p.attraction ? -1 : (p.repulsion ? 1 : 0);
-            tx += dx / dist * p.displacement * influence * sign;
-            ty += dy / dist * p.displacement * influence * sign;
-            if (p.vortex) {
-              tx += -dy / dist * p.displacement * influence;
-              ty += dx / dist * p.displacement * influence;
-            }
-            if (p.dragBend && pointer.down) tz += influence * (pointer.dragX + pointer.dragY) * .4;
-            if (p.gravityWells) tz -= p.gravityStrength * Math.exp(-dist * dist / (p.radius * p.radius));
-          }
-          for (const w of waves) {
-            const d = Math.hypot(t.x - w.x, t.y - w.y),
-              front = w.age * p.waveSpeed,
-              band = Math.exp(-Math.pow((d - front) / (p.wavePropagation ? 45 : 110), 2)) * w.power;
-            tz += band * p.shockStrength;
-            tx += d > 1 ? (t.x - w.x) / d * band * 15 : 0;
-            ty += d > 1 ? (t.y - w.y) / d * band * 15 : 0;
-          }
-          if (config.effects.portal) {
-            const r = Math.hypot(t.x, t.y),
-              v = Math.exp(-Math.pow((r - config.effects.portalRadius) / 70, 2));
-            tz -= v * config.effects.portalStrength * 120;
-          }
-          if (m.domino || m.mode === 'domino') tz += Math.sin(t.x * .08 - clock * m.dominoSpeed) * config.tiles.thickness;
-          if (config.effects.fractures) {
-            let crack = Math.abs(Math.sin(t.x * .021 + t.y * .014 + clock * .3));
-            tz += Math.pow(crack, 22) * config.effects.fractureIntensity * 65;
-          }
-          const stiff = (p.enabled ? p.stiffness : 6) * m.assemblySpeed,
-            damp = p.enabled ? p.damping : 8,
-            inv = 1 / t.mass;
-          t.vx += (tx - t.px) * stiff * inv * dt;
-          t.vy += (ty - t.py) * stiff * inv * dt;
-          t.vz += (tz - t.pz) * stiff * inv * dt;
-          const drag = Math.exp(-damp * dt);
-          t.vx *= drag;
-          t.vy *= drag;
-          t.vz *= drag;
-          t.px += t.vx * dt;
-          t.py += t.vy * dt;
-          t.pz += t.vz * dt;
-        }
-      }
-
-      function render() {
-        const cam = config.camera,
-          c = config.colors,
-          fx = config.effects,
-          at = config.atmosphere;
-        const bg = rgb(c.backgroundColor);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, scene.fbo);
-        gl.viewport(0, 0, canvas.width, canvas.height);
-        gl.enable(gl.DEPTH_TEST);
-        gl.depthMask(true);
-        gl.disable(gl.BLEND);
-        gl.clearColor(...bg, 1);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-        let fov = 2 * Math.atan(height / (2 * cam.perspective)),
-          z = cam.perspective / cam.zoom;
-        let projection = cam.mode === 'orthographic' ? ortho(-width / 2 / cam.zoom, width / 2 / cam.zoom, -height / 2 / cam.zoom, height / 2 / cam.zoom, -2000, 2000) : perspective(fov, width / height, 1, 4000);
-        let vx = rad(cam.tiltX) + (cam.autoOrbit ? Math.sin(clock * cam.orbitSpeed) * .09 : 0),
-          vy = rad(cam.tiltY) + (cam.autoOrbit ? Math.cos(clock * cam.orbitSpeed) * .09 : 0);
-        let view = viewMatrix(vx, vy, z);
-        const n = tiles.length,
-          arrays = Array.from({
-            length: 4
-          }, () => new Float32Array(n * 4));
-        let i = 0;
-        for (const t of tiles) {
-          const a = i * 4,
-            x = t.x + t.px,
-            y = t.y + t.py,
-            z0 = t.pz + Math.sin(clock * .4 + t.phase) * config.tiles.personality * 4;
-          const tilt = rad(config.physics.rotation) * Math.pow(clamp(1 - Math.hypot(t.x - pointer.x, t.y - pointer.y) / config.physics.radius, 0, 1), 2) * (pointer.active ? 1 : 0);
-          const rot = rad(config.motion.rotation) * Math.sin(clock * config.motion.speed + t.phase) * config.motion.separation;
-          arrays[0].set([x, y, z0, t.size * config.tiles.size], a);
-          arrays[1].set([rot * Math.cos(t.axis) + tilt * .3, rot * Math.sin(t.axis) + tilt * .3, rot + tilt, t.phase], a);
-          const color = sampleColor(t.x, t.y, z0);
-          arrays[2].set([...color, 1], a);
-          arrays[3].set([t.hero, t.mass, t.phase, t.colorShift], a);
-          i++;
-        }
-        refreshGeometry();
-        gl.useProgram(prog);
-        gl.bindVertexArray(vao);
-        for (let j = 0; j < 4; j++) {
-          gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffers[j]);
-          gl.bufferData(gl.ARRAY_BUFFER, arrays[j], gl.DYNAMIC_DRAW);
-        }
-        mat(prog, 'uProjection', projection);
-        mat(prog, 'uView', view);
-        u3(prog, 'uEye', [0, 0, z]);
-        u3(prog, 'uLight', [config.lighting.directionX, config.lighting.directionY, config.lighting.directionZ]);
-        u3(prog, 'uHighlight', rgb(c.highlightColor));
-        u3(prog, 'uBackColor', rgb(c.colorC));
-        u4(prog, 'uMaterial', [config.materials.metallic, config.materials.roughness, config.materials.glass, config.materials.iridescence]);
-        u4(prog, 'uLightParams', [config.lighting.intensity, config.lighting.ambient, config.lighting.specular, config.lighting.glintStrength]);
-        u4(prog, 'uEffects', [config.materials.fresnel, config.materials.environment, config.tiles.edgeOpacity, 1]);
-        u4(prog, 'uFlags', [+fx.hologram, +fx.mirrorUndersides, +fx.scan, +config.lighting.glints]);
-        u1(prog, 'uTime', clock);
-        u1(prog, 'uOpacity', config.tiles.opacity);
-        u1(prog, 'uEdgeWidth', config.tiles.edgeWidth);
-        u1(prog, 'uBevel', config.tiles.bevel);
-        u1(prog, 'uThickness', config.tiles.thickness);
-        u1(prog, 'uMorph', config.tiles.morph);
-        u1(prog, 'uShape', config.tiles.shape === 'square' ? 0 : config.tiles.shape === 'hexagon' ? .25 : .75);
-        u1(prog, 'uHero', config.tiles.heroScale);
-        u1(prog, 'uBackContrast', config.materials.backContrast);
-        u1(prog, 'uScanSpeed', config.effects.scanSpeed);
-        u1(prog, 'uMaterialType', ['satin', 'metal', 'glass', 'ceramic', 'iridescent'].indexOf(config.materials.type));
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        gl.drawArraysInstanced(gl.TRIANGLES, 0, count, n);
-        gl.bindVertexArray(null);
-        // A compact point layer for atmospheric dust and optional energy connections.
-        if ((at.dust && at.enabled) || fx.connections || fx.lightTrails) {
-          const lines = [];
-          if (at.dust && at.enabled)
-            for (const d of dust) {
-              let x = d.x + Math.sin(clock * .15 + d.phase) * 12,
-                y = d.y + Math.cos(clock * .2 + d.phase) * 12;
-              lines.push(x, y, d.z, x + .65, y + .65, d.z);
-            }
-          if (fx.connections) {
-            let step = config.tiles.size + config.tiles.spacing;
-            for (let k = 0; k < tiles.length; k++) {
-              const t = tiles[k];
-              if (k % 3) continue;
-              const neighbor = tiles[k + 1];
-              if (neighbor && Math.hypot(t.x - neighbor.x, t.y - neighbor.y) < step * fx.connectionDistance) lines.push(t.x + t.px, t.y + t.py, t.pz, neighbor.x + neighbor.px, neighbor.y + neighbor.py, neighbor.pz);
-            }
-          }
-          if (lines.length) {
-            drawLines(new Float32Array(lines), projection, view, at.dustOpacity);
-          }
-        }
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.disable(gl.DEPTH_TEST);
-        gl.disable(gl.BLEND);
-        gl.viewport(0, 0, canvas.width, canvas.height);
-        gl.useProgram(postProg);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, scene.tex);
-        gl.uniform1i(loc(postProg, 'tex'), 0);
-        u2(postProg, 'resolution', canvas.width, canvas.height);
-        u4(postProg, 'post', [at.enabled && at.bloom ? at.bloomStrength : 0, at.bloomThreshold, at.enabled ? at.vignette : 0, at.enabled ? at.grain : 0]);
-        u4(postProg, 'post2', [+(at.enabled && at.chromaticAberration), at.aberration, +(at.enabled && at.depthOfField), at.dofStrength]);
-        u1(postProg, 'time', clock);
-        u2(postProg, 'extra', at.enabled ? at.haze : 0, 0);
-        u3(postProg, 'background', bg);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-      }
-      const lineProg = program(`#version 300 es\nprecision highp float;layout(location=0)in vec3 pos;uniform mat4 projection,view;void main(){gl_Position=projection*view*vec4(pos,1.);}`, `#version 300 es\nprecision highp float;uniform vec4 color;out vec4 frag;void main(){frag=color;}`),
-        lineVao = gl.createVertexArray(),
-        lineBuffer = gl.createBuffer();
-      gl.bindVertexArray(lineVao);
-      gl.bindBuffer(gl.ARRAY_BUFFER, lineBuffer);
-      gl.enableVertexAttribArray(0);
-      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-      gl.bindVertexArray(null);
-
-      function drawLines(arr, projection, view, opacity) {
-        gl.useProgram(lineProg);
-        gl.bindVertexArray(lineVao);
-        gl.bindBuffer(gl.ARRAY_BUFFER, lineBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW);
-        mat(lineProg, 'projection', projection);
-        mat(lineProg, 'view', view);
-        u4(lineProg, 'color', [.5, .8, 1, opacity]);
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-        gl.drawArrays(gl.LINES, 0, arr.length / 3);
-        gl.bindVertexArray(null);
-      }
-
-      function tick(ms) {
-        requestAnimationFrame(tick);
-        if (document.hidden) return;
-        if (config.animation.maxFps && ms - lastFrame < 1000 / config.animation.maxFps) return;
-        const real = last ? Math.min((ms - last) / 1000, .05) : 0;
-        last = ms;
-        lastFrame = ms;
-        const reduced = config.animation.respectReducedMotion && matchMedia('(prefers-reduced-motion: reduce)').matches,
-          dt = config.animation.paused || reduced ? 0 : real * config.animation.speed;
-        clock += dt;
-        update(dt);
-        render();
-        if (config.animation.adaptiveQuality && config.animation.quality === 'auto' && real > 0) {
-          frameTimes.push(real);
-          if (frameTimes.length >= 180) {
-            const avg = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
-            frameTimes = [];
-            if (avg > .028 && qualityScale > .6) {
-              qualityScale = Math.max(.6, qualityScale - .1);
-              resize();
-            } else if (avg < .015 && qualityScale < 1) {
-              qualityScale = Math.min(1, qualityScale + .1);
-              resize();
-            }
-          }
-        }
-      }
-
-      function position(e) {
-        const r = canvas.getBoundingClientRect(),
-          sx = (e.clientX - r.left) / r.width,
-          sy = (e.clientY - r.top) / r.height;
-        const cam = config.camera,
-          zoom = clamp(cam.zoom, cam.minZoom, cam.maxZoom),
-          dist = cam.perspective / zoom;
-        const ax = rad(cam.tiltX) + (cam.autoOrbit ? Math.sin(clock * cam.orbitSpeed) * .09 : 0);
-        const ay = rad(cam.tiltY) + (cam.autoOrbit ? Math.cos(clock * cam.orbitSpeed) * .09 : 0);
-        const x = (sx - .5) * width / zoom,
-          y = (.5 - sy) * height / zoom;
-        const fov = 2 * Math.atan(height / (2 * cam.perspective));
-        const aspect = width / height;
-        // Ray in camera coordinates: orthographic starts at the near plane;
-        // perspective starts at the camera and passes through the pixel.
-        const near = cam.mode === 'orthographic' ? [x, y, 0] : [0, 0, 0];
-        const dir = cam.mode === 'orthographic' ? [0, 0, -1] : [(sx * 2 - 1) * Math.tan(fov / 2) * aspect, (1 - sy * 2) * Math.tan(fov / 2), -1];
-        // Invert view rotation using transpose of its orthonormal 3x3 block.
-        const v = viewMatrix(ax, ay, dist);
-        const rotate = p => [v[0] * p[0] + v[1] * p[1] + v[2] * p[2], v[4] * p[0] + v[5] * p[1] + v[6] * p[2], v[8] * p[0] + v[9] * p[1] + v[10] * p[2]];
-        const origin = rotate([near[0], near[1], near[2] + dist]);
-        const direction = rotate(dir);
-        if (Math.abs(direction[2]) < 1e-7) return {
-          x: 0,
-          y: 0
-        };
-        const t = -origin[2] / direction[2];
-        return {
-          x: origin[0] + direction[0] * t,
-          y: origin[1] + direction[1] * t
-        };
-      }
-      canvas.addEventListener('pointermove', e => {
-        const p = position(e);
-        pointer.dragX = p.x - pointer.tx;
-        pointer.dragY = p.y - pointer.ty;
-        pointer.tx = p.x;
-        pointer.ty = p.y;
-        pointer.active = true;
-      });
-      canvas.addEventListener('pointerenter', () => pointer.active = true);
-      canvas.addEventListener('pointerleave', () => {
-        pointer.active = false;
-        pointer.down = false;
-      });
-      canvas.addEventListener('pointerdown', e => {
-        const p = position(e);
-        pointer.tx = pointer.x = p.x;
-        pointer.ty = pointer.y = p.y;
-        pointer.down = true;
-        pointer.active = true;
-        if (config.physics.shockwaves) wave(p.x, p.y);
-        canvas.setPointerCapture(e.pointerId);
-      });
-      canvas.addEventListener('pointerup', () => pointer.down = false);
-      canvas.addEventListener('pointercancel', () => pointer.down = false);
-      canvas.addEventListener('wheel', e => {
-        if (!config.camera.wheelZoom) return;
-        e.preventDefault();
-        config.camera.zoom = clamp(config.camera.zoom * Math.exp(-e.deltaY * .001), config.camera.minZoom, config.camera.maxZoom);
-      }, {
-        passive: false
-      });
-      window.addEventListener('resize', resize);
-      document.addEventListener('visibilitychange', () => {
-        last = 0;
-        lastFrame = 0;
-      });
-      canvas.addEventListener('webglcontextlost', e => {
-        e.preventDefault();
-        notice.textContent = 'WebGL context lost. Reload to restart.';
-      });
-      const meshKeys = ['tiles.size', 'tiles.spacing', 'tiles.sizeVariation', 'tiles.heroChance', 'tiles.heroScale', 'atmosphere.dustCount'];
-      let meshSnapshot = '';
-      let sizeSnapshot = '';
-
-      function changed() {
-        const qualityKey = [config.animation.quality, config.animation.maxDpr].join('|');
-        if (sizeSnapshot !== qualityKey) {
-          sizeSnapshot = qualityKey;
-          resize();
-        }
-        const key = meshKeys.map(p => p.split('.').reduce((v, k) => v[k], config)).join('|');
-        if (key !== meshSnapshot) {
-          meshSnapshot = key;
-          rebuild();
-        }
-        config.camera.zoom = clamp(config.camera.zoom, config.camera.minZoom, config.camera.maxZoom);
-      }
-
-      function reset() {
-        rebuild();
-        waves = [];
-      }
-
-      function preset(name) {
-        const patches = {
-          classic: {
-            camera: {
-              mode: 'orthographic',
-              depth: 0,
-              tiltX: 0,
-              tiltY: 0
-            },
-            tiles: {
-              thickness: 1,
-              morph: 0
-            },
-            materials: {
-              type: 'satin',
-              iridescence: 0,
-              glass: 0
-            },
-            atmosphere: {
-              bloom: false,
-              dust: false
-            }
-          },
-          cinematic: {
-            camera: {
-              mode: 'perspective',
-              depth: 45,
-              tiltX: 8,
-              tiltY: -7
-            },
-            tiles: {
-              thickness: 7,
-              morph: .12
-            },
-            materials: {
-              type: 'iridescent',
-              iridescence: .8
-            },
-            atmosphere: {
-              bloom: true,
-              dust: true
-            }
-          },
-          chaos: {
-            motion: {
-              mode: 'explosion',
-              explode: true,
-              explodeStrength: 140
-            },
-            physics: {
-              vortex: true,
-              gravityWells: true
-            },
-            effects: {
-              fractures: true,
-              scan: true,
-              connections: true
-            }
-          },
-          portal: {
-            effects: {
-              portal: true,
-              scan: true,
-              hologram: true
-            },
-            camera: {
-              tiltX: 12,
-              tiltY: 9
-            },
-            motion: {
-              mode: 'vortex'
-            }
-          }
-        };
-        for (const [section, values] of Object.entries(defaults)) Object.assign(config[section], structuredClone(values));
-        for (const [section, values] of Object.entries(patches[name] || {})) Object.assign(config[section], values);
-        changed();
-      }
-      resize();
-      changed();
-      requestAnimationFrame(tick);
-      if (config.panel.enabled) import('./settings-editor.js?v=4').then(({
-        createSettingsEditor
-      }) => createSettingsEditor({
-        config,
-        defaults,
-        onChange: changed,
-        onReset: reset,
-        onPreset: preset
-      })).catch(e => {
-        notice.textContent = 'Settings editor: ' + e.message;
-      });
-    </script>
-  </body>
+function shader(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));return s;}
+function program(v,f){const p=gl.createProgram();gl.attachShader(p,shader(gl.VERTEX_SHADER,v));gl.attachShader(p,shader(gl.FRAGMENT_SHADER,f));gl.linkProgram(p);if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(p));return p;}
+const prog=program(vertex,fragment),postProg=program(postVertex,postFragment);
+function loc(p,name){return gl.getUniformLocation(p,name);}function u1(p,n,x){gl.uniform1f(loc(p,n),x);}function u2(p,n,a,b){gl.uniform2f(loc(p,n),a,b);}function u3(p,n,a){gl.uniform3fv(loc(p,n),a);}function u4(p,n,a){gl.uniform4fv(loc(p,n),a);}function mat(p,n,a){gl.uniformMatrix4fv(loc(p,n),false,a);}
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),rad=v=>v*Math.PI/180,mix=(a,b,t)=>a+(b-a)*t;
+const rgb=c=>c.map(x=>x/255);
+function perspective(fov,aspect,near,far){let f=1/Math.tan(fov/2);return new Float32Array([f/aspect,0,0,0,0,f,0,0,0,0,(far+near)/(near-far),-1,0,0,2*far*near/(near-far),0]);}
+function ortho(l,r,b,t,n,f){return new Float32Array([2/(r-l),0,0,0,0,2/(t-b),0,0,0,0,-2/(f-n),0,-(r+l)/(r-l),-(t+b)/(t-b),-(f+n)/(f-n),1]);}
+function viewMatrix(rx,ry,z){let cx=Math.cos(rx),sx=Math.sin(rx),cy=Math.cos(ry),sy=Math.sin(ry);return new Float32Array([cy,sx*sy,-cx*sy,0,0,cx,sx,0,sy,-sx*cy,cx*cy,0,0,0,-z,1]);}
+// Beveled polygon prisms. The mesh is rebuilt when shape, bevel or morph changes.
+const positions=[],normals=[];
+function tri(a,b,c,n){for(const p of [a,b,c]){positions.push(...p);normals.push(...n);}}
+function quad(a,b,c,d,n){tri(a,b,c,n);tri(a,c,d,n);}
+function geometry(){
+ positions.length=0;normals.length=0;
+ const sides=config.tiles.shape==='triangle'?3:config.tiles.shape==='hexagon'?6:4;
+ const bevel=clamp(config.tiles.bevel,0,.48);
+ const morph=clamp(config.tiles.morph,0,1);
+ const radius=sides===4?Math.SQRT1_2:sides===3?.58:.5;
+ const angle0=sides===4?Math.PI/4:sides===3?Math.PI/2:Math.PI/6;
+ const ring=(r,z)=>Array.from({length:sides},(_,i)=>{let a=angle0+i*Math.PI*2/sides;return [Math.cos(a)*r,Math.sin(a)*r,z];});
+ const top=ring(radius*(1-bevel),.5),outerTop=ring(radius,.5-bevel*.55);
+ const outerBottom=ring(radius,-.5+bevel*.55),bottom=ring(radius*(1-bevel),-.5);
+ for(let i=0;i<sides;i++){
+  const j=(i+1)%sides;
+  tri([0,0,.5],top[i],top[j],[0,0,1]);
+  tri([0,0,-.5],bottom[j],bottom[i],[0,0,-1]);
+  const angle=angle0+(i+.5)*Math.PI*2/sides,n=[Math.cos(angle),Math.sin(angle),0];
+  quad(outerTop[i],outerBottom[i],outerBottom[j],outerTop[j],n);
+  quad(top[i],outerTop[i],outerTop[j],top[j],[n[0]*.65,n[1]*.65,.76]);
+  quad(outerBottom[i],bottom[i],bottom[j],outerBottom[j],[n[0]*.65,n[1]*.65,-.76]);
+ }
+ // Morph gives the chosen polygon a progressively more circular silhouette.
+ if(morph>0){for(let i=0;i<positions.length;i+=3){let x=positions[i],y=positions[i+1],r=Math.hypot(x,y);if(r>.001){let a=Math.atan2(y,x),sector=Math.PI*2/sides,theta=((a-angle0+sector*.5)%sector+sector)%sector-sector*.5;let edgeRadius=radius*Math.cos(Math.PI/sides)/Math.max(.25,Math.cos(theta));let target=r*radius/Math.max(edgeRadius,.001);positions[i]=mix(x,x*target/r,morph);positions[i+1]=mix(y,y*target/r,morph);}}}
+}
+const vao=gl.createVertexArray();gl.bindVertexArray(vao);
+function attribute(index,arr,size,divisor=0){const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,arr,divisor?gl.DYNAMIC_DRAW:gl.STATIC_DRAW);gl.enableVertexAttribArray(index);gl.vertexAttribPointer(index,size,gl.FLOAT,false,0,0);gl.vertexAttribDivisor(index,divisor);return b;}
+const geoPosition=attribute(0,new Float32Array(0),3),geoNormal=attribute(1,new Float32Array(0),3);
+const instanceBuffers=[attribute(2,new Float32Array(4),4,1),attribute(3,new Float32Array(4),4,1),attribute(4,new Float32Array(4),4,1),attribute(5,new Float32Array(4),4,1)];
+gl.bindVertexArray(null);
+let count=0,geometrySnapshot='';
+function refreshGeometry(){const key=[config.tiles.shape,config.tiles.bevel,config.tiles.morph].join('|');if(key===geometrySnapshot)return;geometrySnapshot=key;geometry();count=positions.length/3;gl.bindBuffer(gl.ARRAY_BUFFER,geoPosition);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(positions),gl.STATIC_DRAW);gl.bindBuffer(gl.ARRAY_BUFFER,geoNormal);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(normals),gl.STATIC_DRAW);}
+refreshGeometry();
+let width=1,height=1,dpr=1,tiles=[],clock=0,last=0,lastFrame=0,frameTimes=[],waves=[],dust=[],target=null,scene=null,depth=null,qualityScale=1;
+const pointer={x:0,y:0,tx:0,ty:0,active:false,down:false,dragX:0,dragY:0};
+function createTarget(){if(scene){gl.deleteFramebuffer(scene.fbo);gl.deleteTexture(scene.tex);gl.deleteRenderbuffer(depth);}const tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,canvas.width,canvas.height,0,gl.RGBA,gl.UNSIGNED_BYTE,null);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);const rb=gl.createRenderbuffer();gl.bindRenderbuffer(gl.RENDERBUFFER,rb);gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT16,canvas.width,canvas.height);const fbo=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,fbo);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,tex,0);gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,rb);if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)throw Error('Framebuffer incomplete');gl.bindFramebuffer(gl.FRAMEBUFFER,null);scene={fbo,tex};depth=rb;}
+function rebuild(){tiles=[];const step=config.tiles.size+config.tiles.spacing,margin=step*5;for(let y=-height/2-margin;y<height/2+margin;y+=step)for(let x=-width/2-margin;x<width/2+margin;x+=step){const hero=Math.random()<config.tiles.heroChance;tiles.push({x,y,px:0,py:0,pz:0,vx:0,vy:0,vz:0,phase:Math.random()*6.283,size:(1-config.tiles.sizeVariation*Math.random())*(hero?config.tiles.heroScale:1),mass:hero?2.5:mix(.7,1.5,Math.random()),hero:hero?1:0,axis:Math.random()*6.283,colorShift:Math.random()*2-1});}dust=Array.from({length:config.atmosphere.dustCount},()=>({x:(Math.random()-.5)*width,y:(Math.random()-.5)*height,z:Math.random()*120,phase:Math.random()*6.28}));}
+function resize(){width=innerWidth;height=innerHeight;dpr=Math.min(devicePixelRatio||1,config.animation.maxDpr)*qualityScale*({low:.6,medium:.8,high:1,auto:1}[config.animation.quality]||1);canvas.width=Math.max(1,Math.round(width*dpr));canvas.height=Math.max(1,Math.round(height*dpr));gl.viewport(0,0,canvas.width,canvas.height);createTarget();rebuild();}
+function wave(x,y,power=1){if(waves.length>12)waves.shift();waves.push({x,y,age:0,power});}
+function sampleColor(x,y,z){const c=config.colors,s=c.scale,t=clock*c.speed;let field=Math.sin(x/s+t)*.45+Math.cos(y/s*1.3-t*.7)*.35+Math.sin((x+y)/s*.6+t*.4)*.2;if(c.flow)field+=Math.sin(x/s*1.9+y/s*.8+t*1.7)*c.flowStrength*.3;if(c.aurora)field+=Math.sin(y/s*2+t*2+Math.sin(x/s+t))*.18;let f=clamp((field+1)/2+z/200*c.heightInfluence,0,1),a=f<.5?c.colorA:c.colorB,b=f<.5?c.colorB:c.colorC,k=f<.5?f*2:(f-.5)*2;return [mix(a[0],b[0],k)/255,mix(a[1],b[1],k)/255,mix(a[2],b[2],k)/255];}
+function update(dt){pointer.x=pointer.tx;pointer.y=pointer.ty;for(const w of waves)w.age+=dt;waves=waves.filter(w=>w.age<4);
+const p=config.physics,m=config.motion,step=config.tiles.size+config.tiles.spacing,spin=clock*m.speed,cycle=clock/m.cycleDuration*6.283;
+for(const t of tiles){let sep=(.5+.5*Math.sin(cycle+t.x/500+t.y/650))*m.separation;
+let tx=Math.sin(t.y/230+spin+t.phase*.15)*m.drift*sep,ty=Math.cos(t.x/270-spin*.8+t.phase*.15)*m.drift*sep,tz=Math.sin(spin+t.phase)*config.camera.depth*sep;
+tz+=Math.sin(clock*1.5+t.phase)*m.breathing*8;
+if(m.mode==='vortex'){let a=spin+t.phase*.1;tx+=Math.cos(a)*m.drift*sep;ty+=Math.sin(a)*m.drift*sep;}
+if(m.mode==='explosion'||m.explode){let a=Math.atan2(t.y,t.x),burst=Math.pow(Math.max(0,Math.sin(cycle)),3)*m.explodeStrength;tx+=Math.cos(a)*burst;ty+=Math.sin(a)*burst;tz+=burst*.7;}
+if(m.mode==='magnetic'){let k=Math.sin(cycle+t.phase)*.5+.5;tx+=Math.sin(t.phase*3)*m.drift*k;ty+=Math.cos(t.phase*2)*m.drift*k;}
+if(m.mode==='domino'||m.domino){tz+=Math.pow(Math.max(0,Math.sin(t.x/step*.25+t.y/step*.2-clock*m.dominoSpeed)),8)*config.camera.depth*2;}
+if(m.breathing)tz+=Math.sin(clock*.7+t.x/300+t.y/300)*m.breathing*20;
+const dx=t.x-pointer.x,dy=t.y-pointer.y,dist=Math.hypot(dx,dy)+.001,influence=p.enabled&&pointer.active?Math.pow(clamp(1-dist/p.radius,0,1),2):0;
+if(p.enabled){const sign=p.attraction?-1:(p.repulsion?1:0);tx+=dx/dist*p.displacement*influence*sign;ty+=dy/dist*p.displacement*influence*sign;if(p.vortex){tx+=-dy/dist*p.displacement*influence;ty+=dx/dist*p.displacement*influence;}if(p.dragBend&&pointer.down)tz+=influence*(pointer.dragX+pointer.dragY)*.4;if(p.gravityWells)tz-=p.gravityStrength*Math.exp(-dist*dist/(p.radius*p.radius));}
+for(const w of waves){const d=Math.hypot(t.x-w.x,t.y-w.y),front=w.age*p.waveSpeed,band=Math.exp(-Math.pow((d-front)/(p.wavePropagation?45:110),2))*w.power;tz+=band*p.shockStrength;tx+=d>1?(t.x-w.x)/d*band*15:0;ty+=d>1?(t.y-w.y)/d*band*15:0;}
+if(config.effects.portal){const r=Math.hypot(t.x,t.y),v=Math.exp(-Math.pow((r-config.effects.portalRadius)/70,2));tz-=v*config.effects.portalStrength*120;}
+if(m.domino||m.mode==='domino')tz+=Math.sin(t.x*.08-clock*m.dominoSpeed)*config.tiles.thickness;
+if(config.effects.fractures){let crack=Math.abs(Math.sin(t.x*.021+t.y*.014+clock*.3));tz+=Math.pow(crack,22)*config.effects.fractureIntensity*65;}
+const stiff=(p.enabled?p.stiffness:6)*m.assemblySpeed,damp=p.enabled?p.damping:8,inv=1/t.mass;
+t.vx+=(tx-t.px)*stiff*inv*dt;
+t.vy+=(ty-t.py)*stiff*inv*dt;
+t.vz+=(tz-t.pz)*stiff*inv*dt;
+const drag=Math.exp(-damp*dt);
+t.vx*=drag;
+t.vy*=drag;
+t.vz*=drag;
+t.px+=t.vx*dt;
+t.py+=t.vy*dt;
+t.pz+=t.vz*dt;
+}}
+function render(){const cam=config.camera,c=config.colors,fx=config.effects,at=config.atmosphere;const bg=rgb(c.backgroundColor);gl.bindFramebuffer(gl.FRAMEBUFFER,scene.fbo);gl.viewport(0,0,canvas.width,canvas.height);gl.enable(gl.DEPTH_TEST);gl.depthMask(true);gl.disable(gl.BLEND);gl.clearColor(...bg,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+let fov=2*Math.atan(height/(2*cam.perspective)),z=cam.perspective/cam.zoom;
+let projection=cam.mode==='orthographic'?ortho(-width/2/cam.zoom,width/2/cam.zoom,-height/2/cam.zoom,height/2/cam.zoom,-2000,2000):perspective(fov,width/height,1,4000);
+let vx=rad(cam.tiltX)+(cam.autoOrbit?Math.sin(clock*cam.orbitSpeed)*.09:0),vy=rad(cam.tiltY)+(cam.autoOrbit?Math.cos(clock*cam.orbitSpeed)*.09:0);
+let view=viewMatrix(vx,vy,z);
+const n=tiles.length,arrays=Array.from({length:4},()=>new Float32Array(n*4));let i=0;
+for(const t of tiles){const a=i*4,x=t.x+t.px,y=t.y+t.py,z0=t.pz+Math.sin(clock*.4+t.phase)*config.tiles.personality*4;
+const tilt=rad(config.physics.rotation)*Math.pow(clamp(1-Math.hypot(t.x-pointer.x,t.y-pointer.y)/config.physics.radius,0,1),2)*(pointer.active?1:0);
+const rot=rad(config.motion.rotation)*Math.sin(clock*config.motion.speed+t.phase)*config.motion.separation;
+arrays[0].set([x,y,z0,t.size*config.tiles.size],a);
+arrays[1].set([rot*Math.cos(t.axis)+tilt*.3,rot*Math.sin(t.axis)+tilt*.3,rot+tilt,t.phase],a);
+const color=sampleColor(t.x,t.y,z0);
+arrays[2].set([...color,1],a);
+arrays[3].set([t.hero,t.mass,t.phase,t.colorShift],a);
+i++;
+}
+refreshGeometry();
+gl.useProgram(prog);
+gl.bindVertexArray(vao);
+for(let j=0;j<4;j++){gl.bindBuffer(gl.ARRAY_BUFFER,instanceBuffers[j]);gl.bufferData(gl.ARRAY_BUFFER,arrays[j],gl.DYNAMIC_DRAW);}
+mat(prog,'uProjection',projection);
+mat(prog,'uView',view);
+u3(prog,'uEye',[0,0,z]);
+u3(prog,'uLight',[config.lighting.directionX,config.lighting.directionY,config.lighting.directionZ]);
+u3(prog,'uHighlight',rgb(c.highlightColor));
+u3(prog,'uBackColor',rgb(c.colorC));
+u4(prog,'uMaterial',[config.materials.metallic,config.materials.roughness,config.materials.glass,config.materials.iridescence]);
+u4(prog,'uLightParams',[config.lighting.intensity,config.lighting.ambient,config.lighting.specular,config.lighting.glintStrength]);
+u4(prog,'uEffects',[config.materials.fresnel,config.materials.environment,config.tiles.edgeOpacity,1]);
+u4(prog,'uFlags',[+fx.hologram,+fx.mirrorUndersides,+fx.scan,+config.lighting.glints]);
+u1(prog,'uTime',clock);
+u1(prog,'uOpacity',config.tiles.opacity);
+u1(prog,'uEdgeWidth',config.tiles.edgeWidth);
+u1(prog,'uBevel',config.tiles.bevel);
+u1(prog,'uThickness',config.tiles.thickness);
+u1(prog,'uMorph',config.tiles.morph);
+u1(prog,'uShape',config.tiles.shape==='square'?0:config.tiles.shape==='hexagon'?.25:.75);
+u1(prog,'uHero',config.tiles.heroScale);
+u1(prog,'uBackContrast',config.materials.backContrast);
+u1(prog,'uScanSpeed',config.effects.scanSpeed);
+u1(prog,'uMaterialType',['satin','metal','glass','ceramic','iridescent'].indexOf(config.materials.type));
+gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.drawArraysInstanced(gl.TRIANGLES,0,count,n);gl.bindVertexArray(null);
+// A compact point layer for atmospheric dust and optional energy connections.
+if((at.dust&&at.enabled)||fx.connections||fx.lightTrails){const lines=[];if(at.dust&&at.enabled)for(const d of dust){let x=d.x+Math.sin(clock*.15+d.phase)*12,y=d.y+Math.cos(clock*.2+d.phase)*12;lines.push(x,y,d.z,x+.65,y+.65,d.z);}if(fx.connections){let step=config.tiles.size+config.tiles.spacing;for(let k=0;k<tiles.length;k++){const t=tiles[k];if(k%3)continue;const neighbor=tiles[k+1];if(neighbor&&Math.hypot(t.x-neighbor.x,t.y-neighbor.y)<step*fx.connectionDistance)lines.push(t.x+t.px,t.y+t.py,t.pz,neighbor.x+neighbor.px,neighbor.y+neighbor.py,neighbor.pz);}}
+if(lines.length){drawLines(new Float32Array(lines),projection,view,at.dustOpacity);}}
+gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+gl.disable(gl.DEPTH_TEST);
+gl.disable(gl.BLEND);
+gl.viewport(0,0,canvas.width,canvas.height);
+gl.useProgram(postProg);
+gl.activeTexture(gl.TEXTURE0);
+gl.bindTexture(gl.TEXTURE_2D,scene.tex);
+gl.uniform1i(loc(postProg,'tex'),0);
+u2(postProg,'resolution',canvas.width,canvas.height);
+u4(postProg,'post',[at.enabled&&at.bloom?at.bloomStrength:0,at.bloomThreshold,at.enabled?at.vignette:0,at.enabled?at.grain:0]);
+u4(postProg,'post2',[+(at.enabled&&at.chromaticAberration),at.aberration,+(at.enabled&&at.depthOfField),at.dofStrength]);
+u1(postProg,'time',clock);
+u2(postProg,'extra',at.enabled?at.haze:0,0);
+u3(postProg,'background',bg);
+gl.drawArrays(gl.TRIANGLES,0,3);
+}
+const lineProg=program(`#version 300 es\nprecision highp float;layout(location=0)in vec3 pos;uniform mat4 projection,view;void main(){gl_Position=projection*view*vec4(pos,1.);}`,`#version 300 es\nprecision highp float;uniform vec4 color;out vec4 frag;void main(){frag=color;}`),lineVao=gl.createVertexArray(),lineBuffer=gl.createBuffer();gl.bindVertexArray(lineVao);gl.bindBuffer(gl.ARRAY_BUFFER,lineBuffer);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);gl.bindVertexArray(null);
+function drawLines(arr,projection,view,opacity){gl.useProgram(lineProg);gl.bindVertexArray(lineVao);gl.bindBuffer(gl.ARRAY_BUFFER,lineBuffer);gl.bufferData(gl.ARRAY_BUFFER,arr,gl.DYNAMIC_DRAW);mat(lineProg,'projection',projection);mat(lineProg,'view',view);u4(lineProg,'color',[.5,.8,1,opacity]);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);gl.drawArrays(gl.LINES,0,arr.length/3);gl.bindVertexArray(null);}
+function tick(ms){requestAnimationFrame(tick);if(document.hidden)return;if(config.animation.maxFps&&ms-lastFrame<1000/config.animation.maxFps)return;const real=last?Math.min((ms-last)/1000,.05):0;last=ms;lastFrame=ms;const reduced=config.animation.respectReducedMotion&&matchMedia('(prefers-reduced-motion: reduce)').matches,dt=config.animation.paused||reduced?0:real*config.animation.speed;clock+=dt;update(dt);render();if(config.animation.adaptiveQuality&&config.animation.quality==='auto'&&real>0){frameTimes.push(real);if(frameTimes.length>=180){const avg=frameTimes.reduce((a,b)=>a+b,0)/frameTimes.length;frameTimes=[];if(avg>.028&&qualityScale>.6){qualityScale=Math.max(.6,qualityScale-.1);resize();}else if(avg<.015&&qualityScale<1){qualityScale=Math.min(1,qualityScale+.1);resize();}}}}
+function position(e){
+ const r=canvas.getBoundingClientRect(),sx=(e.clientX-r.left)/r.width,sy=(e.clientY-r.top)/r.height;
+ const cam=config.camera,zoom=clamp(cam.zoom,cam.minZoom,cam.maxZoom),dist=cam.perspective/zoom;
+ const ax=rad(cam.tiltX)+(cam.autoOrbit?Math.sin(clock*cam.orbitSpeed)*.09:0);
+ const ay=rad(cam.tiltY)+(cam.autoOrbit?Math.cos(clock*cam.orbitSpeed)*.09:0);
+ const x=(sx-.5)*width/zoom,y=(.5-sy)*height/zoom;
+ const fov=2*Math.atan(height/(2*cam.perspective));
+ const aspect=width/height;
+ // Ray in camera coordinates: orthographic starts at the near plane;
+ // perspective starts at the camera and passes through the pixel.
+ const near=cam.mode==='orthographic'?[x,y,0]:[0,0,0];
+ const dir=cam.mode==='orthographic'?[0,0,-1]:[(sx*2-1)*Math.tan(fov/2)*aspect,(1-sy*2)*Math.tan(fov/2),-1];
+ // Invert view rotation using transpose of its orthonormal 3x3 block.
+ const v=viewMatrix(ax,ay,dist);
+ const rotate=p=>[v[0]*p[0]+v[1]*p[1]+v[2]*p[2],v[4]*p[0]+v[5]*p[1]+v[6]*p[2],v[8]*p[0]+v[9]*p[1]+v[10]*p[2]];
+ const origin=rotate([near[0],near[1],near[2]+dist]);
+ const direction=rotate(dir);
+ if(Math.abs(direction[2])<1e-7)return {x:0,y:0};
+ const t=-origin[2]/direction[2];
+ return {x:origin[0]+direction[0]*t,y:origin[1]+direction[1]*t};
+}
+canvas.addEventListener('pointermove',e=>{const p=position(e);pointer.dragX=p.x-pointer.tx;pointer.dragY=p.y-pointer.ty;pointer.tx=p.x;pointer.ty=p.y;pointer.active=true;});
+canvas.addEventListener('pointerenter',()=>pointer.active=true);
+canvas.addEventListener('pointerleave',()=>{pointer.active=false;pointer.down=false;});
+canvas.addEventListener('pointerdown',e=>{const p=position(e);pointer.tx=pointer.x=p.x;pointer.ty=pointer.y=p.y;pointer.down=true;pointer.active=true;if(config.physics.shockwaves)wave(p.x,p.y);canvas.setPointerCapture(e.pointerId);});
+canvas.addEventListener('pointerup',()=>pointer.down=false);
+canvas.addEventListener('pointercancel',()=>pointer.down=false);
+canvas.addEventListener('wheel',e=>{if(!config.camera.wheelZoom)return;e.preventDefault();config.camera.zoom=clamp(config.camera.zoom*Math.exp(-e.deltaY*.001),config.camera.minZoom,config.camera.maxZoom);},{passive:false});
+window.addEventListener('resize',resize);
+document.addEventListener('visibilitychange',()=>{last=0;lastFrame=0;});
+canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();notice.textContent='WebGL context lost. Reload to restart.';});
+const meshKeys=['tiles.size','tiles.spacing','tiles.sizeVariation','tiles.heroChance','tiles.heroScale','atmosphere.dustCount'];let meshSnapshot='';
+let sizeSnapshot='';
+function changed(){const qualityKey=[config.animation.quality,config.animation.maxDpr].join('|');if(sizeSnapshot!==qualityKey){sizeSnapshot=qualityKey;resize();}const key=meshKeys.map(p=>p.split('.').reduce((v,k)=>v[k],config)).join('|');if(key!==meshSnapshot){meshSnapshot=key;rebuild();}config.camera.zoom=clamp(config.camera.zoom,config.camera.minZoom,config.camera.maxZoom);}
+function reset(){rebuild();waves=[];}
+function preset(name){const patches={classic:{camera:{mode:'orthographic',depth:0,tiltX:0,tiltY:0},tiles:{thickness:1,morph:0},materials:{type:'satin',iridescence:0,glass:0},atmosphere:{bloom:false,dust:false}},cinematic:{camera:{mode:'perspective',depth:45,tiltX:8,tiltY:-7},tiles:{thickness:7,morph:.12},materials:{type:'iridescent',iridescence:.8},atmosphere:{bloom:true,dust:true}},chaos:{motion:{mode:'explosion',explode:true,explodeStrength:140},physics:{vortex:true,gravityWells:true},effects:{fractures:true,scan:true,connections:true}},portal:{effects:{portal:true,scan:true,hologram:true},camera:{tiltX:12,tiltY:9},motion:{mode:'vortex'}}};for(const [section,values] of Object.entries(defaults))Object.assign(config[section],structuredClone(values));for(const [section,values]of Object.entries(patches[name]||{}))Object.assign(config[section],values);changed();}
+resize();changed();requestAnimationFrame(tick);
+if(config.panel.enabled)import('./settings-editor.js?v=4').then(({createSettingsEditor})=>createSettingsEditor({config,defaults,onChange:changed,onReset:reset,onPreset:preset})).catch(e=>{notice.textContent='Settings editor: '+e.message;});
+</script>
+</body>
 </html>
