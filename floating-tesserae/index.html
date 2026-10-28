@@ -34,38 +34,38 @@ html, body {
 <canvas id="background" aria-label="Interactive floating tesserae background"></canvas>
 <div id="notice" role="status"></div>
 <script type="module">
-const defaults = {
+const config = {
   "tiles": {
-    "size": 19,
+    "size": 18,
     "spacing": 2,
     "sizeVariation": 0,
     "thickness": 10,
-    "bevel": 0.36,
-    "shape": "hexagon",
-    "morph": 0.51,
-    "opacity": 0.8,
-    "edgeOpacity": 0.43,
+    "bevel": 0,
+    "shape": "square",
+    "morph": 0,
+    "opacity": 1,
+    "edgeOpacity": 0.15,
     "edgeWidth": 0.075,
-    "heroChance": 0.06,
+    "heroChance": 0.025,
     "heroScale": 1.4,
     "personality": 0.2
   },
   "camera": {
-    "mode": "orthographic",
-    "tiltX": 0,
+    "mode": "perspective",
+    "tiltX": -44,
     "tiltY": 0,
     "perspective": 640,
-    "zoom": 1.52,
-    "minZoom": 1.52,
-    "maxZoom": 4,
+    "zoom": 2.5424983006428112,
+    "minZoom": 2,
+    "maxZoom": 5,
     "wheelZoom": true,
     "parallax": 12,
     "depth": 0,
     "autoOrbit": false,
-    "orbitSpeed": 0.05
+    "orbitSpeed": 0.64
   },
   "materials": {
-    "type": "metal",
+    "type": "satin",
     "metallic": 0.15,
     "roughness": 0.43,
     "glass": 0,
@@ -156,7 +156,7 @@ const defaults = {
     "dust": false,
     "dustCount": 130,
     "dustOpacity": 0.32,
-    "bloom": true,
+    "bloom": false,
     "bloomStrength": 0.5,
     "bloomThreshold": 0.65,
     "depthOfField": true,
@@ -183,7 +183,7 @@ const defaults = {
     "hologram": false
   },
   "animation": {
-    "speed": 1.85,
+    "speed": 1.8,
     "paused": false,
     "respectReducedMotion": true,
     "quality": "medium",
