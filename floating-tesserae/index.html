@@ -36,7 +36,7 @@ html, body {
 <script type="module">
 const defaults = {
   "tiles": {
-    "size": 18,
+    "size": 20,
     "spacing": 2,
     "sizeVariation": 0,
     "thickness": 7,
@@ -44,9 +44,9 @@ const defaults = {
     "shape": "square",
     "morph": 0,
     "opacity": 1,
-    "edgeOpacity": 0.15,
+    "edgeOpacity": 0,
     "edgeWidth": 0.07,
-    "heroChance": 0.025,
+    "heroChance": 0.055,
     "heroScale": 1.3,
     "personality": 0.1
   },
@@ -104,17 +104,17 @@ const defaults = {
     "attraction": false,
     "vortex": false,
     "dragBend": false,
-    "radius": 180,
+    "radius": 120,
     "displacement": 95,
-    "rotation": 40,
-    "stiffness": 22,
-    "damping": 8,
+    "rotation": 0,
+    "stiffness": 25,
+    "damping": 10,
     "wavePropagation": true,
     "waveSpeed": 250,
     "shockwaves": true,
     "shockStrength": 65,
     "gravityWells": false,
-    "gravityStrength": 55
+    "gravityStrength": 25
   },
   "colors": {
     "backgroundColor": [
@@ -151,10 +151,10 @@ const defaults = {
     "chromaticRipple": true
   },
   "atmosphere": {
-    "enabled": false,
-    "haze": 0.12,
+    "enabled": true,
+    "haze": 0.17,
     "dust": false,
-    "dustCount": 130,
+    "dustCount": 270,
     "dustOpacity": 0.32,
     "bloom": false,
     "bloomStrength": 0.5,
@@ -174,8 +174,8 @@ const defaults = {
     "connections": false,
     "connectionDistance": 3,
     "portal": false,
-    "portalRadius": 140,
-    "portalStrength": 0.8,
+    "portalRadius": 50,
+    "portalStrength": 0.25,
     "scan": false,
     "scanSpeed": 0.2,
     "lightTrails": false,
@@ -183,7 +183,7 @@ const defaults = {
     "hologram": false
   },
   "animation": {
-    "speed": 1.8,
+    "speed": 1.4,
     "paused": false,
     "respectReducedMotion": true,
     "quality": "medium",
