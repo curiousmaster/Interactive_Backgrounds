@@ -45,143 +45,142 @@
 
 <script type="module">
 const config = {
-  ribbons: {
-    count: 85,
-    speed: 55,
-    strokeWidth: 1.5,
-    trailLifetime: 4,
-    opacity: 0.72,
-    glow: 3
+  "ribbons": {
+    "count": 150,
+    "speed": 50,
+    "strokeWidth": 2.5,
+    "trailLifetime": 7,
+    "opacity": 0.6,
+    "glow": 6.5
   },
-
-  gravity: {
-    wells: 4,
-    strength: 65,
-    radius: 260,
-    swirl: 85,
-    wandering: 90,
-    wanderingSpeed: 0.18
+  "gravity": {
+    "wells": 4,
+    "strength": 60,
+    "radius": 260,
+    "swirl": 85,
+    "wandering": 90,
+    "wanderingSpeed": 0.18
   },
-
-  mouse: {
-    enabled: true,
-    radius: 230,
-    attraction: 130,
-    swirl: 70,
-    smoothing: 8,
-    showHalo: true
+  "mouse": {
+    "enabled": true,
+    "radius": 230,
+    "attraction": 130,
+    "swirl": 70,
+    "smoothing": 8,
+    "showHalo": true
   },
-
-  pulse: {
-    enabled: true,
-    strength: 140,
-    swirl: 110,
-    speed: 260,
-    width: 85,
-    lifetime: 2.5
+  "pulse": {
+    "enabled": true,
+    "strength": 140,
+    "swirl": 110,
+    "speed": 260,
+    "width": 85,
+    "lifetime": 2.5
   },
-
-  calligraphy: {
-    enabled: true,
-    taper: 0.85,
-    speedResponse: 0.65,
-    curvatureResponse: 0.75
+  "calligraphy": {
+    "enabled": true,
+    "taper": 0.85,
+    "speedResponse": 0.65,
+    "curvatureResponse": 0.75
   },
-
-  silk: {
-    enabled: true,
-    intensity: 0.65,
-    twistSpeed: 1.1,
-    twistFrequency: 2.2
+  "silk": {
+    "enabled": true,
+    "intensity": 0.35,
+    "twistSpeed": 1.1,
+    "twistFrequency": 2.2
   },
-
-  gradients: {
-    enabled: true,
-    intensity: 0.8,
-    speed: 0.12,
-    repetitions: 1.2
+  "gradients": {
+    "enabled": true,
+    "intensity": 0.8,
+    "speed": 0.05,
+    "repetitions": 1.2
   },
-
-  bloom: {
-    enabled: true,
-    intensity: 0.65,
-    radius: 5,
-    threshold: 0.45
+  "bloom": {
+    "enabled": true,
+    "intensity": 0.3,
+    "radius": 5,
+    "threshold": 0.45
   },
-
-  vortex: {
-    enabled: true,
-    intensity: 0.45,
-    size: 40,
-    rotationSpeed: 0.6,
-    sparks: 9
+  "vortex": {
+    "enabled": false,
+    "intensity": 1.1,
+    "size": 85,
+    "rotationSpeed": 0.6,
+    "sparks": 17
   },
-
-  illumination: {
-    enabled: true,
-    intensity: 1.2,
-    widthBoost: 1.4,
-    decay: 2
+  "illumination": {
+    "enabled": true,
+    "intensity": 0.6,
+    "widthBoost": 1.4,
+    "decay": 2
   },
-
-  splitting: {
-    enabled: true,
-    probability: 0.28,
-    intensity: 0.7,
-    lifetime: 1.6,
-    maxBranches: 70
+  "splitting": {
+    "enabled": true,
+    "probability": 0.28,
+    "intensity": 0.7,
+    "lifetime": 1.6,
+    "maxBranches": 70
   },
-
-  stardust: {
-    enabled: true,
-    intensity: 0.6,
-    emissionRate: 3,
-    lifetime: 2.4,
-    size: 1.4,
-    maxParticles: 600
+  "stardust": {
+    "enabled": false,
+    "intensity": 0.25,
+    "emissionRate": 0.8,
+    "lifetime": 2.4,
+    "size": 1.4,
+    "maxParticles": 600
   },
-
-  depth: {
-    enabled: true,
-    intensity: 0.65,
-    parallax: 24
+  "depth": {
+    "enabled": true,
+    "intensity": 0.65,
+    "parallax": 12
   },
-
-  orbit: {
-    enabled: true,
-    intensity: 0.6,
-    captureRadius: 150,
-    duration: 4,
-    frequency: 0.14
+  "orbit": {
+    "enabled": true,
+    "intensity": 0.6,
+    "captureRadius": 150,
+    "duration": 4,
+    "frequency": 0.14
   },
-
-  wake: {
-    enabled: true,
-    intensity: 0.75,
-    radius: 130,
-    lifetime: 1.8
+  "wake": {
+    "enabled": true,
+    "intensity": 0.35,
+    "radius": 130,
+    "lifetime": 1.8
   },
-
-  distortion: {
-    enabled: true,
-    intensity: 0.45,
-    gravityStrength: 0.5,
-    pulseStrength: 1
+  "distortion": {
+    "enabled": true,
+    "intensity": 0.45,
+    "gravityStrength": 0.5,
+    "pulseStrength": 1
   },
-
-  appearance: {
-    backgroundColor: [9, 11, 23],
-    colorA: [92, 194, 207],
-    colorB: [187, 124, 213],
-    colorC: [235, 186, 124],
-    exposure: 1.15
+  "appearance": {
+    "backgroundColor": [
+      9,
+      11,
+      23
+    ],
+    "colorA": [
+      92,
+      194,
+      207
+    ],
+    "colorB": [
+      187,
+      124,
+      213
+    ],
+    "colorC": [
+      235,
+      186,
+      124
+    ],
+    "exposure": 1.15
   },
-
-  animation: {
-    speed: 1,
-    paused: false,
-    respectReducedMotion: true,
-    pixelRatio: 1.75
+  "animation": {
+    "speed": 1,
+    "paused": false,
+    "respectReducedMotion": true,
+    "pixelRatio": 1.75
   }
 };
 
