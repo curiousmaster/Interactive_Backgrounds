@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Gravity Calligraphy</title>
+<title>Gravity Calligraphy — WebGL</title>
 <style>
   html, body {
     margin: 0;
@@ -13,27 +13,45 @@
     background: #090b17;
   }
 
-  canvas {
+  #background {
     position: fixed;
     inset: 0;
     width: 100%;
     height: 100%;
     pointer-events: none;
   }
+
+  #error {
+    position: fixed;
+    left: 20px;
+    bottom: 20px;
+    max-width: 420px;
+    padding: 16px;
+    border: 1px solid #ffffff30;
+    border-radius: 12px;
+    background: #101626;
+    color: #dce8f8;
+    font: 14px/1.5 system-ui, sans-serif;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
 </style>
 </head>
 <body>
 <canvas id="background" aria-hidden="true"></canvas>
+<div id="error" role="alert" hidden></div>
 
 <script type="module">
 const config = {
   ribbons: {
-    count: 65,
+    count: 85,
     speed: 55,
-    strokeWidth: 1.1,
-    trailLifetime: 3.5,
-    opacity: 0.65,
-    glow: 5
+    strokeWidth: 1.5,
+    trailLifetime: 4,
+    opacity: 0.72,
+    glow: 3
   },
 
   gravity: {
@@ -63,472 +81,2140 @@ const config = {
     lifetime: 2.5
   },
 
+  calligraphy: {
+    enabled: true,
+    taper: 0.85,
+    speedResponse: 0.65,
+    curvatureResponse: 0.75
+  },
+
+  silk: {
+    enabled: true,
+    intensity: 0.65,
+    twistSpeed: 1.1,
+    twistFrequency: 2.2
+  },
+
+  gradients: {
+    enabled: true,
+    intensity: 0.8,
+    speed: 0.12,
+    repetitions: 1.2
+  },
+
+  bloom: {
+    enabled: true,
+    intensity: 0.65,
+    radius: 5,
+    threshold: 0.45
+  },
+
+  vortex: {
+    enabled: true,
+    intensity: 0.45,
+    size: 40,
+    rotationSpeed: 0.6,
+    sparks: 9
+  },
+
+  illumination: {
+    enabled: true,
+    intensity: 1.2,
+    widthBoost: 1.4,
+    decay: 2
+  },
+
+  splitting: {
+    enabled: true,
+    probability: 0.28,
+    intensity: 0.7,
+    lifetime: 1.6,
+    maxBranches: 70
+  },
+
+  stardust: {
+    enabled: true,
+    intensity: 0.6,
+    emissionRate: 3,
+    lifetime: 2.4,
+    size: 1.4,
+    maxParticles: 600
+  },
+
+  depth: {
+    enabled: true,
+    intensity: 0.65,
+    parallax: 24
+  },
+
+  orbit: {
+    enabled: true,
+    intensity: 0.6,
+    captureRadius: 150,
+    duration: 4,
+    frequency: 0.14
+  },
+
+  wake: {
+    enabled: true,
+    intensity: 0.75,
+    radius: 130,
+    lifetime: 1.8
+  },
+
+  distortion: {
+    enabled: true,
+    intensity: 0.45,
+    gravityStrength: 0.5,
+    pulseStrength: 1
+  },
+
   appearance: {
     backgroundColor: [9, 11, 23],
     colorA: [92, 194, 207],
     colorB: [187, 124, 213],
-    colorC: [235, 186, 124]
+    colorC: [235, 186, 124],
+    exposure: 1.15
   },
 
   animation: {
     speed: 1,
     paused: false,
-    respectReducedMotion: true
-  },
-
-  panel: {
-    enabled: true
+    respectReducedMotion: true,
+    pixelRatio: 1.75
   }
 };
+
+const defaults = JSON.parse(JSON.stringify(config));
 
 window.getBackgroundConfig = () =>
   JSON.parse(JSON.stringify(config));
 
 const canvas = document.querySelector("#background");
-const ctx = canvas.getContext("2d");
+const errorBox = document.querySelector("#error");
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
-let width = 1;
-let height = 1;
-let ribbons = [];
-let wells = [];
-let pulses = [];
-let time = 0;
-let previous = null;
+const gl = canvas.getContext("webgl2", {
+  alpha: false,
+  antialias: false,
+  depth: false,
+  stencil: false,
+  powerPreference: "default",
+  preserveDrawingBuffer: false
+});
 
-const mouse = {
-  x: 0, y: 0,
-  targetX: 0, targetY: 0,
-  active: false,
-  influence: 0
-};
-
-const random = (min, max) => min + Math.random() * (max - min);
-const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-const rgba = (color, alpha = 1) =>
-  `rgba(${color.join(",")},${clamp(alpha, 0, 1)})`;
-
-function ribbonColor(t) {
-  const a = t < 0.5
-    ? config.appearance.colorA
-    : config.appearance.colorB;
-
-  const b = t < 0.5
-    ? config.appearance.colorB
-    : config.appearance.colorC;
-
-  const blend = t < 0.5 ? t * 2 : (t - 0.5) * 2;
-  return a.map((v, i) => Math.round(v + (b[i] - v) * blend));
+if (!gl) {
+  errorBox.hidden = false;
+  errorBox.textContent =
+    "Gravity Calligraphy requires WebGL2. Please enable hardware acceleration or use a browser with WebGL2 support.";
+} else {
+  start();
 }
 
-function makeRibbon() {
-  const angle = random(0, Math.PI * 2);
+function start() {
+  const TAU = Math.PI * 2;
+  const MAX_WELLS = 10;
+  const MAX_PULSES = 12;
+  const SAMPLE_RATE = 30;
 
-  return {
-    x: Math.random() * width,
-    y: Math.random() * height,
-    vx: Math.cos(angle) * config.ribbons.speed,
-    vy: Math.sin(angle) * config.ribbons.speed,
-    tint: Math.random(),
-    phase: random(0, Math.PI * 2),
-    history: [],
-    sampleClock: 0,
-    cooling: 0
+  let width = 1;
+  let height = 1;
+  let renderWidth = 1;
+  let renderHeight = 1;
+  let time = 0;
+  let previous = null;
+  let lost = false;
+
+  let ribbons = [];
+  let branches = [];
+  let wells = [];
+  let pulses = [];
+  let particles = [];
+  let wakes = [];
+
+  let centers = [];
+  let sceneTarget;
+  let blurA;
+  let blurB;
+
+  const mouse = {
+    x: 0,
+    y: 0,
+    targetX: 0,
+    targetY: 0,
+    active: false,
+    influence: 0
   };
-}
 
-function makeWell() {
-  return {
-    x: random(0.15, 0.85),
-    y: random(0.15, 0.85),
-    phase: random(0, Math.PI * 2),
-    direction: Math.random() < 0.5 ? -1 : 1
-  };
-}
+  const random = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const mix = (a, b, t) => a + (b - a) * t;
+  const fract = v => v - Math.floor(v);
 
-function refresh() {
-  const count = Math.round(config.ribbons.count);
-  const wellCount = Math.round(config.gravity.wells);
+  const vertexSource = `#version 300 es
+    precision highp float;
 
-  while (ribbons.length < count) ribbons.push(makeRibbon());
-  ribbons.length = count;
+    layout(location = 0) in vec4 aEndpoints;
+    layout(location = 1) in vec4 aShape;
+    layout(location = 2) in vec4 aColor;
 
-  while (wells.length < wellCount) wells.push(makeWell());
-  wells.length = wellCount;
-}
+    uniform vec2 uResolution;
+    uniform float uGlow;
 
-function reset() {
-  ribbons = [];
-  wells = [];
-  pulses = [];
-  refresh();
-}
+    out vec2 vLocal;
+    out vec4 vShape;
+    out vec4 vColor;
+    flat out float vLength;
+    flat out float vExtent;
 
-function resize() {
-  const oldWidth = width;
-  const oldHeight = height;
+    const vec2 corners[6] = vec2[6](
+      vec2(0.0, -1.0),
+      vec2(1.0, -1.0),
+      vec2(0.0,  1.0),
+      vec2(0.0,  1.0),
+      vec2(1.0, -1.0),
+      vec2(1.0,  1.0)
+    );
 
-  width = innerWidth;
-  height = innerHeight;
+    void main() {
+      vec2 start = aEndpoints.xy;
+      vec2 end = aEndpoints.zw;
+      vec2 delta = end - start;
 
-  const dpr = Math.min(devicePixelRatio || 1, 2);
-  canvas.width = Math.round(width * dpr);
-  canvas.height = Math.round(height * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      float lengthPx = max(length(delta), 0.001);
+      vec2 tangent = delta / lengthPx;
+      vec2 normal = vec2(-tangent.y, tangent.x);
 
-  for (const ribbon of ribbons) {
-    ribbon.x *= width / oldWidth;
-    ribbon.y *= height / oldHeight;
-    ribbon.history = [];
+      float extent =
+        max(aShape.x, aShape.y) +
+        max(1.5, uGlow * 2.0);
+
+      vec2 corner = corners[gl_VertexID];
+      float along = mix(-extent, lengthPx + extent, corner.x);
+      float across = corner.y * extent;
+
+      vec2 position =
+        start + tangent * along + normal * across;
+
+      gl_Position = vec4(
+        position.x / uResolution.x * 2.0 - 1.0,
+        1.0 - position.y / uResolution.y * 2.0,
+        0.0,
+        1.0
+      );
+
+      vLocal = vec2(along, across);
+      vShape = aShape;
+      vColor = aColor;
+      vLength = lengthPx;
+      vExtent = extent;
+    }
+  `;
+
+  const fragmentSource = `#version 300 es
+    precision highp float;
+
+    in vec2 vLocal;
+    in vec4 vShape;
+    in vec4 vColor;
+
+    flat in float vLength;
+    flat in float vExtent;
+
+    uniform float uGlow;
+    uniform float uTime;
+    uniform float uTwistSpeed;
+    uniform float uTwistFrequency;
+
+    out vec4 outColor;
+
+    void main() {
+      float t = clamp(vLocal.x / vLength, 0.0, 1.0);
+      float halfWidth = max(mix(vShape.x, vShape.y, t), 0.08);
+
+      float capDistance =
+        max(-vLocal.x, vLocal.x - vLength);
+
+      float distancePx = length(vec2(
+        max(capDistance, 0.0),
+        vLocal.y
+      ));
+
+      float aa = max(fwidth(distancePx), 0.65);
+      float core = 1.0 - smoothstep(
+        halfWidth - aa,
+        halfWidth + aa,
+        distancePx
+      );
+
+      float halo = 0.0;
+
+      if (uGlow > 0.001) {
+        float outside = max(distancePx - halfWidth, 0.0);
+        halo = exp(-outside / max(uGlow, 0.1)) * 0.16;
+        halo *= 1.0 - smoothstep(
+          vExtent * 0.65,
+          vExtent,
+          distancePx
+        );
+      }
+
+      float lateral = vLocal.y / max(halfWidth, 0.2);
+
+      float twist = sin(
+        uTime * uTwistSpeed +
+        vShape.w * uTwistFrequency
+      );
+
+      float highlight = exp(
+        -pow((lateral - twist * 0.55) * 2.7, 2.0)
+      );
+
+      float silk = vColor.a;
+      float shading = mix(
+        1.0,
+        0.72 + highlight * 1.15,
+        silk
+      );
+
+      vec3 color = vColor.rgb * shading;
+      color += vec3(highlight * silk * 0.18);
+
+      float intensity = (core + halo) * vShape.z;
+      outColor = vec4(color * intensity, intensity);
+    }
+  `;
+
+  const screenVertexSource = `#version 300 es
+    precision highp float;
+    out vec2 vUv;
+
+    void main() {
+      vec2 p = vec2(
+        float((gl_VertexID << 1) & 2),
+        float(gl_VertexID & 2)
+      );
+
+      vUv = p;
+      gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+    }
+  `;
+
+  const blurFragmentSource = `#version 300 es
+    precision highp float;
+
+    in vec2 vUv;
+    uniform sampler2D uTexture;
+    uniform vec2 uDirection;
+    uniform float uThreshold;
+    uniform bool uExtract;
+
+    out vec4 outColor;
+
+    vec3 readColor(vec2 uv) {
+      vec3 color = texture(uTexture, uv).rgb;
+
+      if (uExtract) {
+        float brightness = max(color.r, max(color.g, color.b));
+        float contribution =
+          max(brightness - uThreshold, 0.0) /
+          max(brightness, 0.0001);
+
+        color *= contribution;
+      }
+
+      return color;
+    }
+
+    void main() {
+      vec3 color = readColor(vUv) * 0.227027;
+
+      color += readColor(
+        vUv + uDirection * 1.384615
+      ) * 0.316216;
+
+      color += readColor(
+        vUv - uDirection * 1.384615
+      ) * 0.316216;
+
+      color += readColor(
+        vUv + uDirection * 3.230769
+      ) * 0.070270;
+
+      color += readColor(
+        vUv - uDirection * 3.230769
+      ) * 0.070270;
+
+      outColor = vec4(color, 1.0);
+    }
+  `;
+
+  const compositeFragmentSource = `#version 300 es
+    precision highp float;
+
+    in vec2 vUv;
+
+    uniform sampler2D uScene;
+    uniform sampler2D uBloom;
+    uniform vec3 uBackground;
+    uniform vec2 uResolution;
+    uniform float uExposure;
+    uniform float uBloomIntensity;
+
+    uniform bool uDistortion;
+    uniform float uDistortionIntensity;
+    uniform float uGravityDistortion;
+    uniform float uPulseDistortion;
+    uniform float uGravityRadius;
+
+    uniform int uWellCount;
+    uniform int uPulseCount;
+    uniform vec4 uWells[10];
+    uniform vec4 uPulses[12];
+
+    out vec4 outColor;
+
+    void main() {
+      vec2 uv = vUv;
+
+      if (uDistortion) {
+        vec2 pixel = vec2(
+          vUv.x * uResolution.x,
+          (1.0 - vUv.y) * uResolution.y
+        );
+
+        vec2 offset = vec2(0.0);
+
+        for (int i = 0; i < 10; i++) {
+          if (i >= uWellCount) break;
+
+          vec2 delta = pixel - uWells[i].xy;
+          float distancePx = length(delta);
+          vec2 direction = delta / max(distancePx, 1.0);
+          vec2 tangent = vec2(-direction.y, direction.x);
+
+          float falloff = exp(
+            -pow(distancePx / max(uGravityRadius, 1.0), 2.0)
+          );
+
+          offset += (
+            direction * 3.0 +
+            tangent * uWells[i].z * 2.0
+          ) * falloff * uGravityDistortion;
+        }
+
+        for (int i = 0; i < 12; i++) {
+          if (i >= uPulseCount) break;
+
+          vec2 delta = pixel - uPulses[i].xy;
+          float distancePx = length(delta);
+          vec2 direction = delta / max(distancePx, 1.0);
+
+          float band = (
+            distancePx - uPulses[i].z
+          ) / max(uPulses[i].w, 1.0);
+
+          offset += direction *
+            sin(band * 2.8) *
+            exp(-band * band * 2.0) *
+            9.0 * uPulseDistortion;
+        }
+
+        offset *= uDistortionIntensity;
+        uv += vec2(offset.x, -offset.y) / uResolution;
+      }
+
+      uv = clamp(uv, vec2(0.001), vec2(0.999));
+
+      vec3 scene = texture(uScene, uv).rgb;
+      vec3 bloom = texture(uBloom, uv).rgb * uBloomIntensity;
+
+      vec3 light = vec3(1.0) -
+        exp(-(scene + bloom) * uExposure);
+
+      vec3 color =
+        uBackground + light * (vec3(1.0) - uBackground);
+
+      outColor = vec4(color, 1.0);
+    }
+  `;
+
+  function shader(type, source) {
+    const result = gl.createShader(type);
+    gl.shaderSource(result, source);
+    gl.compileShader(result);
+
+    if (!gl.getShaderParameter(result, gl.COMPILE_STATUS)) {
+      const message = gl.getShaderInfoLog(result);
+      gl.deleteShader(result);
+      throw new Error(message);
+    }
+
+    return result;
   }
-}
 
-function wellPositions() {
-  const clock = time * config.gravity.wanderingSpeed;
+  function program(vertex, fragment) {
+    const result = gl.createProgram();
+    const vs = shader(gl.VERTEX_SHADER, vertex);
+    const fs = shader(gl.FRAGMENT_SHADER, fragment);
 
-  return wells.map(well => ({
-    x: well.x * width +
-      Math.sin(clock + well.phase) * config.gravity.wandering,
+    gl.attachShader(result, vs);
+    gl.attachShader(result, fs);
+    gl.linkProgram(result);
 
-    y: well.y * height +
-      Math.cos(clock * 0.73 + well.phase) *
-      config.gravity.wandering * 0.7,
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
 
-    direction: well.direction
-  }));
-}
+    if (!gl.getProgramParameter(result, gl.LINK_STATUS)) {
+      const message = gl.getProgramInfoLog(result);
+      gl.deleteProgram(result);
+      throw new Error(message);
+    }
 
-function applyForce(ribbon, x, y, radius, attraction, swirl, dt) {
-  const dx = x - ribbon.x;
-  const dy = y - ribbon.y;
-  const distance = Math.hypot(dx, dy);
-  const denominator = Math.max(distance, 25);
-  const influence = Math.exp(-Math.pow(distance / radius, 2));
+    return result;
+  }
 
-  ribbon.vx += (
-    dx / denominator * attraction -
-    dy / denominator * swirl
-  ) * influence * dt;
+  let ribbonProgram;
+  let blurProgram;
+  let compositeProgram;
 
-  ribbon.vy += (
-    dy / denominator * attraction +
-    dx / denominator * swirl
-  ) * influence * dt;
-}
+  try {
+    ribbonProgram = program(vertexSource, fragmentSource);
+    blurProgram = program(screenVertexSource, blurFragmentSource);
+    compositeProgram = program(
+      screenVertexSource,
+      compositeFragmentSource
+    );
+  } catch (error) {
+    errorBox.hidden = false;
+    errorBox.textContent = `WebGL initialization failed: ${error.message}`;
+    return;
+  }
 
-function updateRibbon(ribbon, centers, dt) {
-  if (dt <= 0) return;
-
-  for (const center of centers) {
-    applyForce(
-      ribbon,
-      center.x, center.y,
-      config.gravity.radius,
-      config.gravity.strength,
-      config.gravity.swirl * center.direction,
-      dt
+  function uniforms(prog, names) {
+    return Object.fromEntries(
+      names.map(name => [name, gl.getUniformLocation(prog, name)])
     );
   }
 
-  if (config.mouse.enabled) {
-    applyForce(
-      ribbon,
-      mouse.x, mouse.y,
-      config.mouse.radius,
-      config.mouse.attraction * mouse.influence,
-      config.mouse.swirl * mouse.influence,
-      dt
+  const ru = uniforms(ribbonProgram, [
+    "uResolution",
+    "uGlow",
+    "uTime",
+    "uTwistSpeed",
+    "uTwistFrequency"
+  ]);
+
+  const bu = uniforms(blurProgram, [
+    "uTexture",
+    "uDirection",
+    "uThreshold",
+    "uExtract"
+  ]);
+
+  const cu = uniforms(compositeProgram, [
+    "uScene",
+    "uBloom",
+    "uBackground",
+    "uResolution",
+    "uExposure",
+    "uBloomIntensity",
+    "uDistortion",
+    "uDistortionIntensity",
+    "uGravityDistortion",
+    "uPulseDistortion",
+    "uGravityRadius",
+    "uWellCount",
+    "uPulseCount",
+    "uWells[0]",
+    "uPulses[0]"
+  ]);
+
+  const ribbonVAO = gl.createVertexArray();
+  const screenVAO = gl.createVertexArray();
+  const instanceBuffer = gl.createBuffer();
+
+  gl.bindVertexArray(ribbonVAO);
+  gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+
+  for (let location = 0; location < 3; location++) {
+    gl.enableVertexAttribArray(location);
+    gl.vertexAttribPointer(
+      location,
+      4,
+      gl.FLOAT,
+      false,
+      12 * 4,
+      location * 4 * 4
+    );
+    gl.vertexAttribDivisor(location, 1);
+  }
+
+  gl.bindVertexArray(null);
+
+  let instanceData = new Float32Array(12 * 16384);
+  let instanceCount = 0;
+
+  const wellUniforms = new Float32Array(MAX_WELLS * 4);
+  const pulseUniforms = new Float32Array(MAX_PULSES * 4);
+
+  function addSegment(
+    x1, y1, x2, y2,
+    width1, width2,
+    alpha, color,
+    silk = 0, phase = 0
+  ) {
+    if (alpha <= 0.0001) return;
+
+    if ((instanceCount + 1) * 12 > instanceData.length) {
+      const larger = new Float32Array(instanceData.length * 2);
+      larger.set(instanceData);
+      instanceData = larger;
+    }
+
+    const offset = instanceCount * 12;
+
+    instanceData[offset] = x1;
+    instanceData[offset + 1] = y1;
+    instanceData[offset + 2] = x2;
+    instanceData[offset + 3] = y2;
+
+    instanceData[offset + 4] = width1;
+    instanceData[offset + 5] = width2;
+    instanceData[offset + 6] = alpha;
+    instanceData[offset + 7] = phase;
+
+    instanceData[offset + 8] = color[0];
+    instanceData[offset + 9] = color[1];
+    instanceData[offset + 10] = color[2];
+    instanceData[offset + 11] = silk;
+
+    instanceCount++;
+  }
+
+  function addDot(x, y, radius, alpha, color) {
+    addSegment(
+      x, y,
+      x + 0.01, y,
+      radius, radius,
+      alpha, color
     );
   }
 
-  for (const pulse of pulses) {
-    const dx = ribbon.x - pulse.x;
-    const dy = ribbon.y - pulse.y;
+  function addArc(
+    x, y, radius, start, length,
+    lineWidth, alpha, color, segments = 36
+  ) {
+    for (let i = 0; i < segments; i++) {
+      const t1 = i / segments;
+      const t2 = (i + 1) / segments;
+      const a = start + length * t1;
+      const b = start + length * t2;
+
+      const fade = length < TAU - 0.01
+        ? Math.sin(Math.PI * (t1 + t2) * 0.5)
+        : 1;
+
+      addSegment(
+        x + Math.cos(a) * radius,
+        y + Math.sin(a) * radius,
+        x + Math.cos(b) * radius,
+        y + Math.sin(b) * radius,
+        lineWidth, lineWidth,
+        alpha * fade,
+        color
+      );
+    }
+  }
+
+  function makeTarget(w, h) {
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+
+    gl.texParameteri(
+      gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR
+    );
+    gl.texParameteri(
+      gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR
+    );
+    gl.texParameteri(
+      gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE
+    );
+    gl.texParameteri(
+      gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE
+    );
+
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA8,
+      w,
+      h,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null
+    );
+
+    const framebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D,
+      texture,
+      0
+    );
+
+    if (
+      gl.checkFramebufferStatus(gl.FRAMEBUFFER) !==
+      gl.FRAMEBUFFER_COMPLETE
+    ) {
+      throw new Error("Could not create a WebGL render target.");
+    }
+
+    return { texture, framebuffer, width: w, height: h };
+  }
+
+  function deleteTarget(target) {
+    if (!target) return;
+    gl.deleteTexture(target.texture);
+    gl.deleteFramebuffer(target.framebuffer);
+  }
+
+  function resize() {
+    if (lost) return;
+
+    const oldWidth = width;
+    const oldHeight = height;
+
+    width = Math.max(1, innerWidth);
+    height = Math.max(1, innerHeight);
+
+    const maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+    const viewport = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
+
+    const dpr = Math.min(
+      devicePixelRatio || 1,
+      config.animation.pixelRatio,
+      maxTexture / width,
+      maxTexture / height,
+      viewport[0] / width,
+      viewport[1] / height
+    );
+
+    renderWidth = Math.max(1, Math.round(width * dpr));
+    renderHeight = Math.max(1, Math.round(height * dpr));
+
+    canvas.width = renderWidth;
+    canvas.height = renderHeight;
+
+    deleteTarget(sceneTarget);
+    deleteTarget(blurA);
+    deleteTarget(blurB);
+
+    sceneTarget = makeTarget(renderWidth, renderHeight);
+
+    const bloomWidth = Math.max(1, Math.floor(renderWidth / 2));
+    const bloomHeight = Math.max(1, Math.floor(renderHeight / 2));
+
+    blurA = makeTarget(bloomWidth, bloomHeight);
+    blurB = makeTarget(bloomWidth, bloomHeight);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    for (const ribbon of [...ribbons, ...branches]) {
+      ribbon.x *= width / oldWidth;
+      ribbon.y *= height / oldHeight;
+      ribbon.history = [];
+    }
+
+    particles = [];
+    pulses = [];
+    wakes = [];
+  }
+
+  function makeRibbon() {
+    const angle = random(0, TAU);
+
+    return {
+      x: Math.random() * width,
+      y: Math.random() * height,
+      vx: Math.cos(angle) * config.ribbons.speed,
+      vy: Math.sin(angle) * config.ribbons.speed,
+      tint: Math.random(),
+      phase: random(0, TAU),
+      depth: Math.random(),
+      history: [],
+      sampleClock: 0,
+      emissionClock: Math.random(),
+      cooling: 0,
+      curvature: 0,
+      orbitIndex: -1,
+      orbitAge: 0,
+      orbitCooldown: random(1, 6),
+      orbitRadius: 70,
+      branchCooldown: 0,
+      branch: false,
+      age: 0,
+      lifetime: Infinity
+    };
+  }
+
+  function makeWell() {
+    return {
+      x: random(0.15, 0.85),
+      y: random(0.15, 0.85),
+      phase: random(0, TAU),
+      direction: Math.random() < 0.5 ? -1 : 1
+    };
+  }
+
+  function refresh() {
+    const count = Math.round(config.ribbons.count);
+    const wellCount = Math.round(config.gravity.wells);
+
+    while (ribbons.length < count) ribbons.push(makeRibbon());
+    ribbons.length = count;
+
+    while (wells.length < wellCount) wells.push(makeWell());
+    wells.length = wellCount;
+
+    if (!config.splitting.enabled) branches = [];
+    if (!config.stardust.enabled) particles = [];
+    if (!config.wake.enabled) wakes = [];
+
+    branches.length = Math.min(
+      branches.length,
+      Math.round(config.splitting.maxBranches)
+    );
+
+    particles.length = Math.min(
+      particles.length,
+      Math.round(config.stardust.maxParticles)
+    );
+  }
+
+  function reset() {
+    ribbons = [];
+    branches = [];
+    wells = [];
+    pulses = [];
+    particles = [];
+    wakes = [];
+    time = 0;
+    previous = null;
+
+    refresh();
+
+    // Populate the initial and reduced-motion views with visible trails.
+    for (let step = 0; step < 60; step++) {
+      const dt = 1 / SAMPLE_RATE;
+      time += dt;
+      centers = wellPositions();
+
+      for (const ribbon of ribbons) {
+        updateRibbon(ribbon, dt, true);
+      }
+    }
+  }
+
+  function wellPositions() {
+    const clock = time * config.gravity.wanderingSpeed;
+
+    return wells.map(well => ({
+      x: well.x * width +
+        Math.sin(clock + well.phase) * config.gravity.wandering,
+
+      y: well.y * height +
+        Math.cos(clock * 0.73 + well.phase) *
+        config.gravity.wandering * 0.7,
+
+      phase: well.phase,
+      direction: well.direction
+    }));
+  }
+
+  function palette(t) {
+    const value = fract(t);
+    const first = value < 0.5
+      ? config.appearance.colorA
+      : config.appearance.colorB;
+
+    const second = value < 0.5
+      ? config.appearance.colorB
+      : config.appearance.colorC;
+
+    const blend = value < 0.5
+      ? value * 2
+      : (value - 0.5) * 2;
+
+    return [
+      mix(first[0], second[0], blend) / 255,
+      mix(first[1], second[1], blend) / 255,
+      mix(first[2], second[2], blend) / 255
+    ];
+  }
+
+  function force(ribbon, x, y, radius, attraction, swirl, dt) {
+    const dx = x - ribbon.x;
+    const dy = y - ribbon.y;
     const distance = Math.hypot(dx, dy);
-    const denominator = Math.max(distance, 10);
-    const waveRadius = pulse.age * config.pulse.speed;
+    const denominator = Math.max(distance, 25);
 
-    const influence =
-      Math.exp(
-        -Math.pow(
-          (distance - waveRadius) / config.pulse.width,
-          2
-        ) * 2
-      ) *
-      Math.max(0, 1 - pulse.age / config.pulse.lifetime);
+    const influence = Math.exp(
+      -Math.pow(distance / Math.max(radius, 1), 2)
+    );
 
     ribbon.vx += (
-      dx / denominator * config.pulse.strength -
-      dy / denominator * config.pulse.swirl
+      dx / denominator * attraction -
+      dy / denominator * swirl
     ) * influence * dt;
 
     ribbon.vy += (
-      dy / denominator * config.pulse.strength +
-      dx / denominator * config.pulse.swirl
+      dy / denominator * attraction +
+      dx / denominator * swirl
     ) * influence * dt;
-
-    ribbon.cooling = Math.max(ribbon.cooling, influence);
   }
 
-  // Relax toward cruising speed without abruptly removing momentum.
-  const speed = Math.hypot(ribbon.vx, ribbon.vy);
-  const targetSpeed = config.ribbons.speed;
-  const relaxedSpeed =
-    speed + (targetSpeed - speed) * (1 - Math.exp(-0.8 * dt));
+  function updateOrbit(ribbon, dt) {
+    ribbon.orbitCooldown -= dt;
 
-  if (speed > 0.001) {
-    ribbon.vx *= relaxedSpeed / speed;
-    ribbon.vy *= relaxedSpeed / speed;
+    if (
+      !config.orbit.enabled ||
+      config.orbit.intensity <= 0 ||
+      ribbon.branch
+    ) {
+      ribbon.orbitIndex = -1;
+      return;
+    }
+
+    if (
+      ribbon.orbitIndex < 0 &&
+      ribbon.orbitCooldown <= 0 &&
+      centers.length
+    ) {
+      let nearest = -1;
+      let nearestDistance = Infinity;
+
+      centers.forEach((center, index) => {
+        const distance = Math.hypot(
+          ribbon.x - center.x,
+          ribbon.y - center.y
+        );
+
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearest = index;
+        }
+      });
+
+      const probability =
+        1 - Math.exp(-config.orbit.frequency * dt);
+
+      if (
+        nearestDistance < config.orbit.captureRadius &&
+        Math.random() < probability
+      ) {
+        ribbon.orbitIndex = nearest;
+        ribbon.orbitAge = 0;
+        ribbon.orbitRadius = clamp(
+          nearestDistance,
+          30,
+          config.orbit.captureRadius
+        );
+      }
+    }
+
+    const center = centers[ribbon.orbitIndex];
+    if (!center) {
+      ribbon.orbitIndex = -1;
+      return;
+    }
+
+    ribbon.orbitAge += dt;
+
+    if (ribbon.orbitAge >= config.orbit.duration) {
+      ribbon.orbitIndex = -1;
+      ribbon.orbitCooldown = random(2, 7);
+      return;
+    }
+
+    const dx = ribbon.x - center.x;
+    const dy = ribbon.y - center.y;
+    const distance = Math.max(Math.hypot(dx, dy), 1);
+
+    const nx = dx / distance;
+    const ny = dy / distance;
+    const direction = center.direction;
+
+    const targetRadius = ribbon.orbitRadius * (
+      0.83 + 0.17 * Math.cos(ribbon.orbitAge * 1.4)
+    );
+
+    const correction = clamp(
+      (targetRadius - distance) * 1.5,
+      -100,
+      100
+    );
+
+    const targetVX =
+      -ny * direction * config.ribbons.speed + nx * correction;
+
+    const targetVY =
+      nx * direction * config.ribbons.speed + ny * correction;
+
+    const envelope = Math.sin(
+      Math.PI * ribbon.orbitAge / config.orbit.duration
+    );
+
+    const blend = 1 - Math.exp(
+      -config.orbit.intensity * envelope * 3 * dt
+    );
+
+    ribbon.vx = mix(ribbon.vx, targetVX, blend);
+    ribbon.vy = mix(ribbon.vy, targetVY, blend);
   }
 
-  const maximumSpeed = Math.max(80, targetSpeed * 3);
-  const currentSpeed = Math.hypot(ribbon.vx, ribbon.vy);
+  function splitRibbon(parent) {
+    if (
+      branches.length >= config.splitting.maxBranches ||
+      config.splitting.intensity <= 0
+    ) return;
 
-  if (currentSpeed > maximumSpeed) {
-    ribbon.vx *= maximumSpeed / currentSpeed;
-    ribbon.vy *= maximumSpeed / currentSpeed;
+    const branch = makeRibbon();
+    const angle = random(0.3, 0.9) *
+      (Math.random() < 0.5 ? -1 : 1);
+
+    branch.x = parent.x;
+    branch.y = parent.y;
+
+    branch.vx = (
+      parent.vx * Math.cos(angle) -
+      parent.vy * Math.sin(angle)
+    ) * 1.15;
+
+    branch.vy = (
+      parent.vx * Math.sin(angle) +
+      parent.vy * Math.cos(angle)
+    ) * 1.15;
+
+    branch.tint = fract(parent.tint + random(-0.1, 0.1));
+    branch.depth = parent.depth;
+    branch.cooling = parent.cooling;
+    branch.branch = true;
+    branch.lifetime = config.splitting.lifetime;
+
+    branches.push(branch);
   }
 
-  ribbon.x += ribbon.vx * dt;
-  ribbon.y += ribbon.vy * dt;
-  ribbon.cooling *= Math.exp(-2 * dt);
+  function emitParticle(ribbon) {
+    if (particles.length >= config.stardust.maxParticles) return;
 
-  const margin = 40;
-  let wrapped = false;
+    const angle = random(0, TAU);
+    const speed = random(3, 18) * (1 + ribbon.curvature);
 
-  if (ribbon.x < -margin) {
-    ribbon.x = width + margin;
-    wrapped = true;
-  }
-  if (ribbon.x > width + margin) {
-    ribbon.x = -margin;
-    wrapped = true;
-  }
-  if (ribbon.y < -margin) {
-    ribbon.y = height + margin;
-    wrapped = true;
-  }
-  if (ribbon.y > height + margin) {
-    ribbon.y = -margin;
-    wrapped = true;
-  }
-
-  if (wrapped) ribbon.history = [];
-
-  ribbon.sampleClock += dt;
-
-  if (ribbon.sampleClock >= 1 / 30 || !ribbon.history.length) {
-    ribbon.sampleClock %= 1 / 30;
-    ribbon.history.push({
+    particles.push({
       x: ribbon.x,
       y: ribbon.y,
-      time
+      vx: ribbon.vx * 0.12 + Math.cos(angle) * speed,
+      vy: ribbon.vy * 0.12 + Math.sin(angle) * speed,
+      age: 0,
+      lifetime: config.stardust.lifetime * random(0.5, 1),
+      size: config.stardust.size * random(0.4, 1.3),
+      tint: ribbon.tint,
+      phase: random(0, TAU),
+      depth: ribbon.depth
     });
   }
 
-  const cutoff = time - config.ribbons.trailLifetime;
-  while (ribbon.history.length && ribbon.history[0].time < cutoff) {
-    ribbon.history.shift();
-  }
+  function updateRibbon(ribbon, dt, seeding = false) {
+    if (dt <= 0) return;
 
-  // Also bound history independently of frame rate.
-  while (ribbon.history.length > 400) ribbon.history.shift();
-}
+    ribbon.age += dt;
+    ribbon.branchCooldown -= dt;
 
-function drawRibbon(ribbon) {
-  const points = ribbon.history;
-  if (points.length < 2) return;
+    const oldVX = ribbon.vx;
+    const oldVY = ribbon.vy;
 
-  const color = ribbonColor(ribbon.tint);
-
-  ctx.shadowColor = rgba(color);
-  ctx.shadowBlur = config.ribbons.glow;
-
-  // Eight opacity bands give a tapered tail at modest rendering cost.
-  for (let band = 0; band < 8; band++) {
-    const start = Math.floor(band / 8 * (points.length - 1));
-    const end = Math.floor((band + 1) / 8 * (points.length - 1));
-
-    if (end <= start) continue;
-
-    const strength = (band + 1) / 8;
-
-    ctx.strokeStyle = rgba(
-      color,
-      config.ribbons.opacity *
-      strength * strength *
-      (0.8 + ribbon.cooling * 0.2)
-    );
-
-    ctx.lineWidth =
-      config.ribbons.strokeWidth * (0.35 + strength * 0.65);
-
-    ctx.beginPath();
-    ctx.moveTo(points[start].x, points[start].y);
-
-    for (let i = start + 1; i <= end; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
+    for (const center of centers) {
+      force(
+        ribbon,
+        center.x,
+        center.y,
+        config.gravity.radius,
+        config.gravity.strength,
+        config.gravity.swirl * center.direction,
+        dt
+      );
     }
 
-    ctx.stroke();
-  }
-}
+    if (config.mouse.enabled && mouse.influence > 0.001) {
+      force(
+        ribbon,
+        mouse.x,
+        mouse.y,
+        config.mouse.radius,
+        config.mouse.attraction * mouse.influence,
+        config.mouse.swirl * mouse.influence,
+        dt
+      );
+    }
 
-function drawInteraction() {
-  ctx.shadowBlur = 0;
+    if (config.wake.enabled) {
+      for (const wake of wakes) {
+        const fade = Math.max(
+          0,
+          1 - wake.age / config.wake.lifetime
+        );
 
-  if (
-    config.mouse.enabled &&
-    config.mouse.showHalo &&
-    mouse.influence > 0.001
-  ) {
-    const gradient = ctx.createRadialGradient(
-      mouse.x, mouse.y, 0,
-      mouse.x, mouse.y, config.mouse.radius
+        force(
+          ribbon,
+          wake.x,
+          wake.y,
+          config.wake.radius,
+          32 * fade * config.wake.intensity,
+          wake.spin * 90 * fade * config.wake.intensity,
+          dt
+        );
+
+        const distance = Math.hypot(
+          ribbon.x - wake.x,
+          ribbon.y - wake.y
+        );
+
+        const influence = Math.exp(
+          -Math.pow(distance / config.wake.radius, 2)
+        );
+
+        ribbon.vx += wake.vx * influence *
+          config.wake.intensity * fade * dt * 0.2;
+
+        ribbon.vy += wake.vy * influence *
+          config.wake.intensity * fade * dt * 0.2;
+      }
+    }
+
+    ribbon.cooling *= Math.exp(
+      -config.illumination.decay * dt
     );
 
-    gradient.addColorStop(
+    for (const pulse of pulses) {
+      const dx = ribbon.x - pulse.x;
+      const dy = ribbon.y - pulse.y;
+      const distance = Math.hypot(dx, dy);
+      const denominator = Math.max(distance, 10);
+
+      const band = (
+        distance - pulse.age * config.pulse.speed
+      ) / config.pulse.width;
+
+      const influence =
+        Math.exp(-band * band * 2) *
+        Math.max(0, 1 - pulse.age / config.pulse.lifetime);
+
+      ribbon.vx += (
+        dx / denominator * config.pulse.strength -
+        dy / denominator * config.pulse.swirl
+      ) * influence * dt;
+
+      ribbon.vy += (
+        dy / denominator * config.pulse.strength +
+        dx / denominator * config.pulse.swirl
+      ) * influence * dt;
+
+      ribbon.cooling = Math.max(ribbon.cooling, influence);
+
+      if (
+        !seeding &&
+        config.splitting.enabled &&
+        !ribbon.branch &&
+        influence > 0.15 &&
+        ribbon.branchCooldown <= 0 &&
+        !pulse.considered.has(ribbon)
+      ) {
+        pulse.considered.add(ribbon);
+
+        if (Math.random() < config.splitting.probability) {
+          splitRibbon(ribbon);
+          ribbon.branchCooldown = 0.6;
+        }
+      }
+    }
+
+    updateOrbit(ribbon, dt);
+
+    const speed = Math.hypot(ribbon.vx, ribbon.vy);
+
+    const relaxedSpeed = mix(
+      speed,
+      config.ribbons.speed,
+      1 - Math.exp(-0.8 * dt)
+    );
+
+    if (speed > 0.001) {
+      ribbon.vx *= relaxedSpeed / speed;
+      ribbon.vy *= relaxedSpeed / speed;
+    } else {
+      ribbon.vx = Math.cos(ribbon.phase) * config.ribbons.speed;
+      ribbon.vy = Math.sin(ribbon.phase) * config.ribbons.speed;
+    }
+
+    const maximumSpeed = Math.max(
+      80,
+      config.ribbons.speed * 3
+    );
+
+    const currentSpeed = Math.hypot(ribbon.vx, ribbon.vy);
+
+    if (currentSpeed > maximumSpeed) {
+      ribbon.vx *= maximumSpeed / currentSpeed;
+      ribbon.vy *= maximumSpeed / currentSpeed;
+    }
+
+    const previousSpeed = Math.hypot(oldVX, oldVY);
+    const nextSpeed = Math.hypot(ribbon.vx, ribbon.vy);
+
+    const cosine = previousSpeed * nextSpeed > 0.001
+      ? clamp(
+          (oldVX * ribbon.vx + oldVY * ribbon.vy) /
+          (previousSpeed * nextSpeed),
+          -1,
+          1
+        )
+      : 1;
+
+    const turning = Math.acos(cosine) / Math.max(dt, 0.001);
+    ribbon.curvature = mix(
+      ribbon.curvature,
+      clamp(turning * 0.25, 0, 2),
+      1 - Math.exp(-6 * dt)
+    );
+
+    ribbon.x += ribbon.vx * dt;
+    ribbon.y += ribbon.vy * dt;
+
+    const margin = 45;
+    let wrapped = false;
+
+    if (ribbon.x < -margin) {
+      ribbon.x = width + margin;
+      wrapped = true;
+    } else if (ribbon.x > width + margin) {
+      ribbon.x = -margin;
+      wrapped = true;
+    }
+
+    if (ribbon.y < -margin) {
+      ribbon.y = height + margin;
+      wrapped = true;
+    } else if (ribbon.y > height + margin) {
+      ribbon.y = -margin;
+      wrapped = true;
+    }
+
+    if (wrapped) {
+      ribbon.history = [];
+      ribbon.orbitIndex = -1;
+      ribbon.orbitCooldown = 2;
+    }
+
+    ribbon.sampleClock += dt;
+
+    if (
+      ribbon.sampleClock >= 1 / SAMPLE_RATE ||
+      !ribbon.history.length
+    ) {
+      ribbon.sampleClock %= 1 / SAMPLE_RATE;
+
+      ribbon.history.push({
+        x: ribbon.x,
+        y: ribbon.y,
+        time,
+        speed: nextSpeed,
+        curvature: ribbon.curvature,
+        energy: ribbon.cooling
+      });
+    }
+
+    const trailLifetime = ribbon.branch
+      ? Math.min(
+          config.ribbons.trailLifetime,
+          config.splitting.lifetime
+        )
+      : config.ribbons.trailLifetime;
+
+    const cutoff = time - trailLifetime;
+
+    while (
+      ribbon.history.length &&
+      ribbon.history[0].time < cutoff
+    ) {
+      ribbon.history.shift();
+    }
+
+    while (ribbon.history.length > 400) {
+      ribbon.history.shift();
+    }
+
+    if (config.stardust.enabled && !seeding) {
+      ribbon.emissionClock += dt *
+        config.stardust.emissionRate *
+        (0.3 + ribbon.curvature + ribbon.cooling);
+
+      let emitted = 0;
+
+      while (ribbon.emissionClock >= 1 && emitted < 5) {
+        ribbon.emissionClock--;
+        emitParticle(ribbon);
+        emitted++;
+      }
+
+      ribbon.emissionClock = Math.min(ribbon.emissionClock, 1);
+    }
+  }
+
+  function depthStyle(depth) {
+    if (!config.depth.enabled) {
+      return { scale: 1, alpha: 1, x: 0, y: 0 };
+    }
+
+    const intensity = config.depth.intensity;
+    const layer = depth * 2 - 1;
+
+    return {
+      scale: 1 + layer * 0.38 * intensity,
+      alpha: 1 - (1 - depth) * 0.6 * intensity,
+
+      x: (mouse.x / width - 0.5) *
+        config.depth.parallax * layer * intensity *
+        mouse.influence,
+
+      y: (mouse.y / height - 0.5) *
+        config.depth.parallax * layer * intensity *
+        mouse.influence
+    };
+  }
+
+  function pointWidth(point, strength, scale) {
+    let result = config.ribbons.strokeWidth * 0.5;
+
+    if (config.calligraphy.enabled) {
+      const taper = mix(
+        1,
+        0.08 + 0.92 * Math.pow(strength, 0.7),
+        config.calligraphy.taper
+      );
+
+      const speedRatio = clamp(
+        point.speed / Math.max(config.ribbons.speed, 1),
+        0.3,
+        3
+      );
+
+      const speedWidth = mix(
+        1,
+        1 / Math.sqrt(speedRatio),
+        config.calligraphy.speedResponse
+      );
+
+      const curvatureWidth = 1 +
+        point.curvature *
+        config.calligraphy.curvatureResponse * 0.6;
+
+      result *= taper * speedWidth * curvatureWidth;
+    }
+
+    if (config.illumination.enabled) {
+      result *= 1 +
+        point.energy * config.illumination.widthBoost;
+    }
+
+    return Math.max(0.06, result * scale);
+  }
+
+  function drawRibbon(ribbon) {
+    const history = ribbon.history;
+    if (history.length < 2) return;
+
+    const depth = depthStyle(ribbon.depth);
+
+    const branchFade = ribbon.branch
+      ? Math.pow(
+          Math.max(0, 1 - ribbon.age / ribbon.lifetime),
+          0.7
+        ) * config.splitting.intensity
+      : 1;
+
+    const widthScale =
+      depth.scale * (ribbon.branch ? 0.65 : 1);
+
+    const lifetime = ribbon.branch
+      ? Math.min(
+          config.ribbons.trailLifetime,
+          config.splitting.lifetime
+        )
+      : config.ribbons.trailLifetime;
+
+    const fixedColor = palette(ribbon.tint);
+
+    // Include a live tip, even between the 30 Hz history samples.
+    const points = history.concat({
+      x: ribbon.x,
+      y: ribbon.y,
+      time,
+      speed: Math.hypot(ribbon.vx, ribbon.vy),
+      curvature: ribbon.curvature,
+      energy: ribbon.cooling
+    });
+
+    for (let i = 1; i < points.length; i++) {
+      const a = points[i - 1];
+      const b = points[i];
+
+      if (Math.hypot(b.x - a.x, b.y - a.y) < 0.01) continue;
+
+      const strengthA = clamp(
+        1 - (time - a.time) / lifetime,
+        0,
+        1
+      );
+
+      const strengthB = clamp(
+        1 - (time - b.time) / lifetime,
+        0,
+        1
+      );
+
+      const strength = (strengthA + strengthB) * 0.5;
+
+      let color = fixedColor;
+
+      if (config.gradients.enabled) {
+        const movingColor = palette(
+          ribbon.tint +
+          strength * config.gradients.repetitions -
+          time * config.gradients.speed
+        );
+
+        color = fixedColor.map((channel, index) =>
+          mix(
+            channel,
+            movingColor[index],
+            config.gradients.intensity
+          )
+        );
+      }
+
+      const energy = (a.energy + b.energy) * 0.5;
+
+      let alpha =
+        config.ribbons.opacity *
+        Math.pow(strength, 1.45) *
+        depth.alpha *
+        branchFade;
+
+      if (config.illumination.enabled) {
+        alpha *= 1 + energy * config.illumination.intensity;
+      }
+
+      addSegment(
+        a.x + depth.x,
+        a.y + depth.y,
+        b.x + depth.x,
+        b.y + depth.y,
+
+        pointWidth(a, strengthA, widthScale),
+        pointWidth(b, strengthB, widthScale),
+
+        alpha,
+        color,
+
+        config.silk.enabled ? config.silk.intensity : 0,
+
+        ribbon.phase +
+        strength * TAU * 2 +
+        ribbon.depth
+      );
+    }
+  }
+
+  function drawVortices() {
+    if (!config.vortex.enabled) return;
+
+    centers.forEach((center, index) => {
+      const color = palette(index / Math.max(centers.length, 1));
+      const size = config.vortex.size;
+      const intensity = config.vortex.intensity;
+
+      for (let layer = 0; layer < 3; layer++) {
+        const radius = size * (0.42 + layer * 0.32);
+
+        const angle =
+          center.phase +
+          time * config.vortex.rotationSpeed *
+          center.direction * (1 - layer * 0.17);
+
+        addArc(
+          center.x,
+          center.y,
+          radius,
+          angle + layer * 2,
+          Math.PI * 1.25,
+          0.45 + layer * 0.1,
+          intensity * (0.24 - layer * 0.045),
+          color,
+          36
+        );
+      }
+
+      addDot(
+        center.x,
+        center.y,
+        1.4,
+        intensity * 0.6,
+        color
+      );
+
+      const count = Math.round(config.vortex.sparks);
+
+      for (let i = 0; i < count; i++) {
+        const angle =
+          i / Math.max(count, 1) * TAU +
+          time * config.vortex.rotationSpeed *
+          center.direction * 1.4;
+
+        const radius = size * (
+          0.35 +
+          0.7 * fract(i * 0.618 + index * 0.13)
+        );
+
+        const flicker =
+          0.5 + 0.5 * Math.sin(time * 2 + i * 2.7);
+
+        addDot(
+          center.x + Math.cos(angle) * radius,
+          center.y + Math.sin(angle) * radius,
+          0.55 + flicker * 0.45,
+          intensity * flicker * 0.7,
+          color
+        );
+      }
+    });
+  }
+
+  function drawInteractions() {
+    if (
+      config.mouse.enabled &&
+      config.mouse.showHalo &&
+      mouse.influence > 0.001
+    ) {
+      const color = palette(0.1);
+
+      // Layered broad discs form a very faint pointer halo.
+      for (let i = 5; i >= 1; i--) {
+        addDot(
+          mouse.x,
+          mouse.y,
+          config.mouse.radius * i / 5,
+          mouse.influence * 0.0025,
+          color
+        );
+      }
+    }
+
+    for (const pulse of pulses) {
+      const life = Math.max(
+        0,
+        1 - pulse.age / config.pulse.lifetime
+      );
+
+      const radius = pulse.age * config.pulse.speed;
+      const color = palette(0.85);
+
+      addArc(
+        pulse.x,
+        pulse.y,
+        radius,
+        0,
+        TAU,
+        0.45,
+        life * 0.18,
+        color,
+        96
+      );
+
+      if (config.illumination.enabled) {
+        addArc(
+          pulse.x,
+          pulse.y,
+          radius,
+          0,
+          TAU,
+          1.1,
+          life * config.illumination.intensity * 0.1,
+          color,
+          96
+        );
+      }
+    }
+
+    if (config.wake.enabled) {
+      const color = palette(0.35);
+
+      for (let i = 1; i < wakes.length; i++) {
+        const a = wakes[i - 1];
+        const b = wakes[i];
+
+        // Avoid connecting separate pointer gestures.
+        if (
+          a.gesture !== b.gesture ||
+          Math.hypot(b.x - a.x, b.y - a.y) > 180
+        ) continue;
+
+        const fade = Math.max(
+          0,
+          1 - b.age / config.wake.lifetime
+        );
+
+        addSegment(
+          a.x, a.y,
+          b.x, b.y,
+          0.4, 0.4,
+          fade * config.wake.intensity * 0.09,
+          color
+        );
+      }
+    }
+  }
+
+  function drawParticles() {
+    if (!config.stardust.enabled) return;
+
+    for (const particle of particles) {
+      const life = Math.max(
+        0,
+        1 - particle.age / particle.lifetime
+      );
+
+      const twinkle =
+        0.65 + 0.35 * Math.sin(time * 3 + particle.phase);
+
+      const depth = depthStyle(particle.depth);
+
+      addDot(
+        particle.x + depth.x,
+        particle.y + depth.y,
+        particle.size * depth.scale * (0.4 + life * 0.6),
+        life * twinkle *
+          config.stardust.intensity * depth.alpha,
+        palette(particle.tint)
+      );
+    }
+  }
+
+  function target(targetObject) {
+    gl.bindFramebuffer(
+      gl.FRAMEBUFFER,
+      targetObject ? targetObject.framebuffer : null
+    );
+
+    gl.viewport(
       0,
-      rgba(config.appearance.colorA, mouse.influence * 0.035)
+      0,
+      targetObject ? targetObject.width : renderWidth,
+      targetObject ? targetObject.height : renderHeight
     );
-    gradient.addColorStop(1, rgba(config.appearance.colorA, 0));
-
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height);
   }
 
-  for (const pulse of pulses) {
-    ctx.strokeStyle = rgba(
-      config.appearance.colorC,
-      (1 - pulse.age / config.pulse.lifetime) * 0.15
-    );
-    ctx.lineWidth = 0.7;
-    ctx.beginPath();
-    ctx.arc(
-      pulse.x, pulse.y,
-      pulse.age * config.pulse.speed,
-      0, Math.PI * 2
-    );
-    ctx.stroke();
-  }
-}
-
-function frame(timestamp) {
-  const realDt = previous === null
-    ? 0
-    : Math.min((timestamp - previous) / 1000, 0.05);
-
-  previous = timestamp;
-
-  const still =
-    config.animation.paused ||
-    (
-      config.animation.respectReducedMotion &&
-      reducedMotion.matches
-    );
-
-  const dt = still ? 0 : realDt * config.animation.speed;
-  time += dt;
-
-  const smoothing = 1 - Math.exp(-config.mouse.smoothing * realDt);
-  mouse.x += (mouse.targetX - mouse.x) * smoothing;
-  mouse.y += (mouse.targetY - mouse.y) * smoothing;
-  mouse.influence +=
-    ((mouse.active ? 1 : 0) - mouse.influence) * smoothing;
-
-  for (const pulse of pulses) pulse.age += dt;
-  pulses = pulses.filter(pulse => pulse.age < config.pulse.lifetime);
-
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = rgba(config.appearance.backgroundColor);
-  ctx.fillRect(0, 0, width, height);
-
-  drawInteraction();
-
-  const centers = wellPositions();
-
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-
-  for (const ribbon of ribbons) {
-    updateRibbon(ribbon, centers, dt);
-    drawRibbon(ribbon);
+  function bindTexture(unit, texture) {
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
   }
 
-  ctx.restore();
-  requestAnimationFrame(frame);
-}
+  function render() {
+    instanceCount = 0;
 
-function updatePointer(event) {
-  if (event.target.closest?.("[data-background-editor]")) {
+    drawVortices();
+    drawInteractions();
+
+    for (const ribbon of ribbons) drawRibbon(ribbon);
+    for (const branch of branches) drawRibbon(branch);
+
+    drawParticles();
+
+    target(sceneTarget);
+
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ONE, gl.ONE);
+
+    gl.useProgram(ribbonProgram);
+    gl.bindVertexArray(ribbonVAO);
+
+    gl.uniform2f(ru.uResolution, width, height);
+    gl.uniform1f(ru.uGlow, config.ribbons.glow);
+    gl.uniform1f(ru.uTime, time);
+    gl.uniform1f(ru.uTwistSpeed, config.silk.twistSpeed);
+    gl.uniform1f(ru.uTwistFrequency, config.silk.twistFrequency);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      instanceData.subarray(0, instanceCount * 12),
+      gl.DYNAMIC_DRAW
+    );
+
+    gl.drawArraysInstanced(
+      gl.TRIANGLES,
+      0,
+      6,
+      instanceCount
+    );
+
+    gl.disable(gl.BLEND);
+    gl.bindVertexArray(screenVAO);
+
+    if (config.bloom.enabled && config.bloom.intensity > 0) {
+      gl.useProgram(blurProgram);
+      gl.uniform1i(bu.uTexture, 0);
+      gl.uniform1f(bu.uThreshold, config.bloom.threshold);
+
+      target(blurA);
+      bindTexture(0, sceneTarget.texture);
+      gl.uniform1i(bu.uExtract, 1);
+      gl.uniform2f(
+        bu.uDirection,
+        config.bloom.radius / width,
+        0
+      );
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      target(blurB);
+      bindTexture(0, blurA.texture);
+      gl.uniform1i(bu.uExtract, 0);
+      gl.uniform2f(
+        bu.uDirection,
+        0,
+        config.bloom.radius / height
+      );
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
+    target(null);
+
+    gl.useProgram(compositeProgram);
+    bindTexture(0, sceneTarget.texture);
+    bindTexture(1, blurB.texture);
+
+    gl.uniform1i(cu.uScene, 0);
+    gl.uniform1i(cu.uBloom, 1);
+
+    gl.uniform3f(
+      cu.uBackground,
+      config.appearance.backgroundColor[0] / 255,
+      config.appearance.backgroundColor[1] / 255,
+      config.appearance.backgroundColor[2] / 255
+    );
+
+    gl.uniform2f(cu.uResolution, width, height);
+    gl.uniform1f(cu.uExposure, config.appearance.exposure);
+
+    gl.uniform1f(
+      cu.uBloomIntensity,
+      config.bloom.enabled ? config.bloom.intensity : 0
+    );
+
+    gl.uniform1i(
+      cu.uDistortion,
+      config.distortion.enabled ? 1 : 0
+    );
+
+    gl.uniform1f(
+      cu.uDistortionIntensity,
+      config.distortion.intensity
+    );
+
+    gl.uniform1f(
+      cu.uGravityDistortion,
+      config.distortion.gravityStrength
+    );
+
+    gl.uniform1f(
+      cu.uPulseDistortion,
+      config.distortion.pulseStrength
+    );
+
+    gl.uniform1f(cu.uGravityRadius, config.gravity.radius);
+    gl.uniform1i(cu.uWellCount, centers.length);
+    gl.uniform1i(cu.uPulseCount, pulses.length);
+
+    wellUniforms.fill(0);
+    pulseUniforms.fill(0);
+
+    centers.forEach((center, index) => {
+      wellUniforms.set([
+        center.x,
+        center.y,
+        center.direction,
+        0
+      ], index * 4);
+    });
+
+    pulses.forEach((pulse, index) => {
+      pulseUniforms.set([
+        pulse.x,
+        pulse.y,
+        pulse.age * config.pulse.speed,
+        config.pulse.width
+      ], index * 4);
+    });
+
+    gl.uniform4fv(cu["uWells[0]"], wellUniforms);
+    gl.uniform4fv(cu["uPulses[0]"], pulseUniforms);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindVertexArray(null);
+  }
+
+  function isStill() {
+    return config.animation.paused ||
+      (
+        config.animation.respectReducedMotion &&
+        reducedMotion.matches
+      );
+  }
+
+  function update(dt) {
+    time += dt;
+    centers = wellPositions();
+
+    for (const pulse of pulses) pulse.age += dt;
+    pulses = pulses.filter(
+      pulse => pulse.age < config.pulse.lifetime
+    );
+
+    for (const wake of wakes) wake.age += dt;
+    wakes = wakes.filter(
+      wake => wake.age < config.wake.lifetime
+    );
+
+    for (const ribbon of ribbons) {
+      updateRibbon(ribbon, dt);
+    }
+
+    // New branches are updated from the next simulation step.
+    const currentBranches = branches.slice();
+
+    for (const branch of currentBranches) {
+      updateRibbon(branch, dt);
+    }
+
+    branches = branches.filter(
+      branch => branch.age < branch.lifetime
+    );
+
+    for (const particle of particles) {
+      particle.age += dt;
+      particle.x += particle.vx * dt;
+      particle.y += particle.vy * dt;
+
+      const drag = Math.exp(-0.7 * dt);
+      particle.vx *= drag;
+      particle.vy *= drag;
+    }
+
+    particles = particles.filter(
+      particle => particle.age < particle.lifetime
+    );
+  }
+
+  function frame(timestamp) {
+    if (lost) return;
+
+    const realDt = previous === null
+      ? 0
+      : clamp((timestamp - previous) / 1000, 0, 0.05);
+
+    previous = timestamp;
+
+    if (!document.hidden) {
+      const still = isStill();
+
+      const dt = still
+        ? 0
+        : realDt * config.animation.speed;
+
+      if (!still && dt > 0) {
+        const smoothing = 1 - Math.exp(
+          -config.mouse.smoothing * realDt
+        );
+
+        mouse.x += (mouse.targetX - mouse.x) * smoothing;
+        mouse.y += (mouse.targetY - mouse.y) * smoothing;
+
+        mouse.influence += (
+          (mouse.active ? 1 : 0) - mouse.influence
+        ) * smoothing;
+
+        // Small integration steps keep fast presets stable.
+        const steps = Math.max(1, Math.ceil(dt / (1 / 60)));
+
+        for (let step = 0; step < steps; step++) {
+          update(dt / steps);
+        }
+      }
+
+      centers = wellPositions();
+      render();
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  let gesture = 0;
+  let lastPointer = null;
+  let lastWakeTime = -Infinity;
+
+  function deactivatePointer() {
     mouse.active = false;
-    return false;
+    lastPointer = null;
+    gesture++;
   }
 
-  if (!mouse.active) {
-    mouse.x = event.clientX;
-    mouse.y = event.clientY;
+  function updatePointer(event) {
+    if (event.target.closest?.("[data-background-editor]")) {
+      deactivatePointer();
+      return false;
+    }
+
+    const x = event.clientX;
+    const y = event.clientY;
+
+    if (!mouse.active) {
+      mouse.x = x;
+      mouse.y = y;
+    }
+
+    mouse.targetX = x;
+    mouse.targetY = y;
+    mouse.active = true;
+
+    if (
+      config.wake.enabled &&
+      !isStill() &&
+      config.animation.speed > 0 &&
+      lastPointer &&
+      time - lastWakeTime >= 1 / 35
+    ) {
+      const elapsed = Math.max(
+        (event.timeStamp - lastPointer.timestamp) / 1000,
+        1 / 120
+      );
+
+      const dx = x - lastPointer.x;
+      const dy = y - lastPointer.y;
+      const distance = Math.hypot(dx, dy);
+
+      if (distance > 1 && distance < 200) {
+        wakes.push({
+          x,
+          y,
+          vx: clamp(dx / elapsed, -900, 900),
+          vy: clamp(dy / elapsed, -900, 900),
+          spin: dx * dy >= 0 ? 1 : -1,
+          age: 0,
+          gesture
+        });
+
+        if (wakes.length > 64) wakes.shift();
+        lastWakeTime = time;
+      }
+    }
+
+    lastPointer = {
+      x,
+      y,
+      timestamp: event.timeStamp
+    };
+
+    return true;
   }
 
-  mouse.targetX = event.clientX;
-  mouse.targetY = event.clientY;
-  mouse.active = true;
-  return true;
-}
+  addEventListener("pointermove", updatePointer);
 
-addEventListener("pointermove", updatePointer);
+  addEventListener("pointerdown", event => {
+    if (!updatePointer(event)) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
 
-addEventListener("pointerdown", event => {
-  if (!updatePointer(event) || !config.pulse.enabled) return;
-  if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (
+      !config.pulse.enabled ||
+      isStill() ||
+      config.animation.speed <= 0
+    ) return;
 
-  if (pulses.length >= 12) pulses.shift();
-  pulses.push({ x: event.clientX, y: event.clientY, age: 0 });
-});
+    if (pulses.length >= MAX_PULSES) pulses.shift();
 
-addEventListener("pointerup", event => {
-  if (event.pointerType !== "mouse") mouse.active = false;
-});
-addEventListener("pointercancel", () => mouse.active = false);
-addEventListener("blur", () => mouse.active = false);
+    pulses.push({
+      x: event.clientX,
+      y: event.clientY,
+      age: 0,
+      considered: new WeakSet()
+    });
+  });
 
-document.documentElement.addEventListener(
-  "pointerleave", () => mouse.active = false
-);
+  addEventListener("pointerup", event => {
+    if (event.pointerType !== "mouse") deactivatePointer();
+  });
 
-document.addEventListener("visibilitychange", () => {
-  previous = null;
-  mouse.active = false;
-});
+  addEventListener("pointercancel", deactivatePointer);
+  addEventListener("blur", deactivatePointer);
 
-addEventListener("resize", resize);
+  document.documentElement.addEventListener(
+    "pointerleave",
+    deactivatePointer
+  );
 
-resize();
-reset();
+  document.addEventListener("visibilitychange", () => {
+    previous = null;
+    deactivatePointer();
+  });
 
-// Seed short trails so the initial and reduced-motion views are visible.
-const initialCenters = wellPositions();
-for (let step = 0; step < 45; step++) {
-  time += 1 / 30;
-  for (const ribbon of ribbons) {
-    updateRibbon(ribbon, initialCenters, 1 / 30);
+  addEventListener("resize", resize);
+
+  canvas.addEventListener("webglcontextlost", event => {
+    event.preventDefault();
+    lost = true;
+    errorBox.hidden = false;
+    errorBox.textContent =
+      "The graphics context was interrupted. Waiting for recovery…";
+  });
+
+  canvas.addEventListener("webglcontextrestored", () => {
+    // Rebuild all GPU resources through a clean page reload.
+    location.reload();
+  });
+
+  function restoreDefaults() {
+    for (const key of Object.keys(defaults)) {
+      Object.assign(
+        config[key],
+        JSON.parse(JSON.stringify(defaults[key]))
+      );
+    }
   }
-}
 
-requestAnimationFrame(frame);
+  function applyPreset(name) {
+    restoreDefaults();
 
-if (config.panel.enabled) {
+    if (name === "quiet") {
+      Object.assign(config.ribbons, {
+        count: 55,
+        speed: 35,
+        strokeWidth: 1.15,
+        trailLifetime: 4.8,
+        opacity: 0.55,
+        glow: 1.5
+      });
+
+      config.bloom.intensity = 0.3;
+      config.silk.intensity = 0.35;
+      config.gradients.speed = 0.05;
+
+      config.vortex.enabled = false;
+      config.splitting.enabled = false;
+      config.distortion.enabled = false;
+
+      config.stardust.intensity = 0.25;
+      config.stardust.emissionRate = 0.8;
+
+      config.depth.parallax = 12;
+      config.wake.intensity = 0.35;
+      config.illumination.intensity = 0.6;
+    }
+
+    if (name === "cosmic") {
+      Object.assign(config.ribbons, {
+        count: 135,
+        speed: 75,
+        strokeWidth: 1.9,
+        trailLifetime: 5,
+        opacity: 0.8,
+        glow: 4.5
+      });
+
+      Object.assign(config.gravity, {
+        wells: 5,
+        strength: 100,
+        swirl: 135
+      });
+
+      config.bloom.intensity = 1.05;
+      config.bloom.radius = 7;
+
+      config.vortex.intensity = 0.85;
+      config.vortex.size = 58;
+      config.vortex.sparks = 16;
+
+      config.splitting.probability = 0.6;
+      config.splitting.intensity = 0.9;
+
+      config.stardust.emissionRate = 5;
+      config.stardust.intensity = 0.85;
+
+      config.orbit.intensity = 0.9;
+      config.orbit.frequency = 0.3;
+
+      config.depth.parallax = 38;
+      config.distortion.intensity = 0.85;
+      config.illumination.intensity = 1.8;
+      config.wake.intensity = 1.1;
+    }
+
+    // "silk" uses the balanced default configuration.
+    resize();
+    reset();
+  }
+
+  try {
+    resize();
+    reset();
+    requestAnimationFrame(frame);
+  } catch (error) {
+    errorBox.hidden = false;
+    errorBox.textContent = error.message;
+    return;
+  }
+
   import("./settings-editor.js")
     .then(({ createSettingsEditor }) => {
       createSettingsEditor({
         config,
-        onChange: refresh,
-        onReset: reset
+
+        onChange(path) {
+          refresh();
+
+          if (path === "animation.pixelRatio") {
+            resize();
+          }
+
+          previous = null;
+        },
+
+        onReset: reset,
+        onPreset: applyPreset
       });
     })
-    .catch(error => console.error("Editor could not load:", error));
+    .catch(error => {
+      console.error("Settings editor could not load:", error);
+      errorBox.hidden = false;
+      errorBox.textContent =
+        "The animation is running, but settings-editor.js could not load. Keep both files in the same folder and serve them through HTTP.";
+    });
 }
 </script>
 </body>
