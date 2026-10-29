@@ -45,145 +45,141 @@
   <div id="error" role="alert" hidden></div>
 
   <script type="module">
-    const defaults = {
-      view: {
-        threeD: true,
-        perspective: true,
-        tilt: 28,
-        zoom: 1
-      },
-
-      pile: {
-        enabled: true,
-        density: 1,
-        length: 13,
-        width: 0.9,
-        curvature: 0.45,
-        variation: 0.55
-      },
-
-      flow: {
-        vortexCount: 5,
-        radius: 300,
-        strength: 2.5,
-        speed: 0.35,
-        wandering: 0.22,
-        direction: -20
-      },
-
-      lighting: {
-        enabled: true,
-        direction: -45,
-        strength: 1.15,
-        sharpness: 5
-      },
-
-      iridescence: {
-        enabled: true,
-        strength: 0.22,
-        frequency: 2
-      },
-
-      movingLights: {
-        enabled: true,
-        strength: 0.55,
-        speed: 0.3
-      },
-
-      folds: {
-        enabled: true,
-        height: 0.13,
-        scale: 1,
-        speed: 0.2
-      },
-
-      shadows: {
-        enabled: true,
-        strength: 0.55
-      },
-
-      turbulence: {
-        enabled: true,
-        strength: 0.45,
-        scale: 1
-      },
-
-      breathing: {
-        enabled: true,
-        strength: 0.28,
-        speed: 0.6
-      },
-
-      shimmer: {
-        enabled: true,
-        strength: 0.22,
-        speed: 0.7,
-        width: 0.2
-      },
-
-      brush: {
-        enabled: true,
-        radius: 100,
-        strength: 0.85,
-        persistence: 3,
-        pressure: true
-      },
-
-      ripples: {
-        enabled: true,
-        strength: 0.6,
-        speed: 130,
-        lifetime: 5
-      },
-
-      whirlpool: {
-        enabled: true,
-        radius: 180,
-        strength: 3
-      },
-
-      parallax: {
-        enabled: true,
-        strength: 0.12,
-        smoothing: 5
-      },
-
-      dust: {
-        enabled: true,
-        density: 0.45,
-        brightness: 0.6,
-        speed: 0.3
-      },
-
-      bloom: {
-        enabled: true,
-        strength: 0.45,
-        threshold: 0.7,
-        radius: 2.5
-      },
-
-      appearance: {
-        backgroundColor: [9, 11, 22],
-        colorA: [73, 111, 153],
-        colorB: [161, 99, 165],
-        highlightColor: [187, 205, 226],
-        exposure: 1.15
-      },
-
-      quality: {
-        pixelRatio: 1.25
-      },
-
-      animation: {
-        speed: 1,
-        paused: false,
-        respectReducedMotion: true
-      },
-
-      panel: {
-        enabled: true
-      }
-    };
+const defaults = {
+  "view": {
+    "threeD": false,
+    "perspective": true,
+    "tilt": 41,
+    "zoom": 1
+  },
+  "pile": {
+    "enabled": true,
+    "density": 1,
+    "length": 25,
+    "width": 0.75,
+    "curvature": 0.65,
+    "variation": 0.07
+  },
+  "flow": {
+    "vortexCount": 4,
+    "radius": 300,
+    "strength": 2.5,
+    "speed": 0.35,
+    "wandering": 0.22,
+    "direction": -20
+  },
+  "lighting": {
+    "enabled": true,
+    "direction": -45,
+    "strength": 1.15,
+    "sharpness": 5
+  },
+  "iridescence": {
+    "enabled": true,
+    "strength": 0.22,
+    "frequency": 2
+  },
+  "movingLights": {
+    "enabled": true,
+    "strength": 0.55,
+    "speed": 0.3
+  },
+  "folds": {
+    "enabled": true,
+    "height": 0.13,
+    "scale": 1,
+    "speed": 0.2
+  },
+  "shadows": {
+    "enabled": true,
+    "strength": 0.55
+  },
+  "turbulence": {
+    "enabled": true,
+    "strength": 0.45,
+    "scale": 1
+  },
+  "breathing": {
+    "enabled": true,
+    "strength": 0.28,
+    "speed": 0.6
+  },
+  "shimmer": {
+    "enabled": true,
+    "strength": 0.22,
+    "speed": 0.7,
+    "width": 0.2
+  },
+  "brush": {
+    "enabled": true,
+    "radius": 100,
+    "strength": 0.85,
+    "persistence": 3,
+    "pressure": true
+  },
+  "ripples": {
+    "enabled": true,
+    "strength": 0.6,
+    "speed": 130,
+    "lifetime": 5
+  },
+  "whirlpool": {
+    "enabled": true,
+    "radius": 180,
+    "strength": 3
+  },
+  "parallax": {
+    "enabled": true,
+    "strength": 0.12,
+    "smoothing": 5
+  },
+  "dust": {
+    "enabled": true,
+    "density": 0.45,
+    "brightness": 0.6,
+    "speed": 0.3
+  },
+  "bloom": {
+    "enabled": true,
+    "strength": 0.45,
+    "threshold": 0.7,
+    "radius": 2.5
+  },
+  "appearance": {
+    "backgroundColor": [
+      9,
+      11,
+      22
+    ],
+    "colorA": [
+      73,
+      111,
+      153
+    ],
+    "colorB": [
+      161,
+      99,
+      165
+    ],
+    "highlightColor": [
+      187,
+      205,
+      226
+    ],
+    "exposure": 1.15
+  },
+  "quality": {
+    "pixelRatio": 1.25
+  },
+  "animation": {
+    "speed": 1,
+    "paused": false,
+    "respectReducedMotion": true
+  },
+  "panel": {
+    "enabled": true
+  }
+};
 
     const config = structuredClone(defaults);
     window.getBackgroundConfig = () => structuredClone(config);
