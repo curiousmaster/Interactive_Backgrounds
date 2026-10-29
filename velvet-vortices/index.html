@@ -4,13 +4,39 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Velvet Vortices</title>
+
 <style>
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#090b16}
-#background{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
-#error{position:fixed;left:20px;bottom:20px;max-width:500px;padding:15px;background:#251d32;color:white;font:14px/1.5 system-ui;border-radius:8px}
-[hidden]{display:none!important}
+html,body {
+  margin:0;
+  width:100%;
+  height:100%;
+  overflow:hidden;
+  background:#090b16;
+}
+#background {
+  position:fixed;
+  inset:0;
+  width:100%;
+  height:100%;
+  pointer-events:none;
+}
+#error {
+  position:fixed;
+  left:20px;
+  bottom:20px;
+  max-width:500px;
+  padding:15px;
+  background:#251d32;
+  color:white;
+  font:14px/1.5 system-ui;
+  border-radius:8px;
+}
+[hidden] {
+  display:none!important;
+}
 </style>
 </head>
+
 <body>
 <canvas id="background" aria-hidden="true"></canvas>
 <div id="error" role="alert" hidden></div>
@@ -117,10 +143,10 @@ const defaults = {
     radius: 2.5
   },
   appearance: {
-    backgroundColor: [9, 11, 22],
-    colorA: [73, 111, 153],
-    colorB: [161, 99, 165],
-    highlightColor: [187, 205, 226],
+    backgroundColor: [9,11,22],
+    colorA: [73,111,153],
+    colorB: [161,99,165],
+    highlightColor: [187,205,226],
     exposure: 1.15
   },
   quality: {
@@ -164,12 +190,12 @@ if (!gl) {
 
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
 
-const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const clamp = (x,a,b) => Math.max(a,Math.min(b,x));
 
-const angleDiff = (a, b) =>
-  Math.atan2(Math.sin(a - b), Math.cos(a - b));
+const angleDiff = (a,b) =>
+  Math.atan2(Math.sin(a-b),Math.cos(a-b));
 
-let seed = Math.random() * 1000;
+let seed = Math.random()*1000;
 let clock = 0;
 let previous = null;
 let lost = false;
@@ -177,7 +203,7 @@ let lost = false;
 let width = 1;
 let height = 1;
 let camera;
-let bounds = [-4, -4, 4, 4];
+let bounds = [-4,-4,4,4];
 
 let data = new Float32Array();
 let memory = new Float32Array();
@@ -199,43 +225,54 @@ let pointerId = null;
 const ripples = [];
 
 const pointer = {
-  x: 0,
-  y: 0,
-  active: false,
-  down: false,
-  moved: false,
-  reset: true,
-  cx: 0,
-  cy: 0,
-  hold: 0,
-  hx: 0,
-  hy: 0,
-  lastX: 0,
-  lastY: 0
+  x:0,
+  y:0,
+  active:false,
+  down:false,
+  moved:false,
+  reset:true,
+  cx:0,
+  cy:0,
+  hold:0,
+  hx:0,
+  hy:0,
+  lastX:0,
+  lastY:0
 };
 
 const common = `
 uniform float clock;
 uniform vec4 bounds;
-uniform vec3 eye, forward, up;
-uniform float aspect, distanceToSurface;
-uniform bool view_threeD, view_perspective;
+uniform vec3 eye,forward,up;
+uniform float aspect,distanceToSurface;
+
+uniform bool view_threeD,view_perspective;
 uniform bool folds_enabled;
-uniform float folds_height, folds_scale, folds_speed;
+uniform float folds_height,folds_scale,folds_speed;
 
 float hash(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  return fract(
+    sin(dot(p,vec2(127.1,311.7)))*43758.5453
+  );
 }
 
 float heightAt(vec2 p) {
-  if (!folds_enabled) return 0.0;
+  if(!folds_enabled) return 0.0;
 
   p *= folds_scale;
-  float t = clock * folds_speed;
+  float t = clock*folds_speed;
 
-  return folds_height * (
-    sin(p.x * 1.35 + sin(p.y * 0.75 + t) * 0.65 + t) * 0.65 +
-    sin(p.y * 1.8 - p.x * 0.45 - t * 0.63) * 0.35
+  return folds_height*(
+    sin(
+      p.x*1.35+
+      sin(p.y*0.75+t)*0.65+
+      t
+    )*0.65+
+    sin(
+      p.y*1.8-
+      p.x*0.45-
+      t*0.63
+    )*0.35
   );
 }
 
@@ -243,28 +280,30 @@ vec3 normalAt(vec2 p) {
   float e = 0.012;
 
   return normalize(vec3(
-    heightAt(p - vec2(e, 0.0)) - heightAt(p + vec2(e, 0.0)),
-    heightAt(p - vec2(0.0, e)) - heightAt(p + vec2(0.0, e)),
-    2.0 * e
+    heightAt(p-vec2(e,0.0))-
+      heightAt(p+vec2(e,0.0)),
+    heightAt(p-vec2(0.0,e))-
+      heightAt(p+vec2(0.0,e)),
+    2.0*e
   ));
 }
 
 vec4 projectPoint(vec3 p) {
-  vec3 q = p - eye;
-  float z = dot(q, forward);
-  vec2 xy = vec2(q.x, dot(q, up));
+  vec3 q = p-eye;
+  float z = dot(q,forward);
+  vec2 xy = vec2(q.x,dot(q,up));
 
-  if (view_perspective) {
+  if(view_perspective) {
     return vec4(
-      xy / vec2(0.46 * aspect, 0.46),
-      1.0050125 * z - 0.20050125,
+      xy/vec2(0.46*aspect,0.46),
+      1.0050125*z-0.20050125,
       z
     );
   }
 
   return vec4(
-    xy / (distanceToSurface * vec2(0.46 * aspect, 0.46)),
-    2.0 * (z - 0.1) / 39.9 - 1.0,
+    xy/(distanceToSurface*vec2(0.46*aspect,0.46)),
+    2.0*(z-0.1)/39.9-1.0,
     1.0
   );
 }
@@ -274,8 +313,8 @@ const sceneVertex = `#version 300 es
 precision highp float;
 precision highp int;
 
-layout(location = 0) in vec4 instance;
-layout(location = 1) in vec2 state;
+layout(location=0) in vec4 instance;
+layout(location=1) in vec2 state;
 
 uniform int kind;
 
@@ -286,6 +325,9 @@ uniform float pile_variation;
 
 uniform float dust_speed;
 uniform float pixelRatio;
+
+uniform bool parallax_enabled;
+uniform float parallax_strength;
 
 out vec3 worldPosition;
 out vec3 fiberTangent;
@@ -306,110 +348,145 @@ void main() {
   flatten = 0.0;
   randomValue = 0.0;
 
-  fiberTangent = vec3(1.0, 0.0, 0.0);
-  surfaceNormal = vec3(0.0, 0.0, 1.0);
+  fiberTangent = vec3(1.0,0.0,0.0);
+  surfaceNormal = vec3(0.0,0.0,1.0);
 
-  if (kind == 0) {
-    int cell = gl_VertexID / 6;
-    int corner = gl_VertexID % 6;
+  if(kind==0) {
+    int cell = gl_VertexID/6;
+    int corner = gl_VertexID%6;
 
-    vec2 c = vec2(cell % 80, cell / 80);
+    vec2 c = vec2(cell%80,cell/80);
 
-    vec2 o = corner == 0 ? vec2(0.0, 0.0) :
-             corner == 1 ? vec2(1.0, 0.0) :
-             corner == 2 ? vec2(0.0, 1.0) :
-             corner == 3 ? vec2(0.0, 1.0) :
-             corner == 4 ? vec2(1.0, 0.0) :
-                           vec2(1.0, 1.0);
+    vec2 o =
+      corner==0 ? vec2(0.0,0.0) :
+      corner==1 ? vec2(1.0,0.0) :
+      corner==2 ? vec2(0.0,1.0) :
+      corner==3 ? vec2(0.0,1.0) :
+      corner==4 ? vec2(1.0,0.0) :
+                  vec2(1.0,1.0);
 
-    vec2 xy = mix(bounds.xy, bounds.zw, (c + o) / 80.0);
+    vec2 xy = mix(
+      bounds.xy,
+      bounds.zw,
+      (c+o)/80.0
+    );
 
-    p = vec3(xy, view_threeD ? heightAt(xy) : 0.0);
+    p = vec3(
+      xy,
+      view_threeD ? heightAt(xy) : 0.0
+    );
+
     surfaceNormal = normalAt(xy);
-  } else if (kind == 1) {
-    int segment = gl_VertexID / 6;
-    int corner = gl_VertexID % 6;
+  } else if(kind==1) {
+    int segment = gl_VertexID/6;
+    int corner = gl_VertexID%6;
 
     float endPoint =
-      (corner == 1 || corner == 4 || corner == 5) ? 1.0 : 0.0;
+      (corner==1||corner==4||corner==5)
+        ? 1.0
+        : 0.0;
 
-    along = (float(segment) + endPoint) / 6.0;
+    along = (float(segment)+endPoint)/6.0;
+
     across =
-      (corner == 2 || corner == 3 || corner == 5) ? 1.0 : -1.0;
+      (corner==2||corner==3||corner==5)
+        ? 1.0
+        : -1.0;
 
     randomValue = instance.w;
     flatten = state.y;
 
     float a = state.x;
 
-    vec2 d = vec2(cos(a), sin(a));
-    vec2 side = vec2(-d.y, d.x);
+    vec2 d = vec2(cos(a),sin(a));
+    vec2 side = vec2(-d.y,d.x);
 
     float len =
-      pile_length *
-      (1.0 - pile_variation * (1.0 - instance.z)) / 300.0;
+      pile_length*
+      (1.0-pile_variation*(1.0-instance.z))/
+      300.0;
 
     float bend =
-      pile_curvature * len * (randomValue * 2.0 - 1.0);
+      pile_curvature*
+      len*
+      (randomValue*2.0-1.0);
 
-    float u = along - 0.5;
+    float u = along-0.5;
 
     vec2 xy =
-      instance.xy / 300.0 +
-      d * u * len +
-      side * bend * (u * u - 0.25);
+      instance.xy/300.0+
+      d*u*len+
+      side*bend*(u*u-0.25);
 
     float halfWidth =
-      pile_width / 600.0 *
-      mix(0.65, 1.2, instance.z) *
-      (1.0 - along * 0.3);
+      pile_width/600.0*
+      mix(0.65,1.2,instance.z)*
+      (1.0-along*0.3);
 
-    xy += side * across * halfWidth;
+    xy += side*across*halfWidth;
 
     float arch =
-      sin(along * 3.14159265) *
-      len * 0.17 *
-      (1.0 - flatten * 0.8);
+      sin(along*3.14159265)*
+      len*0.17*
+      (1.0-flatten*0.8);
+
+    float compression = parallax_enabled
+      ? flatten*parallax_strength*0.05
+      : 0.0;
 
     p = vec3(
       xy,
-      0.0008 + (view_threeD ? heightAt(xy) + arch : 0.0)
+      0.0008+(
+        view_threeD
+          ? heightAt(xy)+max(0.0,arch-compression)
+          : 0.0
+      )
     );
 
     surfaceNormal = normalAt(xy);
 
     fiberTangent = normalize(vec3(
-      d * len + side * 2.0 * bend * u,
+      d*len+side*2.0*bend*u,
       view_threeD
-        ? cos(along * 3.14159265) *
-          len * 0.17 * 3.14159265 *
-          (1.0 - flatten * 0.8)
+        ? cos(along*3.14159265)*
+          len*0.17*3.14159265*
+          (1.0-flatten*0.8)
         : 0.0
     ));
   } else {
     float id = float(gl_VertexID);
 
-    randomValue = hash(vec2(id, 9.3));
+    randomValue = hash(vec2(id,9.3));
 
     vec2 q = vec2(
-      hash(vec2(id, 13.0)),
-      hash(vec2(id, 71.0))
+      hash(vec2(id,13.0)),
+      hash(vec2(id,71.0))
     );
 
     q = fract(
-      q + clock * dust_speed *
-      vec2(0.007 + 0.009 * randomValue, -0.012)
+      q+
+      clock*dust_speed*
+      vec2(
+        0.007+0.009*randomValue,
+        -0.012
+      )
     );
 
-    vec2 xy = mix(bounds.xy, bounds.zw, q);
+    vec2 xy = mix(
+      bounds.xy,
+      bounds.zw,
+      q
+    );
 
     p = vec3(
       xy,
-      (view_threeD ? heightAt(xy) : 0.0) +
-      0.035 + randomValue * 0.2
+      (view_threeD ? heightAt(xy) : 0.0)+
+      0.035+
+      randomValue*0.2
     );
 
-    gl_PointSize = (1.5 + randomValue * 2.5) * pixelRatio;
+    gl_PointSize =
+      (1.5+randomValue*2.5)*pixelRatio;
   }
 
   worldPosition = p;
@@ -430,7 +507,8 @@ in float along;
 in float flatten;
 in float randomValue;
 
-out vec4 color;
+layout(location=0) out vec4 color;
+layout(location=1) out vec4 emission;
 
 uniform int kind;
 
@@ -465,58 +543,76 @@ uniform vec3 appearance_highlightColor;
 
 ${common}
 
-float shadowAt(vec2 p, vec3 light) {
-  if (!shadows_enabled || !view_threeD || !folds_enabled) {
+float shadowAt(vec2 p,vec3 light) {
+  if(
+    !shadows_enabled||
+    !view_threeD||
+    !folds_enabled
+  ) {
     return 1.0;
   }
 
   float h = heightAt(p);
   float occ = 0.0;
 
-  for (int i = 1; i <= 5; i++) {
-    float stepSize = float(i) * 0.06;
+  for(int i=1;i<=5;i++) {
+    float stepSize = float(i)*0.06;
 
     float obstruction =
-      heightAt(p + light.xy * stepSize) -
-      h - light.z * stepSize;
+      heightAt(p+light.xy*stepSize)-
+      h-
+      light.z*stepSize;
 
-    occ = max(occ, smoothstep(-0.025, 0.045, obstruction));
+    occ = max(
+      occ,
+      smoothstep(
+        -0.025,
+        0.045,
+        obstruction
+      )
+    );
   }
 
-  return 1.0 - occ * shadows_strength * 0.65;
+  return 1.0-occ*shadows_strength*0.65;
 }
 
 void main() {
-  if (kind == 2) {
-    float radius = length(gl_PointCoord - 0.5) * 2.0;
+  if(kind==2) {
+    float radius =
+      length(gl_PointCoord-0.5)*2.0;
 
     float alpha =
-      exp(-radius * radius * 4.0) *
-      (1.0 - smoothstep(0.65, 1.0, radius));
+      exp(-radius*radius*4.0)*
+      (1.0-smoothstep(0.65,1.0,radius));
 
     float beam = pow(
-      0.5 + 0.5 * sin(
-        worldPosition.x * 1.8 +
-        worldPosition.y -
-        clock * 0.13
+      0.5+0.5*sin(
+        worldPosition.x*1.8+
+        worldPosition.y-
+        clock*0.13
       ),
       4.0
     );
 
     color = vec4(
-      appearance_highlightColor *
-      dust_brightness *
-      (0.15 + beam * 1.7),
-      alpha * 0.7
+      appearance_highlightColor*
+      dust_brightness*
+      (0.15+beam*1.7),
+      alpha*0.7
+    );
+
+    emission = vec4(
+      color.rgb*beam*2.0,
+      color.a
     );
 
     return;
   }
 
   vec3 n = normalize(surfaceNormal);
-  vec3 v = normalize(eye - worldPosition);
+  vec3 v = normalize(eye-worldPosition);
 
-  if (kind == 1) {
+  if(kind==1) {
     vec3 side = normalize(vec3(
       -fiberTangent.y,
       fiberTangent.x,
@@ -524,92 +620,110 @@ void main() {
     ));
 
     n = normalize(
-      n * sqrt(max(0.02, 1.0 - across * across)) +
-      side * across * 0.65
+      n*sqrt(max(0.02,1.0-across*across))+
+      side*across*0.65
     );
   }
 
   float a = radians(lighting_direction);
 
   vec3 light = normalize(vec3(
-    cos(a) * 0.7,
-    sin(a) * 0.7,
+    cos(a)*0.7,
+    sin(a)*0.7,
     0.85
   ));
 
   float diffuse = 0.65;
   float specular = 0.0;
 
-  if (lighting_enabled) {
-    diffuse = 0.28 + 0.72 * max(dot(n, light), 0.0);
+  if(lighting_enabled) {
+    diffuse =
+      0.28+
+      0.72*max(dot(n,light),0.0);
 
-    vec3 h = normalize(light + v);
+    vec3 h = normalize(light+v);
 
     float longitudinal = sqrt(max(
       0.0,
-      1.0 - pow(dot(normalize(fiberTangent), h), 2.0)
+      1.0-pow(
+        dot(normalize(fiberTangent),h),
+        2.0
+      )
     ));
 
     specular =
-      pow(longitudinal, lighting_sharpness * 5.0) *
-      max(dot(n, light), 0.0) *
+      pow(
+        longitudinal,
+        lighting_sharpness*5.0
+      )*
+      max(dot(n,light),0.0)*
       lighting_strength;
   }
 
-  if (movingLights_enabled) {
-    float t = clock * movingLights_speed;
+  if(movingLights_enabled) {
+    float t = clock*movingLights_speed;
 
-    for (int i = 0; i < 2; i++) {
+    for(int i=0;i<2;i++) {
       float k = float(i);
 
       vec3 position = vec3(
-        sin(t * (0.7 - k * 0.2) + k * 2.0) * 2.4,
-        cos(t * 0.53 + k) * 1.8,
+        sin(t*(0.7-k*0.2)+k*2.0)*2.4,
+        cos(t*0.53+k)*1.8,
         1.5
       );
 
-      vec3 delta = position - worldPosition;
+      vec3 delta = position-worldPosition;
 
       float falloff =
-        1.0 / (1.0 + dot(delta, delta) * 0.4);
+        1.0/(1.0+dot(delta,delta)*0.4);
 
       vec3 l = normalize(delta);
-      vec3 h = normalize(l + v);
+      vec3 h = normalize(l+v);
 
       float silk = pow(
         sqrt(max(
           0.0,
-          1.0 - pow(dot(fiberTangent, h), 2.0)
+          1.0-pow(
+            dot(fiberTangent,h),
+            2.0
+          )
         )),
         12.0
       );
 
       diffuse +=
-        max(dot(n, l), 0.0) *
-        falloff * movingLights_strength * 0.4;
+        max(dot(n,l),0.0)*
+        falloff*
+        movingLights_strength*
+        0.4;
 
       specular +=
-        silk * falloff * movingLights_strength;
+        silk*
+        falloff*
+        movingLights_strength;
     }
   }
 
-  if (shimmer_enabled) {
+  if(shimmer_enabled) {
     float wave = pow(
-      0.5 + 0.5 * sin(
-        worldPosition.x * 2.2 +
-        worldPosition.y * 1.4 -
-        clock * shimmer_speed * 2.0
+      0.5+0.5*sin(
+        worldPosition.x*2.2+
+        worldPosition.y*1.4-
+        clock*shimmer_speed*2.0
       ),
-      1.0 / max(shimmer_width, 0.02)
+      1.0/max(shimmer_width,0.02)
     );
 
-    specular += wave * shimmer_strength;
+    specular += wave*shimmer_strength;
   }
 
   float tint = clamp(
-    0.5 +
-    sin(worldPosition.y * 0.8 + worldPosition.x * 0.3) * 0.3 +
-    sin(worldPosition.x * 0.47) * 0.2,
+    0.5+
+    sin(
+      worldPosition.y*0.8+
+      worldPosition.x*0.3
+    )*0.3+
+    sin(worldPosition.x*0.47)*0.2,
     0.0,
     1.0
   );
@@ -620,63 +734,79 @@ void main() {
     tint
   );
 
-  if (iridescence_enabled) {
-    float direction = atan(fiberTangent.y, fiberTangent.x);
+  if(iridescence_enabled) {
+    float direction =
+      atan(fiberTangent.y,fiberTangent.x);
 
-    vec3 sheen = 0.5 + 0.5 * cos(
-      vec3(0.0, 2.1, 4.2) +
-      direction * iridescence_frequency +
-      (1.0 - abs(dot(n, v))) * 4.0
+    vec3 sheen = 0.5+0.5*cos(
+      vec3(0.0,2.1,4.2)+
+      direction*iridescence_frequency+
+      (1.0-abs(dot(n,v)))*4.0
     );
 
     base = mix(
       base,
-      sheen * 0.6 + base * 0.4,
-      iridescence_strength * (0.25 + specular * 0.5)
+      sheen*0.6+base*0.4,
+      iridescence_strength*
+      (0.25+specular*0.5)
     );
   }
 
-  if (kind == 0) {
+  if(kind==0) {
     float weave =
-      0.96 +
-      0.04 *
-      sin(worldPosition.x * 950.0) *
-      sin(worldPosition.y * 950.0);
+      0.96+
+      0.04*
+      sin(worldPosition.x*950.0)*
+      sin(worldPosition.y*950.0);
 
     base = mix(
       appearance_backgroundColor,
-      base * 0.28,
+      base*0.28,
       0.85
-    ) * weave;
+    )*weave;
 
     specular *= 0.14;
   } else {
     base *=
-      mix(0.8, 1.15, randomValue) *
-      mix(1.0, 0.58, flatten);
+      mix(0.8,1.15,randomValue)*
+      mix(1.0,0.58,flatten);
   }
 
-  float shadow = shadowAt(worldPosition.xy, light);
+  float shadow =
+    shadowAt(worldPosition.xy,light);
 
-  if (shadows_enabled && kind == 1) {
+  if(shadows_enabled&&kind==1) {
     shadow *=
-      1.0 - shadows_strength * (1.0 - along) * 0.2;
+      1.0-
+      shadows_strength*
+      (1.0-along)*
+      0.2;
   }
 
   vec3 result = (
-    base * diffuse +
-    appearance_highlightColor *
-    specular *
-    (kind == 1 ? 0.35 + along * 0.65 : 1.0)
-  ) * shadow;
+    base*diffuse+
+    appearance_highlightColor*
+    specular*
+    (kind==1 ? 0.35+along*0.65 : 1.0)
+  )*shadow;
 
-  float alpha = kind == 1
-    ? 1.0 - smoothstep(0.65, 1.0, abs(across))
+  float alpha = kind==1
+    ? 1.0-smoothstep(0.65,1.0,abs(across))
     : 1.0;
 
-  if (alpha < 0.02) discard;
+  if(alpha<0.02) discard;
 
-  color = vec4(result, alpha);
+  color = vec4(result,alpha);
+
+  // Keep bloom highlights separate from the dark cloth.
+  vec3 highlight = kind==1
+    ? appearance_highlightColor*
+      specular*
+      (0.35+along*0.65)*
+      shadow
+    : vec3(0.0);
+
+  emission = vec4(highlight*3.0,alpha);
 }
 `;
 
@@ -687,12 +817,13 @@ precision highp int;
 out vec2 uv;
 
 void main() {
-  vec2 p = gl_VertexID == 0 ? vec2(-1.0, -1.0) :
-           gl_VertexID == 1 ? vec2(3.0, -1.0) :
-                             vec2(-1.0, 3.0);
+  vec2 p =
+    gl_VertexID==0 ? vec2(-1.0,-1.0) :
+    gl_VertexID==1 ? vec2(3.0,-1.0) :
+                    vec2(-1.0,3.0);
 
-  uv = p * 0.5 + 0.5;
-  gl_Position = vec4(p, 0.0, 1.0);
+  uv = p*0.5+0.5;
+  gl_Position = vec4(p,0.0,1.0);
 }
 `;
 
@@ -717,60 +848,83 @@ uniform float strength;
 uniform float exposure;
 
 void main() {
-  if (pass == 0) {
-    vec3 c = texture(image, uv).rgb;
-    float bright = max(max(c.r, c.g), c.b);
+  if(pass==0) {
+    vec3 c = texture(image,uv).rgb;
+    float bright = max(max(c.r,c.g),c.b);
 
     float knee = 0.15;
 
     float soft = clamp(
-      bright - threshold + knee,
+      bright-threshold+knee,
       0.0,
-      2.0 * knee
+      2.0*knee
     );
 
-    soft = soft * soft / (4.0 * knee + 0.0001);
+    soft =
+      soft*soft/
+      (4.0*knee+0.0001);
 
     color = vec4(
-      c * max(bright - threshold, soft) /
-      max(bright, 0.0001),
+      c*
+      max(bright-threshold,soft)/
+      max(bright,0.0001),
       1.0
     );
-  } else if (pass == 1) {
-    vec2 stepSize = direction * texel * radius;
+  } else if(pass==1) {
+    vec2 stepSize =
+      direction*texel*radius;
 
-    vec3 c = texture(image, uv).rgb * 0.227027;
-
-    c += (
-      texture(image, uv + stepSize * 1.384615).rgb +
-      texture(image, uv - stepSize * 1.384615).rgb
-    ) * 0.316216;
+    vec3 c =
+      texture(image,uv).rgb*0.227027;
 
     c += (
-      texture(image, uv + stepSize * 3.230769).rgb +
-      texture(image, uv - stepSize * 3.230769).rgb
-    ) * 0.070270;
+      texture(
+        image,
+        uv+stepSize*1.384615
+      ).rgb+
+      texture(
+        image,
+        uv-stepSize*1.384615
+      ).rgb
+    )*0.316216;
 
-    color = vec4(c, 1.0);
+    c += (
+      texture(
+        image,
+        uv+stepSize*3.230769
+      ).rgb+
+      texture(
+        image,
+        uv-stepSize*3.230769
+      ).rgb
+    )*0.070270;
+
+    color = vec4(c,1.0);
   } else {
     vec3 c =
-      texture(image, uv).rgb +
-      texture(glow, uv).rgb * strength;
+      texture(image,uv).rgb+
+      texture(glow,uv).rgb*strength;
 
-    c = 1.0 - exp(-max(c, vec3(0.0)) * exposure);
+    c =
+      1.0-exp(
+        -max(c,vec3(0.0))*exposure
+      );
 
-    color = vec4(pow(c, vec3(0.85)), 1.0);
+    color = vec4(
+      pow(c,vec3(0.85)),
+      1.0
+    );
   }
 }
 `;
 
-function shader(type, source) {
+function shader(type,source) {
   const s = gl.createShader(type);
 
-  gl.shaderSource(s, source);
+  gl.shaderSource(s,source);
   gl.compileShader(s);
 
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) {
     const message = gl.getShaderInfoLog(s);
     gl.deleteShader(s);
     throw new Error(message);
@@ -779,134 +933,146 @@ function shader(type, source) {
   return s;
 }
 
-function program(vs, fs) {
+function program(vs,fs) {
   const p = gl.createProgram();
-  const v = shader(gl.VERTEX_SHADER, vs);
-  const f = shader(gl.FRAGMENT_SHADER, fs);
+  const v = shader(gl.VERTEX_SHADER,vs);
+  const f = shader(gl.FRAGMENT_SHADER,fs);
 
-  gl.attachShader(p, v);
-  gl.attachShader(p, f);
+  gl.attachShader(p,v);
+  gl.attachShader(p,f);
   gl.linkProgram(p);
 
   gl.deleteShader(v);
   gl.deleteShader(f);
 
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS)) {
     throw new Error(gl.getProgramInfoLog(p));
   }
 
   return p;
 }
 
-function uniform(p, name, value) {
+function uniform(p,name,value) {
   let cache = locations.get(p);
 
-  if (!cache) {
+  if(!cache) {
     cache = new Map();
-    locations.set(p, cache);
+    locations.set(p,cache);
   }
 
-  if (!cache.has(name)) {
-    cache.set(name, gl.getUniformLocation(p, name));
+  if(!cache.has(name)) {
+    cache.set(name,gl.getUniformLocation(p,name));
   }
 
   const u = cache.get(name);
-  if (u === null) return;
 
-  if (typeof value === "boolean") {
-    gl.uniform1i(u, value ? 1 : 0);
-  } else if (
-    Array.isArray(value) ||
+  if(u===null) return;
+
+  if(typeof value==="boolean") {
+    gl.uniform1i(u,value ? 1 : 0);
+  } else if(
+    Array.isArray(value)||
     ArrayBuffer.isView(value)
   ) {
-    if (value.length === 2) gl.uniform2fv(u, value);
-    else if (value.length === 3) gl.uniform3fv(u, value);
-    else gl.uniform4fv(u, value);
+    if(value.length===2) {
+      gl.uniform2fv(u,value);
+    } else if(value.length===3) {
+      gl.uniform3fv(u,value);
+    } else {
+      gl.uniform4fv(u,value);
+    }
   } else {
-    gl.uniform1f(u, value);
+    gl.uniform1f(u,value);
   }
 }
 
-function hash(x, y) {
+function hash(x,y) {
   const n =
-    Math.sin(x * 127.1 + y * 311.7 + seed) * 43758.5453;
+    Math.sin(
+      x*127.1+
+      y*311.7+
+      seed
+    )*43758.5453;
 
-  return n - Math.floor(n);
+  return n-Math.floor(n);
 }
 
-function fold(x, y) {
-  if (!config.folds.enabled) return 0;
+function fold(x,y) {
+  if(!config.folds.enabled) return 0;
 
   const f = config.folds;
-  const t = clock * f.speed;
+  const t = clock*f.speed;
 
   x *= f.scale;
   y *= f.scale;
 
-  return f.height * (
+  return f.height*(
     Math.sin(
-      x * 1.35 + Math.sin(y * 0.75 + t) * 0.65 + t
-    ) * 0.65 +
-    Math.sin(y * 1.8 - x * 0.45 - t * 0.63) * 0.35
+      x*1.35+
+      Math.sin(y*0.75+t)*0.65+
+      t
+    )*0.65+
+    Math.sin(
+      y*1.8-
+      x*0.45-
+      t*0.63
+    )*0.35
   );
 }
 
 function updateCamera() {
   const a = config.view.threeD
-    ? config.view.tilt * Math.PI / 180
+    ? config.view.tilt*Math.PI/180
     : 0;
 
   const c = Math.cos(a);
   const s = Math.sin(a);
-  const d = 4 / config.view.zoom;
+  const d = 4/config.view.zoom;
 
-  const par =
-    config.view.threeD && config.parallax.enabled
-      ? config.parallax.strength
-      : 0;
-
+  // Pointer movement never changes this camera.
   camera = {
-    eye: [
-      pointer.cx * par,
-      -s * d + pointer.cy * par,
-      c * d
-    ],
-    forward: [0, s, -c],
-    up: [0, c, s],
+    eye:[0,-s*d,c*d],
+    forward:[0,s,-c],
+    up:[0,c,s],
     d
   };
 }
 
-function pick(x, y, surface = true) {
-  const sx = (x / width * 2 - 1) * width / height;
-  const sy = 1 - y / height * 2;
+function pick(x,y,surface=true) {
+  const sx =
+    (x/width*2-1)*width/height;
 
-  let [ox, oy, oz] = camera.eye;
-  let [rx, ry, rz] = camera.forward;
+  const sy =
+    1-y/height*2;
 
-  if (config.view.perspective) {
-    rx += sx * 0.46;
-    ry += sy * camera.up[1] * 0.46;
-    rz += sy * camera.up[2] * 0.46;
+  let [ox,oy,oz] = camera.eye;
+  let [rx,ry,rz] = camera.forward;
+
+  if(config.view.perspective) {
+    rx += sx*0.46;
+    ry += sy*camera.up[1]*0.46;
+    rz += sy*camera.up[2]*0.46;
   } else {
-    ox += sx * camera.d * 0.46;
-    oy += sy * camera.up[1] * camera.d * 0.46;
-    oz += sy * camera.up[2] * camera.d * 0.46;
+    ox += sx*camera.d*0.46;
+    oy += sy*camera.up[1]*camera.d*0.46;
+    oz += sy*camera.up[2]*camera.d*0.46;
   }
 
-  let t = -oz / rz;
+  let t = -oz/rz;
 
-  if (surface && config.view.threeD) {
-    for (let i = 0; i < 10; i++) {
+  if(surface&&config.view.threeD) {
+    for(let i=0;i<10;i++) {
       t += (
-        (fold(ox + rx * t, oy + ry * t) - oz) / rz - t
-      ) * 0.7;
+        (
+          fold(ox+rx*t,oy+ry*t)-oz
+        )/rz-t
+      )*0.7;
     }
   }
 
   return [
-    (ox + rx * t) * 300,
-    (oy + ry * t) * 300
+    (ox+rx*t)*300,
+    (oy+ry*t)*300
   ];
 }
 
@@ -914,81 +1080,103 @@ function rebuild() {
   updateCamera();
 
   const corners = [
-    [0, 0],
-    [width, 0],
-    [0, height],
-    [width, height]
-  ].map(p => pick(...p, false));
+    [0,0],
+    [width,0],
+    [0,height],
+    [width,height]
+  ].map(p=>pick(...p,false));
 
   const margin = 240;
 
   bounds = [
-    Math.min(...corners.map(p => p[0])) / 300 - margin / 300,
-    Math.min(...corners.map(p => p[1])) / 300 - margin / 300,
-    Math.max(...corners.map(p => p[0])) / 300 + margin / 300,
-    Math.max(...corners.map(p => p[1])) / 300 + margin / 300
+    Math.min(...corners.map(p=>p[0]))/300-margin/300,
+    Math.min(...corners.map(p=>p[1]))/300-margin/300,
+    Math.max(...corners.map(p=>p[0]))/300+margin/300,
+    Math.max(...corners.map(p=>p[1]))/300+margin/300
   ];
 
-  let spacing = 7 / Math.sqrt(config.pile.density);
+  let spacing =
+    7/Math.sqrt(config.pile.density);
 
   const area =
-    (bounds[2] - bounds[0]) *
-    (bounds[3] - bounds[1]) *
+    (bounds[2]-bounds[0])*
+    (bounds[3]-bounds[1])*
     90000;
 
-  spacing = Math.max(spacing, Math.sqrt(area / 90000));
+  spacing = Math.max(
+    spacing,
+    Math.sqrt(area/90000)
+  );
 
   const list = [];
 
-  for (
-    let y = Math.floor(bounds[1] * 300 / spacing);
-    y <= Math.ceil(bounds[3] * 300 / spacing);
+  for(
+    let y=Math.floor(bounds[1]*300/spacing);
+    y<=Math.ceil(bounds[3]*300/spacing);
     y++
   ) {
-    for (
-      let x = Math.floor(bounds[0] * 300 / spacing);
-      x <= Math.ceil(bounds[2] * 300 / spacing);
+    for(
+      let x=Math.floor(bounds[0]*300/spacing);
+      x<=Math.ceil(bounds[2]*300/spacing);
       x++
     ) {
       list.push(
-        (x + 0.5 + (hash(x, y) - 0.5) * 0.8) * spacing,
         (
-          y + 0.5 +
-          (hash(x + 11, y + 17) - 0.5) * 0.8
-        ) * spacing,
-        hash(x + 31, y + 4),
-        hash(x + 7, y + 93),
-        config.flow.direction * Math.PI / 180,
+          x+0.5+
+          (hash(x,y)-0.5)*0.8
+        )*spacing,
+
+        (
+          y+0.5+
+          (hash(x+11,y+17)-0.5)*0.8
+        )*spacing,
+
+        hash(x+31,y+4),
+        hash(x+7,y+93),
+        config.flow.direction*Math.PI/180,
         0
       );
     }
   }
 
   data = new Float32Array(list);
-  memory = new Float32Array(data.length / 6);
+  memory = new Float32Array(data.length/6);
   comb = new Float32Array(memory.length);
 
-  gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+  gl.bindBuffer(
+    gl.ARRAY_BUFFER,
+    instanceBuffer
+  );
 
-  simulate(0, true);
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    data,
+    gl.DYNAMIC_DRAW
+  );
+
+  simulate(0,true);
 }
 
 function deleteTargets() {
-  for (const t of targets) {
+  for(const t of targets) {
     gl.deleteFramebuffer(t.fbo);
     gl.deleteTexture(t.texture);
 
-    if (t.depth) gl.deleteRenderbuffer(t.depth);
+    if(t.depth) {
+      gl.deleteRenderbuffer(t.depth);
+    }
   }
 
   targets = [];
 }
 
-function target(w, h, depth) {
+function target(w,h,depth) {
   const texture = gl.createTexture();
 
-  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.bindTexture(
+    gl.TEXTURE_2D,
+    texture
+  );
 
   gl.texImage2D(
     gl.TEXTURE_2D,
@@ -1028,7 +1216,10 @@ function target(w, h, depth) {
 
   const fbo = gl.createFramebuffer();
 
-  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.bindFramebuffer(
+    gl.FRAMEBUFFER,
+    fbo
+  );
 
   gl.framebufferTexture2D(
     gl.FRAMEBUFFER,
@@ -1040,10 +1231,13 @@ function target(w, h, depth) {
 
   let depthBuffer = null;
 
-  if (depth) {
+  if(depth) {
     depthBuffer = gl.createRenderbuffer();
 
-    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+    gl.bindRenderbuffer(
+      gl.RENDERBUFFER,
+      depthBuffer
+    );
 
     gl.renderbufferStorage(
       gl.RENDERBUFFER,
@@ -1060,11 +1254,13 @@ function target(w, h, depth) {
     );
   }
 
-  if (
-    gl.checkFramebufferStatus(gl.FRAMEBUFFER) !==
+  if(
+    gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==
     gl.FRAMEBUFFER_COMPLETE
   ) {
-    throw new Error("Unable to create render target.");
+    throw new Error(
+      "Unable to create render target."
+    );
   }
 
   return {
@@ -1072,15 +1268,15 @@ function target(w, h, depth) {
     fbo,
     w,
     h,
-    depth: depthBuffer
+    depth:depthBuffer
   };
 }
 
 function sync() {
-  if (lost) return;
+  if(lost) return;
 
-  width = Math.max(1, innerWidth);
-  height = Math.max(1, innerHeight);
+  width = Math.max(1,innerWidth);
+  height = Math.max(1,innerHeight);
 
   const max = Math.min(
     gl.getParameter(gl.MAX_TEXTURE_SIZE),
@@ -1088,38 +1284,75 @@ function sync() {
   );
 
   const dpr = Math.min(
-    devicePixelRatio || 1,
+    devicePixelRatio||1,
     config.quality.pixelRatio,
-    max / width,
-    max / height
+    max/width,
+    max/height
   );
 
-  const w = Math.max(1, Math.round(width * dpr));
-  const h = Math.max(1, Math.round(height * dpr));
+  const w = Math.max(
+    1,
+    Math.round(width*dpr)
+  );
 
-  const nextTarget = [w, h].join();
+  const h = Math.max(
+    1,
+    Math.round(height*dpr)
+  );
 
-  if (nextTarget !== targetKey) {
+  const nextTarget = [w,h].join();
+
+  if(nextTarget!==targetKey) {
     canvas.width = w;
     canvas.height = h;
 
     deleteTargets();
 
     try {
-      targets = [
-        target(w, h, true),
-        target(
-          Math.max(1, w >> 1),
-          Math.max(1, h >> 1),
-          false
-        ),
-        target(
-          Math.max(1, w >> 1),
-          Math.max(1, h >> 1),
-          false
-        )
-      ];
-    } catch (e) {
+      targets.push(target(w,h,true));
+
+      targets.push(target(
+        Math.max(1,w>>1),
+        Math.max(1,h>>1),
+        false
+      ));
+
+      targets.push(target(
+        Math.max(1,w>>1),
+        Math.max(1,h>>1),
+        false
+      ));
+
+      // Full-resolution highlight attachment.
+      targets.push(target(w,h,false));
+
+      gl.bindFramebuffer(
+        gl.FRAMEBUFFER,
+        targets[0].fbo
+      );
+
+      gl.framebufferTexture2D(
+        gl.FRAMEBUFFER,
+        gl.COLOR_ATTACHMENT1,
+        gl.TEXTURE_2D,
+        targets[3].texture,
+        0
+      );
+
+      gl.drawBuffers([
+        gl.COLOR_ATTACHMENT0,
+        gl.COLOR_ATTACHMENT1
+      ]);
+
+      if(
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==
+        gl.FRAMEBUFFER_COMPLETE
+      ) {
+        throw new Error(
+          "Unable to attach bloom highlights."
+        );
+      }
+    } catch(e) {
       deleteTargets();
       throw e;
     }
@@ -1138,269 +1371,325 @@ function sync() {
     seed
   ].join();
 
-  if (key !== geometryKey) {
+  if(key!==geometryKey) {
     geometryKey = key;
     rebuild();
     pointer.reset = true;
   }
 }
 
-function simulate(dt, initial = false) {
+function simulate(dt,initial=false) {
   const centers = [];
   const f = config.flow;
-  const t = clock * f.speed;
+  const t = clock*f.speed;
 
   const breath = config.breathing.enabled
-    ? 1 +
-      Math.sin(clock * config.breathing.speed) *
+    ? 1+
+      Math.sin(clock*config.breathing.speed)*
       config.breathing.strength
     : 1;
 
-  for (let i = 0; i < f.vortexCount; i++) {
+  for(let i=0;i<f.vortexCount;i++) {
     centers.push({
       x:
-        (hash(i, 17) - 0.5) * 1800 +
-        Math.sin(t * (0.23 + i * 0.017) + i * 2.7) *
-        f.wandering * 1000,
+        (hash(i,17)-0.5)*1800+
+        Math.sin(
+          t*(0.23+i*0.017)+i*2.7
+        )*f.wandering*1000,
 
       y:
-        (hash(i, 39) - 0.5) * 1200 +
-        Math.cos(t * (0.19 + i * 0.013) + i * 1.9) *
-        f.wandering * 1000,
+        (hash(i,39)-0.5)*1200+
+        Math.cos(
+          t*(0.19+i*0.013)+i*1.9
+        )*f.wandering*1000,
 
-      sign: i % 2 ? -1 : 1,
+      sign:i%2 ? -1 : 1,
 
-      pulse: config.breathing.enabled
-        ? 1 +
-          Math.sin(clock * config.breathing.speed + i) *
-          config.breathing.strength
+      pulse:config.breathing.enabled
+        ? 1+
+          Math.sin(
+            clock*config.breathing.speed+i
+          )*config.breathing.strength
         : 1
     });
   }
 
-  const world = pick(pointer.x, pointer.y);
+  const world = pick(pointer.x,pointer.y);
   const px = world[0];
   const py = world[1];
 
-  if (pointer.reset) {
+  if(pointer.reset) {
     pointer.lastX = px;
     pointer.lastY = py;
     pointer.reset = false;
   }
 
-  const dx = px - pointer.lastX;
-  const dy = py - pointer.lastY;
-  const travel = Math.hypot(dx, dy);
+  const dx = px-pointer.lastX;
+  const dy = py-pointer.lastY;
+  const travel = Math.hypot(dx,dy);
 
   const pressure = config.brush.pressure
     ? clamp(
-        travel / Math.max(dt, 0.001) / 650,
+        travel/Math.max(dt,0.001)/650,
         0.08,
         1
       )
     : 0.6;
 
-  const brushAngle = Math.atan2(dy, dx);
+  const brushAngle = Math.atan2(dy,dx);
 
   const radius =
-    config.brush.radius * (1 + pressure * 0.55);
+    config.brush.radius*
+    (1+pressure*0.55);
 
-  if (pointer.down && pointer.active) {
+  if(pointer.down&&pointer.active) {
     pointer.hx = px;
     pointer.hy = py;
   }
 
   const holdTarget =
-    pointer.down &&
-    pointer.active &&
+    pointer.down&&
+    pointer.active&&
     config.whirlpool.enabled
       ? 1
       : 0;
 
   pointer.hold +=
-    (holdTarget - pointer.hold) *
-    (1 - Math.exp(-dt * 5));
+    (holdTarget-pointer.hold)*
+    (1-Math.exp(-dt*5));
 
   const decay = Math.exp(
-    -Math.LN2 * dt / config.brush.persistence
+    -Math.LN2*dt/config.brush.persistence
   );
 
   const response = initial
     ? 1
-    : 1 - Math.exp(-dt * 4);
+    : 1-Math.exp(-dt*4);
 
-  for (let i = 0; i < memory.length; i++) {
-    const o = i * 6;
+  for(let i=0;i<memory.length;i++) {
+    const o = i*6;
     const x = data[o];
-    const y = data[o + 1];
+    const y = data[o+1];
 
-    let vx = Math.cos(f.direction * Math.PI / 180);
-    let vy = Math.sin(f.direction * Math.PI / 180);
+    let vx =
+      Math.cos(f.direction*Math.PI/180);
 
-    for (const c of centers) {
-      const xx = x - c.x;
-      const yy = y - c.y;
-      const d = Math.hypot(xx, yy);
+    let vy =
+      Math.sin(f.direction*Math.PI/180);
+
+    for(const c of centers) {
+      const xx = x-c.x;
+      const yy = y-c.y;
+      const d = Math.hypot(xx,yy);
 
       const w =
         Math.exp(
-          -(xx * xx + yy * yy) /
-          Math.pow(f.radius * breath, 2)
-        ) *
-        f.strength *
-        c.sign *
-        c.pulse /
-        Math.max(d, 30);
+          -(xx*xx+yy*yy)/
+          Math.pow(f.radius*breath,2)
+        )*
+        f.strength*
+        c.sign*
+        c.pulse/
+        Math.max(d,30);
 
-      vx -= yy * w;
-      vy += xx * w;
+      vx -= yy*w;
+      vy += xx*w;
     }
 
-    let a = Math.atan2(vy, vx);
+    let a = Math.atan2(vy,vx);
 
-    if (config.turbulence.enabled) {
-      const qx = x * 0.006 * config.turbulence.scale;
-      const qy = y * 0.006 * config.turbulence.scale;
+    if(config.turbulence.enabled) {
+      const qx =
+        x*0.006*config.turbulence.scale;
+
+      const qy =
+        y*0.006*config.turbulence.scale;
 
       a += (
         Math.sin(
-          qx * 1.7 + Math.cos(qy * 1.3) + t
-        ) * 0.65 +
+          qx*1.7+
+          Math.cos(qy*1.3)+t
+        )*0.65+
         Math.sin(
-          qy * 3.1 - qx * 2.2 - t * 0.7
-        ) * 0.25 +
+          qy*3.1-
+          qx*2.2-
+          t*0.7
+        )*0.25+
         Math.cos(
-          qx * 5.1 + qy * 4.7 + t * 0.4
-        ) * 0.1
-      ) * config.turbulence.strength;
+          qx*5.1+
+          qy*4.7+
+          t*0.4
+        )*0.1
+      )*config.turbulence.strength;
     }
 
     vx = Math.cos(a);
     vy = Math.sin(a);
 
-    if (
-      config.whirlpool.enabled &&
-      pointer.hold > 0.001
+    if(
+      config.whirlpool.enabled&&
+      pointer.hold>0.001
     ) {
-      const xx = x - pointer.hx;
-      const yy = y - pointer.hy;
+      const xx = x-pointer.hx;
+      const yy = y-pointer.hy;
 
       const w =
         Math.exp(
-          -(xx * xx + yy * yy) /
-          (config.whirlpool.radius ** 2)
-        ) *
-        config.whirlpool.strength *
-        pointer.hold /
-        Math.max(Math.hypot(xx, yy), 15);
+          -(xx*xx+yy*yy)/
+          (config.whirlpool.radius**2)
+        )*
+        config.whirlpool.strength*
+        pointer.hold/
+        Math.max(Math.hypot(xx,yy),15);
 
-      vx -= yy * w;
-      vy += xx * w;
+      vx -= yy*w;
+      vy += xx*w;
     }
 
-    a = Math.atan2(vy, vx);
+    a = Math.atan2(vy,vx);
 
     let ripple = 0;
 
-    if (config.ripples.enabled) {
-      for (const r of ripples) {
-        const age = clock - r.time;
+    if(config.ripples.enabled) {
+      for(const r of ripples) {
+        const age = clock-r.time;
 
-        if (
-          age < 0 ||
-          age > config.ripples.lifetime
+        if(
+          age<0||
+          age>config.ripples.lifetime
         ) {
           continue;
         }
 
         const front =
-          Math.hypot(x - r.x, y - r.y) -
-          age * config.ripples.speed;
+          Math.hypot(x-r.x,y-r.y)-
+          age*config.ripples.speed;
 
         ripple +=
-          Math.sin(front * 0.065) *
-          Math.exp(-front * front / 2500) *
+          Math.sin(front*0.065)*
+          Math.exp(-front*front/2500)*
           Math.pow(
-            1 - age / config.ripples.lifetime,
+            1-age/config.ripples.lifetime,
             1.5
-          ) *
+          )*
           config.ripples.strength;
       }
     }
 
-    a += ripple * 0.85;
-
+    a += ripple*0.85;
     memory[i] *= decay;
 
-    if (
-      config.brush.enabled &&
-      pointer.active &&
-      pointer.moved &&
-      travel > 0.1 &&
-      dt > 0
+    if(
+      config.brush.enabled&&
+      pointer.active&&
+      pointer.moved&&
+      travel>0.1&&
+      dt>0
     ) {
       const k = clamp(
         (
-          (x - pointer.lastX) * dx +
-          (y - pointer.lastY) * dy
-        ) / Math.max(travel * travel, 0.001),
+          (x-pointer.lastX)*dx+
+          (y-pointer.lastY)*dy
+        )/Math.max(travel*travel,0.001),
         0,
         1
       );
 
       const dist = Math.hypot(
-        x - pointer.lastX - dx * k,
-        y - pointer.lastY - dy * k
+        x-pointer.lastX-dx*k,
+        y-pointer.lastY-dy*k
       );
 
       const contact =
-        Math.exp(-dist * dist / (radius * radius)) *
-        pressure *
+        Math.exp(
+          -dist*dist/(radius*radius)
+        )*
+        pressure*
         config.brush.strength;
 
-      if (contact > 0.002) {
-        if (memory[i] < 0.005) {
+      if(contact>0.002) {
+        if(memory[i]<0.005) {
           comb[i] = brushAngle;
         } else {
           comb[i] +=
-            angleDiff(brushAngle, comb[i]) *
-            (1 - Math.exp(-contact * dt * 30));
+            angleDiff(
+              brushAngle,
+              comb[i]
+            )*
+            (
+              1-Math.exp(
+                -contact*dt*30
+              )
+            );
         }
 
         memory[i] +=
-          (1 - memory[i]) *
-          (1 - Math.exp(-contact * dt * 35));
+          (1-memory[i])*
+          (
+            1-Math.exp(
+              -contact*dt*35
+            )
+          );
       }
     }
 
-    const m = config.brush.enabled ? memory[i] : 0;
+    const m = config.brush.enabled
+      ? memory[i]
+      : 0;
 
-    a += angleDiff(comb[i], a) * m;
+    a += angleDiff(comb[i],a)*m;
 
-    data[o + 4] +=
-      angleDiff(a, data[o + 4]) * response;
+    data[o+4] +=
+      angleDiff(a,data[o+4])*response;
 
-    data[o + 5] = clamp(
-      m + Math.abs(ripple) * 0.2,
+    const targetFlatten = clamp(
+      m+Math.abs(ripple)*0.2,
       0,
       1
     );
+
+    const flattenResponse = initial
+      ? 1
+      : 1-Math.exp(
+          -dt*(
+            config.parallax.enabled
+              ? config.parallax.smoothing
+              : 10
+          )
+        );
+
+    data[o+5] +=
+      (targetFlatten-data[o+5])*
+      flattenResponse;
   }
 
   pointer.lastX = px;
   pointer.lastY = py;
   pointer.moved = false;
 
-  gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
-  gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
+  gl.bindBuffer(
+    gl.ARRAY_BUFFER,
+    instanceBuffer
+  );
+
+  gl.bufferSubData(
+    gl.ARRAY_BUFFER,
+    0,
+    data
+  );
 }
 
-function bindTexture(unit, texture) {
-  gl.activeTexture(gl.TEXTURE0 + unit);
-  gl.bindTexture(gl.TEXTURE_2D, texture);
+function bindTexture(unit,texture) {
+  gl.activeTexture(gl.TEXTURE0+unit);
+  gl.bindTexture(gl.TEXTURE_2D,texture);
 }
 
-function post(pass, input, output, direction = [0, 0]) {
+function post(
+  pass,
+  input,
+  output,
+  direction=[0,0]
+) {
   gl.bindFramebuffer(
     gl.FRAMEBUFFER,
     output ? output.fbo : null
@@ -1413,22 +1702,32 @@ function post(pass, input, output, direction = [0, 0]) {
     output ? output.h : canvas.height
   );
 
-  bindTexture(0, input.texture);
+  bindTexture(0,input.texture);
+
+  // Both active samplers must have complete textures.
+  // Neither may reference the current destination.
+  if(pass<2) {
+    bindTexture(1,input.texture);
+  }
 
   gl.uniform1i(
-    gl.getUniformLocation(postProgram, "pass"),
+    gl.getUniformLocation(postProgram,"pass"),
     pass
   );
 
   uniform(
     postProgram,
     "texel",
-    [1 / input.w, 1 / input.h]
+    [1/input.w,1/input.h]
   );
 
-  uniform(postProgram, "direction", direction);
+  uniform(
+    postProgram,
+    "direction",
+    direction
+  );
 
-  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.drawArrays(gl.TRIANGLES,0,3);
 }
 
 function render() {
@@ -1437,19 +1736,37 @@ function render() {
     targets[0].fbo
   );
 
-  gl.viewport(0, 0, canvas.width, canvas.height);
-
-  gl.clearColor(
-    ...config.appearance.backgroundColor.map(v => v / 255),
-    1
+  gl.viewport(
+    0,
+    0,
+    canvas.width,
+    canvas.height
   );
+
+  gl.drawBuffers([
+    gl.COLOR_ATTACHMENT0,
+    gl.COLOR_ATTACHMENT1
+  ]);
 
   gl.depthMask(true);
 
-  gl.clear(
-    gl.COLOR_BUFFER_BIT |
-    gl.DEPTH_BUFFER_BIT
+  gl.clearBufferfv(
+    gl.COLOR,
+    0,
+    new Float32Array([
+      ...config.appearance.backgroundColor
+        .map(v=>v/255),
+      1
+    ])
   );
+
+  gl.clearBufferfv(
+    gl.COLOR,
+    1,
+    new Float32Array([0,0,0,0])
+  );
+
+  gl.clear(gl.DEPTH_BUFFER_BIT);
 
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
@@ -1457,17 +1774,19 @@ function render() {
 
   gl.useProgram(sceneProgram);
 
-  for (
-    const [section, values] of Object.entries(config)
+  for(
+    const [section,values] of
+    Object.entries(config)
   ) {
-    for (
-      const [key, value] of Object.entries(values)
+    for(
+      const [key,value] of
+      Object.entries(values)
     ) {
       uniform(
         sceneProgram,
-        section + "_" + key,
+        section+"_"+key,
         Array.isArray(value)
-          ? value.map(v => v / 255)
+          ? value.map(v=>v/255)
           : value
       );
     }
@@ -1476,31 +1795,32 @@ function render() {
   const sceneUniforms = {
     clock,
     bounds,
-    eye: camera.eye,
-    forward: camera.forward,
-    up: camera.up,
-    aspect: width / height,
-    distanceToSurface: camera.d,
-    pixelRatio: canvas.height / height
+    eye:camera.eye,
+    forward:camera.forward,
+    up:camera.up,
+    aspect:width/height,
+    distanceToSurface:camera.d,
+    pixelRatio:canvas.height/height
   };
 
-  for (
-    const [name, value] of Object.entries(sceneUniforms)
+  for(
+    const [name,value] of
+    Object.entries(sceneUniforms)
   ) {
-    uniform(sceneProgram, name, value);
+    uniform(sceneProgram,name,value);
   }
 
   gl.bindVertexArray(emptyVAO);
 
   gl.uniform1i(
-    gl.getUniformLocation(sceneProgram, "kind"),
+    gl.getUniformLocation(sceneProgram,"kind"),
     0
   );
 
   gl.drawArrays(
     gl.TRIANGLES,
     0,
-    80 * 80 * 6
+    80*80*6
   );
 
   gl.enable(gl.BLEND);
@@ -1510,11 +1830,11 @@ function render() {
     gl.ONE_MINUS_SRC_ALPHA
   );
 
-  if (config.pile.enabled) {
+  if(config.pile.enabled) {
     gl.bindVertexArray(fiberVAO);
 
     gl.uniform1i(
-      gl.getUniformLocation(sceneProgram, "kind"),
+      gl.getUniformLocation(sceneProgram,"kind"),
       1
     );
 
@@ -1526,19 +1846,19 @@ function render() {
     );
   }
 
-  if (config.dust.enabled) {
+  if(config.dust.enabled) {
     gl.bindVertexArray(emptyVAO);
     gl.depthMask(false);
 
     gl.uniform1i(
-      gl.getUniformLocation(sceneProgram, "kind"),
+      gl.getUniformLocation(sceneProgram,"kind"),
       2
     );
 
     gl.drawArrays(
       gl.POINTS,
       0,
-      Math.round(400 * config.dust.density)
+      Math.round(400*config.dust.density)
     );
 
     gl.depthMask(true);
@@ -1551,16 +1871,14 @@ function render() {
   gl.useProgram(postProgram);
 
   gl.uniform1i(
-    gl.getUniformLocation(postProgram, "image"),
+    gl.getUniformLocation(postProgram,"image"),
     0
   );
 
   gl.uniform1i(
-    gl.getUniformLocation(postProgram, "glow"),
+    gl.getUniformLocation(postProgram,"glow"),
     1
   );
-
-  bindTexture(1, null);
 
   uniform(
     postProgram,
@@ -1580,20 +1898,33 @@ function render() {
     config.appearance.exposure
   );
 
-  if (
-    config.bloom.enabled &&
-    config.bloom.strength > 0
+  if(
+    config.bloom.enabled&&
+    config.bloom.strength>0
   ) {
-    post(0, targets[0], targets[1]);
-    post(1, targets[1], targets[2], [1, 0]);
-    post(1, targets[2], targets[1], [0, 1]);
+    // Extract from highlights, not the dark diffuse scene.
+    post(0,targets[3],targets[1]);
+
+    post(
+      1,
+      targets[1],
+      targets[2],
+      [1,0]
+    );
+
+    post(
+      1,
+      targets[2],
+      targets[1],
+      [0,1]
+    );
   } else {
     gl.bindFramebuffer(
       gl.FRAMEBUFFER,
       targets[1].fbo
     );
 
-    gl.clearColor(0, 0, 0, 1);
+    gl.clearColor(0,0,0,1);
     gl.clear(gl.COLOR_BUFFER_BIT);
   }
 
@@ -1605,19 +1936,28 @@ function render() {
       : 0
   );
 
-  bindTexture(1, targets[1].texture);
+  bindTexture(
+    1,
+    targets[1].texture
+  );
 
-  post(2, targets[0], null);
+  post(
+    2,
+    targets[0],
+    null
+  );
 }
 
 function initialize() {
   locations = new Map();
 
   hdr = Boolean(
-    gl.getExtension("EXT_color_buffer_float")
+    gl.getExtension(
+      "EXT_color_buffer_float"
+    )
   );
 
-  if (hdr) {
+  if(hdr) {
     gl.getExtension("EXT_float_blend");
   }
 
@@ -1636,7 +1976,11 @@ function initialize() {
   instanceBuffer = gl.createBuffer();
 
   gl.bindVertexArray(fiberVAO);
-  gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+
+  gl.bindBuffer(
+    gl.ARRAY_BUFFER,
+    instanceBuffer
+  );
 
   gl.enableVertexAttribArray(0);
 
@@ -1649,7 +1993,7 @@ function initialize() {
     0
   );
 
-  gl.vertexAttribDivisor(0, 1);
+  gl.vertexAttribDivisor(0,1);
 
   gl.enableVertexAttribArray(1);
 
@@ -1662,7 +2006,7 @@ function initialize() {
     16
   );
 
-  gl.vertexAttribDivisor(1, 1);
+  gl.vertexAttribDivisor(1,1);
 
   targetKey = "";
   geometryKey = "";
@@ -1672,7 +2016,7 @@ function initialize() {
 }
 
 function reset() {
-  seed = Math.random() * 1000;
+  seed = Math.random()*1000;
   ripples.length = 0;
   pointer.hold = 0;
   geometryKey = "";
@@ -1683,38 +2027,28 @@ function reset() {
 function frame(now) {
   requestAnimationFrame(frame);
 
-  if (lost || document.hidden) return;
+  if(lost||document.hidden) return;
 
-  const dt = previous === null
+  const dt = previous===null
     ? 0
-    : Math.min((now - previous) / 1000, 0.05);
+    : Math.min(
+        (now-previous)/1000,
+        0.05
+      );
 
   previous = now;
 
   const still =
-    config.animation.paused ||
+    config.animation.paused||
     (
-      config.animation.respectReducedMotion &&
+      config.animation.respectReducedMotion&&
       reduced.matches
     );
 
-  if (!still) {
-    clock += dt * config.animation.speed;
+  if(!still) {
+    clock +=
+      dt*config.animation.speed;
   }
-
-  const easing =
-    1 - Math.exp(-dt * config.parallax.smoothing);
-
-  const targetX = pointer.active
-    ? pointer.x / width * 2 - 1
-    : 0;
-
-  const targetY = pointer.active
-    ? 1 - pointer.y / height * 2
-    : 0;
-
-  pointer.cx += (targetX - pointer.cx) * easing;
-  pointer.cy += (targetY - pointer.cy) * easing;
 
   updateCamera();
   simulate(dt);
@@ -1722,29 +2056,31 @@ function frame(now) {
 }
 
 function move(e) {
-  if (
-    e.target.closest?.("[data-background-editor]")
+  if(
+    e.target.closest?.(
+      "[data-background-editor]"
+    )
   ) {
     pointer.active = false;
     pointer.reset = true;
     return;
   }
 
-  if (
-    pointerId !== null &&
-    e.pointerId !== pointerId
+  if(
+    pointerId!==null&&
+    e.pointerId!==pointerId
   ) {
     return;
   }
 
-  if (!pointer.active) {
+  if(!pointer.active) {
     pointer.reset = true;
   }
 
   pointer.moved =
-    pointer.moved ||
-    e.clientX !== pointer.x ||
-    e.clientY !== pointer.y;
+    pointer.moved||
+    e.clientX!==pointer.x||
+    e.clientY!==pointer.y;
 
   pointer.x = e.clientX;
   pointer.y = e.clientY;
@@ -1756,58 +2092,78 @@ function release() {
   pointerId = null;
 }
 
-addEventListener("pointermove", move);
+addEventListener(
+  "pointermove",
+  move
+);
 
-addEventListener("pointerdown", e => {
-  if (
-    e.button !== 0 ||
-    e.target.closest?.("[data-background-editor]") ||
-    pointerId !== null
-  ) {
-    return;
-  }
+addEventListener(
+  "pointerdown",
+  e=>{
+    if(
+      e.button!==0||
+      e.target.closest?.(
+        "[data-background-editor]"
+      )||
+      pointerId!==null
+    ) {
+      return;
+    }
 
-  move(e);
+    move(e);
 
-  pointer.down = true;
-  pointerId = e.pointerId;
+    pointer.down = true;
+    pointerId = e.pointerId;
 
-  if (config.ripples.enabled) {
-    const [x, y] = pick(e.clientX, e.clientY);
+    if(config.ripples.enabled) {
+      const [x,y] = pick(
+        e.clientX,
+        e.clientY
+      );
 
-    ripples.push({
-      x,
-      y,
-      time: clock
-    });
+      ripples.push({
+        x,
+        y,
+        time:clock
+      });
 
-    if (ripples.length > 16) {
-      ripples.shift();
+      if(ripples.length>16) {
+        ripples.shift();
+      }
     }
   }
-});
+);
 
-addEventListener("pointerup", e => {
-  if (e.pointerId === pointerId) {
-    release();
+addEventListener(
+  "pointerup",
+  e=>{
+    if(e.pointerId===pointerId) {
+      release();
+    }
   }
-});
+);
 
-addEventListener("pointercancel", () => {
-  release();
-  pointer.active = false;
-  pointer.reset = true;
-});
+addEventListener(
+  "pointercancel",
+  ()=>{
+    release();
+    pointer.active = false;
+    pointer.reset = true;
+  }
+);
 
-addEventListener("blur", () => {
-  release();
-  pointer.active = false;
-  pointer.reset = true;
-});
+addEventListener(
+  "blur",
+  ()=>{
+    release();
+    pointer.active = false;
+    pointer.reset = true;
+  }
+);
 
 document.documentElement.addEventListener(
   "pointerleave",
-  () => {
+  ()=>{
     release();
     pointer.active = false;
     pointer.reset = true;
@@ -1816,7 +2172,7 @@ document.documentElement.addEventListener(
 
 document.addEventListener(
   "visibilitychange",
-  () => {
+  ()=>{
     previous = null;
     release();
     pointer.active = false;
@@ -1824,18 +2180,21 @@ document.addEventListener(
   }
 );
 
-addEventListener("resize", () => {
-  try {
-    sync();
-  } catch (e) {
-    lost = true;
-    fail(e);
+addEventListener(
+  "resize",
+  ()=>{
+    try {
+      sync();
+    } catch(e) {
+      lost = true;
+      fail(e);
+    }
   }
-});
+);
 
 canvas.addEventListener(
   "webglcontextlost",
-  e => {
+  e=>{
     e.preventDefault();
     lost = true;
     previous = null;
@@ -1844,12 +2203,12 @@ canvas.addEventListener(
 
 canvas.addEventListener(
   "webglcontextrestored",
-  () => {
+  ()=>{
     try {
       lost = false;
       initialize();
       errorBox.hidden = true;
-    } catch (e) {
+    } catch(e) {
       lost = true;
       fail(e);
     }
@@ -1859,19 +2218,19 @@ canvas.addEventListener(
 try {
   initialize();
   requestAnimationFrame(frame);
-} catch (e) {
+} catch(e) {
   lost = true;
   fail(e);
 }
 
-if (config.panel.enabled) {
-  import("./settings-editor.js?v=velvet-enhanced-2")
-    .then(({ createSettingsEditor }) => {
+if(config.panel.enabled) {
+  import("./settings-editor.js?v=velvet-fixed-3")
+    .then(({createSettingsEditor})=>{
       createSettingsEditor({
         config,
         defaults,
-        onChange: sync,
-        onReset: reset
+        onChange:sync,
+        onReset:reset
       });
     })
     .catch(fail);
