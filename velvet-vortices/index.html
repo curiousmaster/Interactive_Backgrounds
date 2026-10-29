@@ -1,1215 +1,1881 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Velvet Vortices — WebGL</title>
-
-  <style>
-    html, body {
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      overflow: hidden;
-      background: #090b16;
-    }
-
-    #background {
-      position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-    }
-
-    #error {
-      position: fixed;
-      left: 20px;
-      bottom: 20px;
-      max-width: 460px;
-      padding: 14px;
-      border-radius: 10px;
-      background: #201a2e;
-      color: #eee;
-      font: 14px/1.5 system-ui, sans-serif;
-    }
-
-    [hidden] {
-      display: none !important;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Velvet Vortices</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#090b16}
+#background{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
+#error{position:fixed;left:20px;bottom:20px;max-width:500px;padding:15px;background:#251d32;color:white;font:14px/1.5 system-ui;border-radius:8px}
+[hidden]{display:none!important}
+</style>
 </head>
-
 <body>
-  <canvas id="background" aria-hidden="true"></canvas>
-  <div id="error" role="alert" hidden></div>
+<canvas id="background" aria-hidden="true"></canvas>
+<div id="error" role="alert" hidden></div>
 
-  <script type="module">
+<script type="module">
 const defaults = {
-  "view": {
-    "threeD": false,
-    "perspective": true,
-    "tilt": 41,
-    "zoom": 1
+  view: {
+    threeD: false,
+    perspective: true,
+    tilt: 41,
+    zoom: 1
   },
-  "pile": {
-    "enabled": true,
-    "density": 1,
-    "length": 25,
-    "width": 0.75,
-    "curvature": 0.65,
-    "variation": 0.07
+  pile: {
+    enabled: true,
+    density: 1,
+    length: 25,
+    width: 0.75,
+    curvature: 0.65,
+    variation: 0.07
   },
-  "flow": {
-    "vortexCount": 4,
-    "radius": 300,
-    "strength": 2.5,
-    "speed": 0.35,
-    "wandering": 0.22,
-    "direction": -20
+  flow: {
+    vortexCount: 4,
+    radius: 300,
+    strength: 2.5,
+    speed: 0.35,
+    wandering: 0.22,
+    direction: -20
   },
-  "lighting": {
-    "enabled": true,
-    "direction": -45,
-    "strength": 1.15,
-    "sharpness": 5
+  lighting: {
+    enabled: true,
+    direction: -45,
+    strength: 1.15,
+    sharpness: 5
   },
-  "iridescence": {
-    "enabled": true,
-    "strength": 0.22,
-    "frequency": 2
+  iridescence: {
+    enabled: true,
+    strength: 0.22,
+    frequency: 2
   },
-  "movingLights": {
-    "enabled": true,
-    "strength": 0.55,
-    "speed": 0.3
+  movingLights: {
+    enabled: true,
+    strength: 0.55,
+    speed: 0.3
   },
-  "folds": {
-    "enabled": true,
-    "height": 0.13,
-    "scale": 1,
-    "speed": 0.2
+  folds: {
+    enabled: true,
+    height: 0.13,
+    scale: 1,
+    speed: 0.2
   },
-  "shadows": {
-    "enabled": true,
-    "strength": 0.55
+  shadows: {
+    enabled: true,
+    strength: 0.55
   },
-  "turbulence": {
-    "enabled": true,
-    "strength": 0.45,
-    "scale": 1
+  turbulence: {
+    enabled: true,
+    strength: 0.45,
+    scale: 1
   },
-  "breathing": {
-    "enabled": true,
-    "strength": 0.28,
-    "speed": 0.6
+  breathing: {
+    enabled: true,
+    strength: 0.28,
+    speed: 0.6
   },
-  "shimmer": {
-    "enabled": true,
-    "strength": 0.22,
-    "speed": 0.7,
-    "width": 0.2
+  shimmer: {
+    enabled: true,
+    strength: 0.22,
+    speed: 0.7,
+    width: 0.2
   },
-  "brush": {
-    "enabled": true,
-    "radius": 100,
-    "strength": 0.85,
-    "persistence": 3,
-    "pressure": true
+  brush: {
+    enabled: true,
+    radius: 100,
+    strength: 0.85,
+    persistence: 3,
+    pressure: true
   },
-  "ripples": {
-    "enabled": true,
-    "strength": 0.6,
-    "speed": 130,
-    "lifetime": 5
+  ripples: {
+    enabled: true,
+    strength: 0.6,
+    speed: 130,
+    lifetime: 5
   },
-  "whirlpool": {
-    "enabled": true,
-    "radius": 180,
-    "strength": 3
+  whirlpool: {
+    enabled: true,
+    radius: 180,
+    strength: 3
   },
-  "parallax": {
-    "enabled": true,
-    "strength": 0.12,
-    "smoothing": 5
+  parallax: {
+    enabled: true,
+    strength: 0.12,
+    smoothing: 5
   },
-  "dust": {
-    "enabled": true,
-    "density": 0.45,
-    "brightness": 0.6,
-    "speed": 0.3
+  dust: {
+    enabled: true,
+    density: 0.45,
+    brightness: 0.6,
+    speed: 0.3
   },
-  "bloom": {
-    "enabled": true,
-    "strength": 0.45,
-    "threshold": 0.7,
-    "radius": 2.5
+  bloom: {
+    enabled: true,
+    strength: 0.45,
+    threshold: 0.7,
+    radius: 2.5
   },
-  "appearance": {
-    "backgroundColor": [
-      9,
-      11,
-      22
-    ],
-    "colorA": [
-      73,
-      111,
-      153
-    ],
-    "colorB": [
-      161,
-      99,
-      165
-    ],
-    "highlightColor": [
-      187,
-      205,
-      226
-    ],
-    "exposure": 1.15
+  appearance: {
+    backgroundColor: [9, 11, 22],
+    colorA: [73, 111, 153],
+    colorB: [161, 99, 165],
+    highlightColor: [187, 205, 226],
+    exposure: 1.15
   },
-  "quality": {
-    "pixelRatio": 1.25
+  quality: {
+    pixelRatio: 1.25
   },
-  "animation": {
-    "speed": 1,
-    "paused": false,
-    "respectReducedMotion": true
+  animation: {
+    speed: 1,
+    paused: false,
+    respectReducedMotion: true
   },
-  "panel": {
-    "enabled": true
+  panel: {
+    enabled: true
   }
 };
 
-    const config = structuredClone(defaults);
-    window.getBackgroundConfig = () => structuredClone(config);
-
-    const canvas = document.querySelector("#background");
-    const errorBox = document.querySelector("#error");
-    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-    const gl = canvas.getContext("webgl2", {
-      alpha: false,
-      antialias: false,
-      depth: false,
-      powerPreference: "high-performance"
-    });
-
-    if (!gl) {
-      errorBox.hidden = false;
-      errorBox.textContent =
-        "This background requires WebGL2. Enable hardware acceleration " +
-        "or use a browser with WebGL2 support.";
-      throw new Error("WebGL2 is unavailable.");
-    }
-
-    const vertexSource = `#version 300 es
-      in vec2 position;
-      out vec2 uv;
-
-      void main() {
-        uv = position * 0.5 + 0.5;
-        gl_Position = vec4(position, 0.0, 1.0);
-      }
-    `;
-
-    const fragmentSource = `#version 300 es
-      precision highp float;
-
-      in vec2 uv;
-      out vec4 outputColor;
-
-      uniform vec2 resolution;
-      uniform vec2 viewport;
-      uniform float clock;
-      uniform vec2 cameraPointer;
-      uniform vec4 heldPointer;
-      uniform vec4 brushes[24];
-      uniform vec4 rippleEvents[8];
-      uniform float seed;
-
-      uniform bool view_threeD;
-      uniform bool view_perspective;
-      uniform float view_tilt;
-      uniform float view_zoom;
-
-      uniform bool pile_enabled;
-      uniform float pile_density;
-      uniform float pile_length;
-      uniform float pile_width;
-      uniform float pile_curvature;
-      uniform float pile_variation;
-
-      uniform float flow_vortexCount;
-      uniform float flow_radius;
-      uniform float flow_strength;
-      uniform float flow_speed;
-      uniform float flow_wandering;
-      uniform float flow_direction;
-
-      uniform bool lighting_enabled;
-      uniform float lighting_direction;
-      uniform float lighting_strength;
-      uniform float lighting_sharpness;
-
-      uniform bool iridescence_enabled;
-      uniform float iridescence_strength;
-      uniform float iridescence_frequency;
-
-      uniform bool movingLights_enabled;
-      uniform float movingLights_strength;
-      uniform float movingLights_speed;
-
-      uniform bool folds_enabled;
-      uniform float folds_height;
-      uniform float folds_scale;
-      uniform float folds_speed;
-
-      uniform bool shadows_enabled;
-      uniform float shadows_strength;
-
-      uniform bool turbulence_enabled;
-      uniform float turbulence_strength;
-      uniform float turbulence_scale;
-
-      uniform bool breathing_enabled;
-      uniform float breathing_strength;
-      uniform float breathing_speed;
-
-      uniform bool shimmer_enabled;
-      uniform float shimmer_strength;
-      uniform float shimmer_speed;
-      uniform float shimmer_width;
-
-      uniform bool brush_enabled;
-      uniform float brush_radius;
-      uniform float brush_strength;
-
-      uniform bool ripples_enabled;
-      uniform float ripples_strength;
-      uniform float ripples_speed;
-      uniform float ripples_lifetime;
-
-      uniform bool whirlpool_enabled;
-      uniform float whirlpool_radius;
-      uniform float whirlpool_strength;
-
-      uniform bool parallax_enabled;
-      uniform float parallax_strength;
-
-      uniform bool dust_enabled;
-      uniform float dust_density;
-      uniform float dust_brightness;
-      uniform float dust_speed;
-
-      uniform bool bloom_enabled;
-      uniform float bloom_strength;
-      uniform float bloom_threshold;
-      uniform float bloom_radius;
-
-      uniform vec3 appearance_backgroundColor;
-      uniform vec3 appearance_colorA;
-      uniform vec3 appearance_colorB;
-      uniform vec3 appearance_highlightColor;
-      uniform float appearance_exposure;
-
-      const float PI = 3.141592653589793;
-      const float WORLD = 300.0;
-
-      float hash(vec2 p) {
-        return fract(sin(dot(p, vec2(127.1, 311.7)) + seed) * 43758.5453);
-      }
-
-      vec2 rotate2(vec2 p, float a) {
-        float c = cos(a);
-        float s = sin(a);
-        return vec2(c * p.x - s * p.y, s * p.x + c * p.y);
-      }
-
-      float heightAt(vec2 p) {
-        if (!folds_enabled) return 0.0;
-
-        vec2 q = p * folds_scale;
-        float t = clock * folds_speed;
-
-        return folds_height * (
-          sin(q.x * 1.35 + sin(q.y * 0.75 + t) * 0.65 + t) * 0.65 +
-          sin(q.y * 1.8 - q.x * 0.45 - t * 0.63) * 0.35
-        );
-      }
-
-      vec3 surfaceNormal(vec2 p) {
-        if (!folds_enabled) return vec3(0.0, 0.0, 1.0);
-
-        float e = 0.015;
-        float dx = heightAt(p + vec2(e, 0.0))
-                 - heightAt(p - vec2(e, 0.0));
-        float dy = heightAt(p + vec2(0.0, e))
-                 - heightAt(p - vec2(0.0, e));
-
-        return normalize(vec3(-dx / (2.0 * e), -dy / (2.0 * e), 1.0));
-      }
-
-      void cameraRay(out vec3 origin, out vec3 ray) {
-        vec2 screen = uv * 2.0 - 1.0;
-        screen.x *= viewport.x / viewport.y;
-
-        float tilt = view_threeD ? radians(view_tilt) : 0.0;
-        float c = cos(tilt);
-        float s = sin(tilt);
-
-        vec3 forward = vec3(0.0, s, -c);
-        vec3 up = vec3(0.0, c, s);
-        vec3 right = vec3(1.0, 0.0, 0.0);
-
-        float distanceToSurface = 4.0 / view_zoom;
-        origin = -forward * distanceToSurface;
-
-        if (parallax_enabled && view_threeD) {
-          origin.xy += cameraPointer * parallax_strength;
-        }
-
-        if (view_perspective) {
-          ray = normalize(
-            forward + right * screen.x * 0.46 + up * screen.y * 0.46
-          );
-        } else {
-          origin +=
-            (right * screen.x + up * screen.y) *
-            distanceToSurface * 0.46;
-          ray = forward;
-        }
-      }
-
-      vec2 surfacePoint() {
-        vec3 origin;
-        vec3 ray;
-        cameraRay(origin, ray);
-
-        float t = -origin.z / ray.z;
-
-        if (view_threeD && folds_enabled) {
-          // Fixed-point intersection with the gently displaced fabric.
-          for (int i = 0; i < 8; i++) {
-            vec3 p = origin + ray * t;
-            float target = (heightAt(p.xy) - origin.z) / ray.z;
-            t = mix(t, target, 0.8);
-          }
-        }
-
-        return (origin + ray * t).xy * WORLD;
-      }
-
-      vec2 flowAt(vec2 p) {
-        float base = radians(flow_direction);
-        vec2 velocity = vec2(cos(base), sin(base));
-        float t = clock * flow_speed;
-
-        float breath = breathing_enabled
-          ? 1.0 + sin(clock * breathing_speed) * breathing_strength
-          : 1.0;
-
-        float radius = flow_radius * breath;
-
-        for (int i = 0; i < 12; i++) {
-          if (float(i) >= flow_vortexCount) break;
-
-          float f = float(i);
-          vec2 randomCenter = vec2(
-            hash(vec2(f, 17.0)),
-            hash(vec2(f, 39.0))
-          );
-
-          vec2 center = (randomCenter - 0.5) * vec2(1800.0, 1200.0);
-          center += vec2(
-            sin(t * (0.23 + f * 0.017) + f * 2.7),
-            cos(t * (0.19 + f * 0.013) + f * 1.9)
-          ) * flow_wandering * 1000.0;
-
-          vec2 delta = p - center;
-          float distanceToCenter = length(delta);
-          float influence = exp(
-            -dot(delta, delta) / max(radius * radius, 1.0)
-          );
-
-          float direction = mod(f, 2.0) < 1.0 ? 1.0 : -1.0;
-          float pulse = breathing_enabled
-            ? 1.0 + sin(clock * breathing_speed + f) *
-              breathing_strength
-            : 1.0;
-
-          velocity += vec2(-delta.y, delta.x) /
-            max(distanceToCenter, 30.0) *
-            influence * flow_strength * direction * pulse;
-        }
-
-        if (turbulence_enabled) {
-          vec2 q = p * 0.006 * turbulence_scale;
-          float curl =
-            sin(q.x * 1.7 + cos(q.y * 1.3) + t) * 0.65 +
-            sin(q.y * 3.1 - q.x * 2.2 - t * 0.7) * 0.25 +
-            cos(q.x * 5.1 + q.y * 4.7 + t * 0.4) * 0.1;
-
-          velocity = rotate2(velocity, curl * turbulence_strength);
-        }
-
-        if (whirlpool_enabled && heldPointer.w > 0.001) {
-          vec2 delta = p - heldPointer.xy;
-          float influence = exp(
-            -dot(delta, delta) /
-            max(whirlpool_radius * whirlpool_radius, 1.0)
-          );
-
-          velocity += vec2(-delta.y, delta.x) /
-            max(length(delta), 15.0) *
-            influence * whirlpool_strength * heldPointer.w;
-        }
-
-        return velocity;
-      }
-
-      float rippleAt(vec2 p) {
-        if (!ripples_enabled) return 0.0;
-
-        float disturbance = 0.0;
-
-        for (int i = 0; i < 8; i++) {
-          vec4 event = rippleEvents[i];
-          if (event.w <= 0.0) continue;
-
-          float age = clock - event.z;
-          if (age < 0.0 || age > ripples_lifetime) continue;
-
-          float distanceToCenter = length(p - event.xy);
-          float front = distanceToCenter - age * ripples_speed;
-          float envelope = exp(-front * front / 2500.0);
-          float fade = pow(
-            max(0.0, 1.0 - age / ripples_lifetime),
-            1.5
-          );
-
-          disturbance +=
-            sin(front * 0.065) * envelope * fade * event.w;
-        }
-
-        return disturbance * ripples_strength;
-      }
-
-      vec3 velvet(vec2 p) {
-        vec2 velocity = flowAt(p);
-        float angle = atan(velocity.y, velocity.x);
-        float flatten = 0.0;
-
-        if (brush_enabled) {
-          // Stamps retain a direction and decay independently on the CPU.
-          for (int i = 0; i < 24; i++) {
-            vec4 stamp = brushes[i];
-            if (stamp.w < 0.002) continue;
-
-            vec2 delta = p - stamp.xy;
-            float radius = brush_radius * (1.0 + stamp.w * 0.55);
-            float influence = exp(-dot(delta, delta) / (radius * radius));
-            float weight = clamp(
-              influence * stamp.w * brush_strength,
-              0.0, 0.95
-            );
-
-            vec2 direction = vec2(cos(angle), sin(angle));
-            vec2 brushed = vec2(cos(stamp.z), sin(stamp.z));
-            direction = mix(direction, brushed, weight);
-
-            angle = atan(direction.y, direction.x);
-            flatten = max(flatten, weight);
-          }
-        }
-
-        float ripple = rippleAt(p);
-        angle += ripple * 0.65;
-
-        float spacing = 5.0 / sqrt(pile_density);
-        if (!pile_enabled) spacing *= 1.8;
-
-        vec2 cell = floor(p / spacing);
-        float fiber = 0.0;
-        float halo = 0.0;
-        float tips = 0.0;
-        float microShade = 0.0;
-
-        // Curved, jittered fibers in neighboring cells.
-        for (int y = -1; y <= 1; y++) {
-          for (int x = -1; x <= 1; x++) {
-            vec2 id = cell + vec2(float(x), float(y));
-            float random = hash(id);
-            vec2 jitter = vec2(
-              hash(id + 13.4),
-              hash(id + 71.2)
-            ) - 0.5;
-
-            vec2 root = (id + 0.5 + jitter * 0.7) * spacing;
-            vec2 local = rotate2(
-              p - root,
-              -angle - (random - 0.5) * 0.25
-            );
-
-            float lengthVariation =
-              1.0 - pile_variation * hash(id + 91.0);
-
-            // Limit reach so the neighboring-cell search remains complete.
-            float fiberLength = min(
-              pile_length * lengthVariation,
-              spacing * 1.7
-            );
-
-            fiberLength *= mix(1.0, 1.15, flatten);
-
-            float along = local.x / max(fiberLength, 0.1);
-            float curve = pile_enabled
-              ? pile_curvature * fiberLength *
-                (along * along - 0.08) * (random * 2.0 - 1.0)
-              : 0.0;
-
-            float distanceToFiber = abs(local.y - curve);
-            float cap = 1.0 - smoothstep(0.35, 0.55, abs(along));
-            float width = pile_width * mix(0.65, 1.15, random);
-
-            float strand =
-              (1.0 - smoothstep(width * 0.25, width, distanceToFiber)) *
-              cap;
-
-            float glowWidth = width + bloom_radius;
-            float glow =
-              exp(-distanceToFiber * distanceToFiber /
-                  max(glowWidth * glowWidth, 0.1)) * cap;
-
-            fiber = max(fiber, strand);
-            halo = max(halo, glow);
-            tips = max(tips, strand * smoothstep(-0.1, 0.5, along));
-            microShade = max(
-              microShade,
-              exp(-distanceToFiber * distanceToFiber /
-                  max(width * width * 5.0, 0.1)) * cap
-            );
-          }
-        }
-
-        vec2 world = p / WORLD;
-        vec3 normal = surfaceNormal(world);
-        float lightAngle = radians(lighting_direction);
-        vec3 light = normalize(vec3(
-          cos(lightAngle) * 0.7,
-          sin(lightAngle) * 0.7,
-          0.85
-        ));
-
-        float tint = clamp(
-          0.5 + sin(world.y * 0.8 + world.x * 0.3) * 0.3 +
-          sin(world.x * 0.47) * 0.2,
-          0.0, 1.0
-        );
-
-        vec3 base = mix(appearance_colorA, appearance_colorB, tint);
-        float alignment = pow(
-          abs(cos(angle - lightAngle)),
-          lighting_sharpness
-        );
-
-        float diffuse = max(dot(normal, light), 0.0);
-        float highlight = lighting_enabled
-          ? alignment * lighting_strength * (0.35 + diffuse * 0.65)
-          : 0.0;
-
-        if (movingLights_enabled) {
-          float t = clock * movingLights_speed;
-          vec2 a = vec2(sin(t * 0.7) * 2.1, cos(t * 0.5) * 1.4);
-          vec2 b = vec2(cos(t * 0.43 + 2.0) * 2.5, sin(t * 0.61) * 1.7);
-
-          float pools =
-            exp(-dot(world - a, world - a) * 0.6) +
-            exp(-dot(world - b, world - b) * 0.8) * 0.7;
-
-          highlight += pools * movingLights_strength *
-            (0.2 + alignment * 0.8);
-        }
-
-        if (shimmer_enabled) {
-          float phase =
-            world.x * 1.1 + world.y * 0.7 -
-            clock * shimmer_speed;
-
-          float wave = 0.5 + 0.5 * sin(phase * 2.0);
-          wave = pow(wave, 1.0 / max(shimmer_width, 0.02));
-
-          highlight += wave * shimmer_strength *
-            (0.3 + alignment * 0.7);
-        }
-
-        highlight += abs(ripple) * 0.35;
-
-        if (iridescence_enabled) {
-          vec3 rainbow = 0.5 + 0.5 * cos(
-            vec3(0.0, 2.1, 4.2) +
-            angle * iridescence_frequency +
-            dot(normal.xy, vec2(3.0, 2.0))
-          );
-
-          base = mix(
-            base,
-            rainbow * 0.65 + base * 0.35,
-            iridescence_strength * (0.3 + alignment * 0.7)
-          );
-        }
-
-        float shadow = 1.0;
-
-        if (shadows_enabled) {
-          float ahead = heightAt(world + light.xy * 0.22);
-          float foldOcclusion = clamp(
-            (ahead - heightAt(world)) * 5.0,
-            0.0, 0.6
-          );
-
-          shadow -= shadows_strength * (
-            foldOcclusion + microShade * (1.0 - fiber) * 0.28
-          );
-        }
-
-        base *= mix(1.0, 0.57, flatten);
-        float substrate = 0.2 + diffuse * 0.12;
-        vec3 color = mix(
-          appearance_backgroundColor,
-          base * substrate,
-          0.88
-        );
-
-        vec3 strandColor =
-          base * (0.45 + diffuse * 0.35) +
-          appearance_highlightColor * highlight * (0.3 + tips * 0.7);
-
-        color = mix(color, strandColor, fiber * 0.9);
-        color *= max(shadow, 0.15);
-
-        if (bloom_enabled) {
-          // Selective, analytic soft glow around bright fiber highlights.
-          float bright = max(
-            0.0,
-            highlight * (0.5 + tips * 0.5) - bloom_threshold
-          );
-
-          color += appearance_highlightColor *
-            halo * bright * bloom_strength;
-        }
-
-        return color;
-      }
-
-      vec3 dustLayer(vec2 screen) {
-        if (!dust_enabled || dust_density <= 0.0) return vec3(0.0);
-
-        vec3 color = vec3(0.0);
-        float t = clock * dust_speed;
-
-        for (int layer = 0; layer < 2; layer++) {
-          float depth = float(layer);
-          float scale = 8.0 + depth * 5.0;
-
-          vec2 q = screen * scale;
-          q += vec2(t * (0.11 + depth * 0.04), -t * 0.16);
-
-          if (parallax_enabled && view_threeD) {
-            q += cameraPointer * parallax_strength * (depth + 1.0);
-          }
-
-          vec2 cell = floor(q);
-
-          for (int y = -1; y <= 1; y++) {
-            for (int x = -1; x <= 1; x++) {
-              vec2 id = cell + vec2(float(x), float(y));
-              float random = hash(id + depth * 83.0);
-              if (random > dust_density * 0.12) continue;
-
-              vec2 center = id + vec2(
-                hash(id + 12.0),
-                hash(id + 43.0)
-              );
-
-              vec2 delta = q - center;
-              float radius = 0.018 + random * 0.025;
-              float particle = exp(
-                -dot(delta, delta) / (radius * radius)
-              );
-
-              float lightBeam = pow(
-                0.5 + 0.5 * sin(center.x * 0.7 + t * 0.3),
-                3.0
-              );
-
-              color += appearance_highlightColor *
-                particle * lightBeam * dust_brightness;
-            }
-          }
-        }
-
-        return color;
-      }
-
-      void main() {
-        vec2 p = surfacePoint();
-        vec3 color = velvet(p);
-
-        vec2 screen = (uv - 0.5) * vec2(viewport.x / viewport.y, 1.0);
-        color += dustLayer(screen);
-
-        color *= appearance_exposure;
-        color = 1.0 - exp(-max(color, vec3(0.0)));
-        color = pow(color, vec3(0.85));
-
-        outputColor = vec4(color, 1.0);
-      }
-    `;
-
-    let program;
-    let vao;
-    let buffer;
-    let uniforms = new Map();
-    let contextLost = false;
-
-    let width = innerWidth;
-    let height = innerHeight;
-    let previous = null;
-    let clock = 0;
-    let seed = Math.random() * 1000;
-
-    const brushData = new Float32Array(24 * 4);
-    const rippleData = new Float32Array(8 * 4);
-    let brushIndex = 0;
-    let rippleIndex = 0;
-
-    const pointer = {
-      active: false,
-      down: false,
-      id: null,
-      x: width / 2,
-      y: height / 2,
-      worldX: 0,
-      worldY: 0,
-      lastX: 0,
-      lastY: 0,
-      lastTime: 0,
-      lastStamp: 0,
-      cameraX: 0,
-      cameraY: 0,
-      holdX: 0,
-      holdY: 0,
-      holdStrength: 0
-    };
-
-    const clamp = (value, min, max) =>
-      Math.max(min, Math.min(max, value));
-
-    function compile(type, source) {
-      const shader = gl.createShader(type);
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        const message = gl.getShaderInfoLog(shader);
-        gl.deleteShader(shader);
-        throw new Error(message);
-      }
-
-      return shader;
-    }
-
-    function initializeGL() {
-      uniforms = new Map();
-
-      const vertex = compile(gl.VERTEX_SHADER, vertexSource);
-      const fragment = compile(gl.FRAGMENT_SHADER, fragmentSource);
-
-      program = gl.createProgram();
-      gl.attachShader(program, vertex);
-      gl.attachShader(program, fragment);
-      gl.linkProgram(program);
-
-      gl.deleteShader(vertex);
-      gl.deleteShader(fragment);
-
-      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        throw new Error(gl.getProgramInfoLog(program));
-      }
-
-      vao = gl.createVertexArray();
-      buffer = gl.createBuffer();
-
-      gl.bindVertexArray(vao);
-      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-      gl.bufferData(
-        gl.ARRAY_BUFFER,
-        new Float32Array([-1, -1, 3, -1, -1, 3]),
-        gl.STATIC_DRAW
+const config = structuredClone(defaults);
+
+window.getBackgroundConfig = () => structuredClone(config);
+
+const canvas = document.querySelector("#background");
+const errorBox = document.querySelector("#error");
+
+const gl = canvas.getContext("webgl2", {
+  alpha: false,
+  antialias: false,
+  powerPreference: "high-performance"
+});
+
+function fail(error) {
+  errorBox.hidden = false;
+  errorBox.textContent = error.message;
+  console.error(error);
+}
+
+if (!gl) {
+  fail(new Error(
+    "WebGL2 is required. Check browser hardware acceleration."
+  ));
+  throw new Error("No WebGL2");
+}
+
+const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+
+const angleDiff = (a, b) =>
+  Math.atan2(Math.sin(a - b), Math.cos(a - b));
+
+let seed = Math.random() * 1000;
+let clock = 0;
+let previous = null;
+let lost = false;
+
+let width = 1;
+let height = 1;
+let camera;
+let bounds = [-4, -4, 4, 4];
+
+let data = new Float32Array();
+let memory = new Float32Array();
+let comb = new Float32Array();
+
+let sceneProgram;
+let postProgram;
+let fiberVAO;
+let emptyVAO;
+let instanceBuffer;
+let targets = [];
+let locations = new Map();
+let hdr = false;
+
+let geometryKey = "";
+let targetKey = "";
+let pointerId = null;
+
+const ripples = [];
+
+const pointer = {
+  x: 0,
+  y: 0,
+  active: false,
+  down: false,
+  moved: false,
+  reset: true,
+  cx: 0,
+  cy: 0,
+  hold: 0,
+  hx: 0,
+  hy: 0,
+  lastX: 0,
+  lastY: 0
+};
+
+const common = `
+uniform float clock;
+uniform vec4 bounds;
+uniform vec3 eye, forward, up;
+uniform float aspect, distanceToSurface;
+uniform bool view_threeD, view_perspective;
+uniform bool folds_enabled;
+uniform float folds_height, folds_scale, folds_speed;
+
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float heightAt(vec2 p) {
+  if (!folds_enabled) return 0.0;
+
+  p *= folds_scale;
+  float t = clock * folds_speed;
+
+  return folds_height * (
+    sin(p.x * 1.35 + sin(p.y * 0.75 + t) * 0.65 + t) * 0.65 +
+    sin(p.y * 1.8 - p.x * 0.45 - t * 0.63) * 0.35
+  );
+}
+
+vec3 normalAt(vec2 p) {
+  float e = 0.012;
+
+  return normalize(vec3(
+    heightAt(p - vec2(e, 0.0)) - heightAt(p + vec2(e, 0.0)),
+    heightAt(p - vec2(0.0, e)) - heightAt(p + vec2(0.0, e)),
+    2.0 * e
+  ));
+}
+
+vec4 projectPoint(vec3 p) {
+  vec3 q = p - eye;
+  float z = dot(q, forward);
+  vec2 xy = vec2(q.x, dot(q, up));
+
+  if (view_perspective) {
+    return vec4(
+      xy / vec2(0.46 * aspect, 0.46),
+      1.0050125 * z - 0.20050125,
+      z
+    );
+  }
+
+  return vec4(
+    xy / (distanceToSurface * vec2(0.46 * aspect, 0.46)),
+    2.0 * (z - 0.1) / 39.9 - 1.0,
+    1.0
+  );
+}
+`;
+
+const sceneVertex = `#version 300 es
+precision highp float;
+precision highp int;
+
+layout(location = 0) in vec4 instance;
+layout(location = 1) in vec2 state;
+
+uniform int kind;
+
+uniform float pile_length;
+uniform float pile_width;
+uniform float pile_curvature;
+uniform float pile_variation;
+
+uniform float dust_speed;
+uniform float pixelRatio;
+
+out vec3 worldPosition;
+out vec3 fiberTangent;
+out vec3 surfaceNormal;
+
+out float across;
+out float along;
+out float flatten;
+out float randomValue;
+
+${common}
+
+void main() {
+  vec3 p;
+
+  across = 0.0;
+  along = 0.0;
+  flatten = 0.0;
+  randomValue = 0.0;
+
+  fiberTangent = vec3(1.0, 0.0, 0.0);
+  surfaceNormal = vec3(0.0, 0.0, 1.0);
+
+  if (kind == 0) {
+    int cell = gl_VertexID / 6;
+    int corner = gl_VertexID % 6;
+
+    vec2 c = vec2(cell % 80, cell / 80);
+
+    vec2 o = corner == 0 ? vec2(0.0, 0.0) :
+             corner == 1 ? vec2(1.0, 0.0) :
+             corner == 2 ? vec2(0.0, 1.0) :
+             corner == 3 ? vec2(0.0, 1.0) :
+             corner == 4 ? vec2(1.0, 0.0) :
+                           vec2(1.0, 1.0);
+
+    vec2 xy = mix(bounds.xy, bounds.zw, (c + o) / 80.0);
+
+    p = vec3(xy, view_threeD ? heightAt(xy) : 0.0);
+    surfaceNormal = normalAt(xy);
+  } else if (kind == 1) {
+    int segment = gl_VertexID / 6;
+    int corner = gl_VertexID % 6;
+
+    float endPoint =
+      (corner == 1 || corner == 4 || corner == 5) ? 1.0 : 0.0;
+
+    along = (float(segment) + endPoint) / 6.0;
+    across =
+      (corner == 2 || corner == 3 || corner == 5) ? 1.0 : -1.0;
+
+    randomValue = instance.w;
+    flatten = state.y;
+
+    float a = state.x;
+
+    vec2 d = vec2(cos(a), sin(a));
+    vec2 side = vec2(-d.y, d.x);
+
+    float len =
+      pile_length *
+      (1.0 - pile_variation * (1.0 - instance.z)) / 300.0;
+
+    float bend =
+      pile_curvature * len * (randomValue * 2.0 - 1.0);
+
+    float u = along - 0.5;
+
+    vec2 xy =
+      instance.xy / 300.0 +
+      d * u * len +
+      side * bend * (u * u - 0.25);
+
+    float halfWidth =
+      pile_width / 600.0 *
+      mix(0.65, 1.2, instance.z) *
+      (1.0 - along * 0.3);
+
+    xy += side * across * halfWidth;
+
+    float arch =
+      sin(along * 3.14159265) *
+      len * 0.17 *
+      (1.0 - flatten * 0.8);
+
+    p = vec3(
+      xy,
+      0.0008 + (view_threeD ? heightAt(xy) + arch : 0.0)
+    );
+
+    surfaceNormal = normalAt(xy);
+
+    fiberTangent = normalize(vec3(
+      d * len + side * 2.0 * bend * u,
+      view_threeD
+        ? cos(along * 3.14159265) *
+          len * 0.17 * 3.14159265 *
+          (1.0 - flatten * 0.8)
+        : 0.0
+    ));
+  } else {
+    float id = float(gl_VertexID);
+
+    randomValue = hash(vec2(id, 9.3));
+
+    vec2 q = vec2(
+      hash(vec2(id, 13.0)),
+      hash(vec2(id, 71.0))
+    );
+
+    q = fract(
+      q + clock * dust_speed *
+      vec2(0.007 + 0.009 * randomValue, -0.012)
+    );
+
+    vec2 xy = mix(bounds.xy, bounds.zw, q);
+
+    p = vec3(
+      xy,
+      (view_threeD ? heightAt(xy) : 0.0) +
+      0.035 + randomValue * 0.2
+    );
+
+    gl_PointSize = (1.5 + randomValue * 2.5) * pixelRatio;
+  }
+
+  worldPosition = p;
+  gl_Position = projectPoint(p);
+}
+`;
+
+const sceneFragment = `#version 300 es
+precision highp float;
+precision highp int;
+
+in vec3 worldPosition;
+in vec3 fiberTangent;
+in vec3 surfaceNormal;
+
+in float across;
+in float along;
+in float flatten;
+in float randomValue;
+
+out vec4 color;
+
+uniform int kind;
+
+uniform bool lighting_enabled;
+uniform bool iridescence_enabled;
+uniform bool movingLights_enabled;
+uniform bool shadows_enabled;
+uniform bool shimmer_enabled;
+
+uniform float lighting_direction;
+uniform float lighting_strength;
+uniform float lighting_sharpness;
+
+uniform float iridescence_strength;
+uniform float iridescence_frequency;
+
+uniform float movingLights_strength;
+uniform float movingLights_speed;
+
+uniform float shadows_strength;
+
+uniform float shimmer_strength;
+uniform float shimmer_speed;
+uniform float shimmer_width;
+
+uniform float dust_brightness;
+
+uniform vec3 appearance_backgroundColor;
+uniform vec3 appearance_colorA;
+uniform vec3 appearance_colorB;
+uniform vec3 appearance_highlightColor;
+
+${common}
+
+float shadowAt(vec2 p, vec3 light) {
+  if (!shadows_enabled || !view_threeD || !folds_enabled) {
+    return 1.0;
+  }
+
+  float h = heightAt(p);
+  float occ = 0.0;
+
+  for (int i = 1; i <= 5; i++) {
+    float stepSize = float(i) * 0.06;
+
+    float obstruction =
+      heightAt(p + light.xy * stepSize) -
+      h - light.z * stepSize;
+
+    occ = max(occ, smoothstep(-0.025, 0.045, obstruction));
+  }
+
+  return 1.0 - occ * shadows_strength * 0.65;
+}
+
+void main() {
+  if (kind == 2) {
+    float radius = length(gl_PointCoord - 0.5) * 2.0;
+
+    float alpha =
+      exp(-radius * radius * 4.0) *
+      (1.0 - smoothstep(0.65, 1.0, radius));
+
+    float beam = pow(
+      0.5 + 0.5 * sin(
+        worldPosition.x * 1.8 +
+        worldPosition.y -
+        clock * 0.13
+      ),
+      4.0
+    );
+
+    color = vec4(
+      appearance_highlightColor *
+      dust_brightness *
+      (0.15 + beam * 1.7),
+      alpha * 0.7
+    );
+
+    return;
+  }
+
+  vec3 n = normalize(surfaceNormal);
+  vec3 v = normalize(eye - worldPosition);
+
+  if (kind == 1) {
+    vec3 side = normalize(vec3(
+      -fiberTangent.y,
+      fiberTangent.x,
+      0.0
+    ));
+
+    n = normalize(
+      n * sqrt(max(0.02, 1.0 - across * across)) +
+      side * across * 0.65
+    );
+  }
+
+  float a = radians(lighting_direction);
+
+  vec3 light = normalize(vec3(
+    cos(a) * 0.7,
+    sin(a) * 0.7,
+    0.85
+  ));
+
+  float diffuse = 0.65;
+  float specular = 0.0;
+
+  if (lighting_enabled) {
+    diffuse = 0.28 + 0.72 * max(dot(n, light), 0.0);
+
+    vec3 h = normalize(light + v);
+
+    float longitudinal = sqrt(max(
+      0.0,
+      1.0 - pow(dot(normalize(fiberTangent), h), 2.0)
+    ));
+
+    specular =
+      pow(longitudinal, lighting_sharpness * 5.0) *
+      max(dot(n, light), 0.0) *
+      lighting_strength;
+  }
+
+  if (movingLights_enabled) {
+    float t = clock * movingLights_speed;
+
+    for (int i = 0; i < 2; i++) {
+      float k = float(i);
+
+      vec3 position = vec3(
+        sin(t * (0.7 - k * 0.2) + k * 2.0) * 2.4,
+        cos(t * 0.53 + k) * 1.8,
+        1.5
       );
 
-      const location = gl.getAttribLocation(program, "position");
-      gl.enableVertexAttribArray(location);
-      gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
+      vec3 delta = position - worldPosition;
 
-      gl.disable(gl.DEPTH_TEST);
-      gl.disable(gl.BLEND);
-      gl.useProgram(program);
+      float falloff =
+        1.0 / (1.0 + dot(delta, delta) * 0.4);
 
-      resize();
-    }
+      vec3 l = normalize(delta);
+      vec3 h = normalize(l + v);
 
-    function location(name) {
-      if (!uniforms.has(name)) {
-        uniforms.set(name, gl.getUniformLocation(program, name));
-      }
-
-      return uniforms.get(name);
-    }
-
-    function resize() {
-      width = Math.max(1, innerWidth);
-      height = Math.max(1, innerHeight);
-
-      const limit = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
-      const ratio = Math.min(
-        devicePixelRatio || 1,
-        config.quality.pixelRatio,
-        limit[0] / width,
-        limit[1] / height
+      float silk = pow(
+        sqrt(max(
+          0.0,
+          1.0 - pow(dot(fiberTangent, h), 2.0)
+        )),
+        12.0
       );
 
-      canvas.width = Math.max(1, Math.round(width * ratio));
-      canvas.height = Math.max(1, Math.round(height * ratio));
+      diffuse +=
+        max(dot(n, l), 0.0) *
+        falloff * movingLights_strength * 0.4;
 
-      gl.viewport(0, 0, canvas.width, canvas.height);
+      specular +=
+        silk * falloff * movingLights_strength;
     }
+  }
 
-    function heightAt(x, y) {
-      if (!config.folds.enabled) return 0;
+  if (shimmer_enabled) {
+    float wave = pow(
+      0.5 + 0.5 * sin(
+        worldPosition.x * 2.2 +
+        worldPosition.y * 1.4 -
+        clock * shimmer_speed * 2.0
+      ),
+      1.0 / max(shimmer_width, 0.02)
+    );
 
-      const qx = x * config.folds.scale;
-      const qy = y * config.folds.scale;
-      const t = clock * config.folds.speed;
+    specular += wave * shimmer_strength;
+  }
 
-      return config.folds.height * (
-        Math.sin(
-          qx * 1.35 + Math.sin(qy * 0.75 + t) * 0.65 + t
-        ) * 0.65 +
-        Math.sin(qy * 1.8 - qx * 0.45 - t * 0.63) * 0.35
-      );
+  float tint = clamp(
+    0.5 +
+    sin(worldPosition.y * 0.8 + worldPosition.x * 0.3) * 0.3 +
+    sin(worldPosition.x * 0.47) * 0.2,
+    0.0,
+    1.0
+  );
+
+  vec3 base = mix(
+    appearance_colorA,
+    appearance_colorB,
+    tint
+  );
+
+  if (iridescence_enabled) {
+    float direction = atan(fiberTangent.y, fiberTangent.x);
+
+    vec3 sheen = 0.5 + 0.5 * cos(
+      vec3(0.0, 2.1, 4.2) +
+      direction * iridescence_frequency +
+      (1.0 - abs(dot(n, v))) * 4.0
+    );
+
+    base = mix(
+      base,
+      sheen * 0.6 + base * 0.4,
+      iridescence_strength * (0.25 + specular * 0.5)
+    );
+  }
+
+  if (kind == 0) {
+    float weave =
+      0.96 +
+      0.04 *
+      sin(worldPosition.x * 950.0) *
+      sin(worldPosition.y * 950.0);
+
+    base = mix(
+      appearance_backgroundColor,
+      base * 0.28,
+      0.85
+    ) * weave;
+
+    specular *= 0.14;
+  } else {
+    base *=
+      mix(0.8, 1.15, randomValue) *
+      mix(1.0, 0.58, flatten);
+  }
+
+  float shadow = shadowAt(worldPosition.xy, light);
+
+  if (shadows_enabled && kind == 1) {
+    shadow *=
+      1.0 - shadows_strength * (1.0 - along) * 0.2;
+  }
+
+  vec3 result = (
+    base * diffuse +
+    appearance_highlightColor *
+    specular *
+    (kind == 1 ? 0.35 + along * 0.65 : 1.0)
+  ) * shadow;
+
+  float alpha = kind == 1
+    ? 1.0 - smoothstep(0.65, 1.0, abs(across))
+    : 1.0;
+
+  if (alpha < 0.02) discard;
+
+  color = vec4(result, alpha);
+}
+`;
+
+const postVertex = `#version 300 es
+precision highp float;
+precision highp int;
+
+out vec2 uv;
+
+void main() {
+  vec2 p = gl_VertexID == 0 ? vec2(-1.0, -1.0) :
+           gl_VertexID == 1 ? vec2(3.0, -1.0) :
+                             vec2(-1.0, 3.0);
+
+  uv = p * 0.5 + 0.5;
+  gl_Position = vec4(p, 0.0, 1.0);
+}
+`;
+
+const postFragment = `#version 300 es
+precision highp float;
+precision highp int;
+
+in vec2 uv;
+out vec4 color;
+
+uniform sampler2D image;
+uniform sampler2D glow;
+
+uniform int pass;
+
+uniform vec2 texel;
+uniform vec2 direction;
+
+uniform float threshold;
+uniform float radius;
+uniform float strength;
+uniform float exposure;
+
+void main() {
+  if (pass == 0) {
+    vec3 c = texture(image, uv).rgb;
+    float bright = max(max(c.r, c.g), c.b);
+
+    float knee = 0.15;
+
+    float soft = clamp(
+      bright - threshold + knee,
+      0.0,
+      2.0 * knee
+    );
+
+    soft = soft * soft / (4.0 * knee + 0.0001);
+
+    color = vec4(
+      c * max(bright - threshold, soft) /
+      max(bright, 0.0001),
+      1.0
+    );
+  } else if (pass == 1) {
+    vec2 stepSize = direction * texel * radius;
+
+    vec3 c = texture(image, uv).rgb * 0.227027;
+
+    c += (
+      texture(image, uv + stepSize * 1.384615).rgb +
+      texture(image, uv - stepSize * 1.384615).rgb
+    ) * 0.316216;
+
+    c += (
+      texture(image, uv + stepSize * 3.230769).rgb +
+      texture(image, uv - stepSize * 3.230769).rgb
+    ) * 0.070270;
+
+    color = vec4(c, 1.0);
+  } else {
+    vec3 c =
+      texture(image, uv).rgb +
+      texture(glow, uv).rgb * strength;
+
+    c = 1.0 - exp(-max(c, vec3(0.0)) * exposure);
+
+    color = vec4(pow(c, vec3(0.85)), 1.0);
+  }
+}
+`;
+
+function shader(type, source) {
+  const s = gl.createShader(type);
+
+  gl.shaderSource(s, source);
+  gl.compileShader(s);
+
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    const message = gl.getShaderInfoLog(s);
+    gl.deleteShader(s);
+    throw new Error(message);
+  }
+
+  return s;
+}
+
+function program(vs, fs) {
+  const p = gl.createProgram();
+  const v = shader(gl.VERTEX_SHADER, vs);
+  const f = shader(gl.FRAGMENT_SHADER, fs);
+
+  gl.attachShader(p, v);
+  gl.attachShader(p, f);
+  gl.linkProgram(p);
+
+  gl.deleteShader(v);
+  gl.deleteShader(f);
+
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    throw new Error(gl.getProgramInfoLog(p));
+  }
+
+  return p;
+}
+
+function uniform(p, name, value) {
+  let cache = locations.get(p);
+
+  if (!cache) {
+    cache = new Map();
+    locations.set(p, cache);
+  }
+
+  if (!cache.has(name)) {
+    cache.set(name, gl.getUniformLocation(p, name));
+  }
+
+  const u = cache.get(name);
+  if (u === null) return;
+
+  if (typeof value === "boolean") {
+    gl.uniform1i(u, value ? 1 : 0);
+  } else if (
+    Array.isArray(value) ||
+    ArrayBuffer.isView(value)
+  ) {
+    if (value.length === 2) gl.uniform2fv(u, value);
+    else if (value.length === 3) gl.uniform3fv(u, value);
+    else gl.uniform4fv(u, value);
+  } else {
+    gl.uniform1f(u, value);
+  }
+}
+
+function hash(x, y) {
+  const n =
+    Math.sin(x * 127.1 + y * 311.7 + seed) * 43758.5453;
+
+  return n - Math.floor(n);
+}
+
+function fold(x, y) {
+  if (!config.folds.enabled) return 0;
+
+  const f = config.folds;
+  const t = clock * f.speed;
+
+  x *= f.scale;
+  y *= f.scale;
+
+  return f.height * (
+    Math.sin(
+      x * 1.35 + Math.sin(y * 0.75 + t) * 0.65 + t
+    ) * 0.65 +
+    Math.sin(y * 1.8 - x * 0.45 - t * 0.63) * 0.35
+  );
+}
+
+function updateCamera() {
+  const a = config.view.threeD
+    ? config.view.tilt * Math.PI / 180
+    : 0;
+
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  const d = 4 / config.view.zoom;
+
+  const par =
+    config.view.threeD && config.parallax.enabled
+      ? config.parallax.strength
+      : 0;
+
+  camera = {
+    eye: [
+      pointer.cx * par,
+      -s * d + pointer.cy * par,
+      c * d
+    ],
+    forward: [0, s, -c],
+    up: [0, c, s],
+    d
+  };
+}
+
+function pick(x, y, surface = true) {
+  const sx = (x / width * 2 - 1) * width / height;
+  const sy = 1 - y / height * 2;
+
+  let [ox, oy, oz] = camera.eye;
+  let [rx, ry, rz] = camera.forward;
+
+  if (config.view.perspective) {
+    rx += sx * 0.46;
+    ry += sy * camera.up[1] * 0.46;
+    rz += sy * camera.up[2] * 0.46;
+  } else {
+    ox += sx * camera.d * 0.46;
+    oy += sy * camera.up[1] * camera.d * 0.46;
+    oz += sy * camera.up[2] * camera.d * 0.46;
+  }
+
+  let t = -oz / rz;
+
+  if (surface && config.view.threeD) {
+    for (let i = 0; i < 10; i++) {
+      t += (
+        (fold(ox + rx * t, oy + ry * t) - oz) / rz - t
+      ) * 0.7;
     }
+  }
 
-    function screenToWorld(x, y) {
-      const sx = (x / width * 2 - 1) * width / height;
-      const sy = 1 - y / height * 2;
-      const tilt = config.view.threeD
-        ? config.view.tilt * Math.PI / 180
-        : 0;
+  return [
+    (ox + rx * t) * 300,
+    (oy + ry * t) * 300
+  ];
+}
 
-      const c = Math.cos(tilt);
-      const s = Math.sin(tilt);
-      const distance = 4 / config.view.zoom;
+function rebuild() {
+  updateCamera();
 
-      let ox = 0;
-      let oy = -s * distance;
-      let oz = c * distance;
-      let rx = 0;
-      let ry = s;
-      let rz = -c;
+  const corners = [
+    [0, 0],
+    [width, 0],
+    [0, height],
+    [width, height]
+  ].map(p => pick(...p, false));
 
-      if (config.parallax.enabled && config.view.threeD) {
-        ox += pointer.cameraX * config.parallax.strength;
-        oy += pointer.cameraY * config.parallax.strength;
-      }
+  const margin = 240;
 
-      if (config.view.perspective) {
-        rx += sx * 0.46;
-        ry += sy * c * 0.46;
-        rz += sy * s * 0.46;
-      } else {
-        ox += sx * distance * 0.46;
-        oy += sy * c * distance * 0.46;
-        oz += sy * s * distance * 0.46;
-      }
+  bounds = [
+    Math.min(...corners.map(p => p[0])) / 300 - margin / 300,
+    Math.min(...corners.map(p => p[1])) / 300 - margin / 300,
+    Math.max(...corners.map(p => p[0])) / 300 + margin / 300,
+    Math.max(...corners.map(p => p[1])) / 300 + margin / 300
+  ];
 
-      let t = -oz / rz;
+  let spacing = 7 / Math.sqrt(config.pile.density);
 
-      if (config.view.threeD && config.folds.enabled) {
-        for (let i = 0; i < 8; i++) {
-          const target =
-            (heightAt(ox + rx * t, oy + ry * t) - oz) / rz;
-          t += (target - t) * 0.8;
-        }
-      }
+  const area =
+    (bounds[2] - bounds[0]) *
+    (bounds[3] - bounds[1]) *
+    90000;
 
-      return [(ox + rx * t) * 300, (oy + ry * t) * 300];
-    }
+  spacing = Math.max(spacing, Math.sqrt(area / 90000));
 
-    function editorEvent(event) {
-      return Boolean(event.target.closest?.("[data-background-editor]"));
-    }
+  const list = [];
 
-    function updatePointer(event) {
-      if (editorEvent(event)) {
-        pointer.active = false;
-        return;
-      }
-
-      if (pointer.down && event.pointerId !== pointer.id) return;
-
-      const now = performance.now() / 1000;
-      const [x, y] = screenToWorld(event.clientX, event.clientY);
-
-      if (pointer.active) {
-        const dx = x - pointer.lastX;
-        const dy = y - pointer.lastY;
-        const distance = Math.hypot(dx, dy);
-        const dt = Math.max(now - pointer.lastTime, 0.001);
-
-        if (
-          config.brush.enabled &&
-          distance > 0.4 &&
-          (distance > 8 || now - pointer.lastStamp > 0.025)
-        ) {
-          const speed = distance / dt;
-          const pressure = config.brush.pressure
-            ? clamp(speed / 650, 0.12, 1)
-            : 0.6;
-
-          const offset = brushIndex * 4;
-          brushData[offset] = x;
-          brushData[offset + 1] = y;
-          brushData[offset + 2] = Math.atan2(dy, dx);
-          brushData[offset + 3] = pressure;
-
-          brushIndex = (brushIndex + 1) % 24;
-          pointer.lastStamp = now;
-        }
-      }
-
-      pointer.active = true;
-      pointer.x = event.clientX;
-      pointer.y = event.clientY;
-      pointer.worldX = x;
-      pointer.worldY = y;
-      pointer.lastX = x;
-      pointer.lastY = y;
-      pointer.lastTime = now;
-    }
-
-    addEventListener("pointermove", updatePointer);
-
-    addEventListener("pointerdown", event => {
-      if (editorEvent(event) || event.button !== 0) return;
-
-      updatePointer(event);
-      pointer.down = true;
-      pointer.id = event.pointerId;
-      pointer.holdX = pointer.worldX;
-      pointer.holdY = pointer.worldY;
-
-      if (config.ripples.enabled) {
-        const offset = rippleIndex * 4;
-        rippleData[offset] = pointer.worldX;
-        rippleData[offset + 1] = pointer.worldY;
-        rippleData[offset + 2] = clock;
-        rippleData[offset + 3] = 1;
-        rippleIndex = (rippleIndex + 1) % 8;
-      }
-    });
-
-    function releasePointer(event) {
-      if (event && pointer.id !== null && event.pointerId !== pointer.id) {
-        return;
-      }
-
-      pointer.down = false;
-      pointer.id = null;
-    }
-
-    addEventListener("pointerup", releasePointer);
-    addEventListener("pointercancel", event => {
-      releasePointer(event);
-      pointer.active = false;
-    });
-
-    addEventListener("blur", () => {
-      releasePointer();
-      pointer.active = false;
-    });
-
-    document.documentElement.addEventListener("pointerleave", () => {
-      releasePointer();
-      pointer.active = false;
-    });
-
-    document.addEventListener("visibilitychange", () => {
-      previous = null;
-      releasePointer();
-      pointer.active = false;
-    });
-
-    function resetWeave() {
-      seed = Math.random() * 1000;
-      brushData.fill(0);
-      rippleData.fill(0);
-      pointer.holdStrength = 0;
-    }
-
-    function syncSettings() {
-      if (!contextLost) resize();
-    }
-
-    function uploadSettings() {
-      for (const [section, values] of Object.entries(config)) {
-        for (const [key, value] of Object.entries(values)) {
-          const name = `${section}_${key}`;
-          const uniform = location(name);
-          if (uniform === null) continue;
-
-          if (Array.isArray(value)) {
-            gl.uniform3f(
-              uniform,
-              value[0] / 255,
-              value[1] / 255,
-              value[2] / 255
-            );
-          } else if (typeof value === "boolean") {
-            gl.uniform1i(uniform, value ? 1 : 0);
-          } else {
-            gl.uniform1f(uniform, value);
-          }
-        }
-      }
-    }
-
-    function frame(timestamp) {
-      requestAnimationFrame(frame);
-      if (contextLost || document.hidden) return;
-
-      const realDt = previous === null
-        ? 0
-        : Math.min((timestamp - previous) / 1000, 0.05);
-
-      previous = timestamp;
-
-      const still =
-        config.animation.paused ||
+  for (
+    let y = Math.floor(bounds[1] * 300 / spacing);
+    y <= Math.ceil(bounds[3] * 300 / spacing);
+    y++
+  ) {
+    for (
+      let x = Math.floor(bounds[0] * 300 / spacing);
+      x <= Math.ceil(bounds[2] * 300 / spacing);
+      x++
+    ) {
+      list.push(
+        (x + 0.5 + (hash(x, y) - 0.5) * 0.8) * spacing,
         (
-          config.animation.respectReducedMotion &&
-          reducedMotion.matches
-        );
-
-      if (!still) clock += realDt * config.animation.speed;
-
-      const cameraResponse =
-        1 - Math.exp(-config.parallax.smoothing * realDt);
-
-      const targetX = pointer.active ? pointer.x / width * 2 - 1 : 0;
-      const targetY = pointer.active ? 1 - pointer.y / height * 2 : 0;
-
-      pointer.cameraX += (targetX - pointer.cameraX) * cameraResponse;
-      pointer.cameraY += (targetY - pointer.cameraY) * cameraResponse;
-
-      const decay = Math.exp(
-        -Math.LN2 * realDt / config.brush.persistence
+          y + 0.5 +
+          (hash(x + 11, y + 17) - 0.5) * 0.8
+        ) * spacing,
+        hash(x + 31, y + 4),
+        hash(x + 7, y + 93),
+        config.flow.direction * Math.PI / 180,
+        0
       );
-
-      for (let i = 3; i < brushData.length; i += 4) {
-        brushData[i] *= decay;
-      }
-
-      if (pointer.down && pointer.active) {
-        const world = screenToWorld(pointer.x, pointer.y);
-        pointer.holdX = world[0];
-        pointer.holdY = world[1];
-      }
-
-      const holdTarget =
-        pointer.down && pointer.active && config.whirlpool.enabled ? 1 : 0;
-
-      pointer.holdStrength +=
-        (holdTarget - pointer.holdStrength) *
-        (1 - Math.exp(-realDt * 5));
-
-      gl.useProgram(program);
-      gl.bindVertexArray(vao);
-
-      gl.uniform2f(
-        location("resolution"),
-        canvas.width,
-        canvas.height
-      );
-      gl.uniform2f(location("viewport"), width, height);
-      gl.uniform1f(location("clock"), clock);
-      gl.uniform1f(location("seed"), seed);
-      gl.uniform2f(
-        location("cameraPointer"),
-        pointer.cameraX,
-        pointer.cameraY
-      );
-      gl.uniform4f(
-        location("heldPointer"),
-        pointer.holdX,
-        pointer.holdY,
-        0,
-        pointer.holdStrength
-      );
-      gl.uniform4fv(location("brushes[0]"), brushData);
-      gl.uniform4fv(location("rippleEvents[0]"), rippleData);
-
-      uploadSettings();
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
+  }
 
-    canvas.addEventListener("webglcontextlost", event => {
-      event.preventDefault();
-      contextLost = true;
-      previous = null;
-    });
+  data = new Float32Array(list);
+  memory = new Float32Array(data.length / 6);
+  comb = new Float32Array(memory.length);
 
-    canvas.addEventListener("webglcontextrestored", () => {
-      try {
-        initializeGL();
-        contextLost = false;
-        errorBox.hidden = true;
-      } catch (error) {
-        errorBox.hidden = false;
-        errorBox.textContent = `Unable to restore WebGL: ${error.message}`;
-      }
-    });
+  gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
 
-    addEventListener("resize", () => {
-      if (!contextLost) resize();
-    });
+  simulate(0, true);
+}
+
+function deleteTargets() {
+  for (const t of targets) {
+    gl.deleteFramebuffer(t.fbo);
+    gl.deleteTexture(t.texture);
+
+    if (t.depth) gl.deleteRenderbuffer(t.depth);
+  }
+
+  targets = [];
+}
+
+function target(w, h, depth) {
+  const texture = gl.createTexture();
+
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    hdr ? gl.RGBA16F : gl.RGBA,
+    w,
+    h,
+    0,
+    gl.RGBA,
+    hdr ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE,
+    null
+  );
+
+  gl.texParameteri(
+    gl.TEXTURE_2D,
+    gl.TEXTURE_MIN_FILTER,
+    gl.LINEAR
+  );
+
+  gl.texParameteri(
+    gl.TEXTURE_2D,
+    gl.TEXTURE_MAG_FILTER,
+    gl.LINEAR
+  );
+
+  gl.texParameteri(
+    gl.TEXTURE_2D,
+    gl.TEXTURE_WRAP_S,
+    gl.CLAMP_TO_EDGE
+  );
+
+  gl.texParameteri(
+    gl.TEXTURE_2D,
+    gl.TEXTURE_WRAP_T,
+    gl.CLAMP_TO_EDGE
+  );
+
+  const fbo = gl.createFramebuffer();
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+
+  gl.framebufferTexture2D(
+    gl.FRAMEBUFFER,
+    gl.COLOR_ATTACHMENT0,
+    gl.TEXTURE_2D,
+    texture,
+    0
+  );
+
+  let depthBuffer = null;
+
+  if (depth) {
+    depthBuffer = gl.createRenderbuffer();
+
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+
+    gl.renderbufferStorage(
+      gl.RENDERBUFFER,
+      gl.DEPTH_COMPONENT16,
+      w,
+      h
+    );
+
+    gl.framebufferRenderbuffer(
+      gl.FRAMEBUFFER,
+      gl.DEPTH_ATTACHMENT,
+      gl.RENDERBUFFER,
+      depthBuffer
+    );
+  }
+
+  if (
+    gl.checkFramebufferStatus(gl.FRAMEBUFFER) !==
+    gl.FRAMEBUFFER_COMPLETE
+  ) {
+    throw new Error("Unable to create render target.");
+  }
+
+  return {
+    texture,
+    fbo,
+    w,
+    h,
+    depth: depthBuffer
+  };
+}
+
+function sync() {
+  if (lost) return;
+
+  width = Math.max(1, innerWidth);
+  height = Math.max(1, innerHeight);
+
+  const max = Math.min(
+    gl.getParameter(gl.MAX_TEXTURE_SIZE),
+    gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)
+  );
+
+  const dpr = Math.min(
+    devicePixelRatio || 1,
+    config.quality.pixelRatio,
+    max / width,
+    max / height
+  );
+
+  const w = Math.max(1, Math.round(width * dpr));
+  const h = Math.max(1, Math.round(height * dpr));
+
+  const nextTarget = [w, h].join();
+
+  if (nextTarget !== targetKey) {
+    canvas.width = w;
+    canvas.height = h;
+
+    deleteTargets();
 
     try {
-      initializeGL();
-      requestAnimationFrame(frame);
-    } catch (error) {
-      errorBox.hidden = false;
-      errorBox.textContent = `Unable to start WebGL: ${error.message}`;
-      throw error;
+      targets = [
+        target(w, h, true),
+        target(
+          Math.max(1, w >> 1),
+          Math.max(1, h >> 1),
+          false
+        ),
+        target(
+          Math.max(1, w >> 1),
+          Math.max(1, h >> 1),
+          false
+        )
+      ];
+    } catch (e) {
+      deleteTargets();
+      throw e;
     }
 
-    if (config.panel.enabled) {
-      import("./settings-editor.js?v=velvet-webgl-1")
-        .then(({ createSettingsEditor }) => {
-          createSettingsEditor({
-            config,
-            defaults,
-            onChange: syncSettings,
-            onReset: resetWeave
-          });
-        })
-        .catch(error => {
-          console.error("Settings editor could not load:", error);
-          errorBox.hidden = false;
-          errorBox.textContent =
-            "The background is running, but settings-editor.js could not load.";
-        });
+    targetKey = nextTarget;
+  }
+
+  const key = [
+    width,
+    height,
+    config.view.threeD,
+    config.view.perspective,
+    config.view.tilt,
+    config.view.zoom,
+    config.pile.density,
+    seed
+  ].join();
+
+  if (key !== geometryKey) {
+    geometryKey = key;
+    rebuild();
+    pointer.reset = true;
+  }
+}
+
+function simulate(dt, initial = false) {
+  const centers = [];
+  const f = config.flow;
+  const t = clock * f.speed;
+
+  const breath = config.breathing.enabled
+    ? 1 +
+      Math.sin(clock * config.breathing.speed) *
+      config.breathing.strength
+    : 1;
+
+  for (let i = 0; i < f.vortexCount; i++) {
+    centers.push({
+      x:
+        (hash(i, 17) - 0.5) * 1800 +
+        Math.sin(t * (0.23 + i * 0.017) + i * 2.7) *
+        f.wandering * 1000,
+
+      y:
+        (hash(i, 39) - 0.5) * 1200 +
+        Math.cos(t * (0.19 + i * 0.013) + i * 1.9) *
+        f.wandering * 1000,
+
+      sign: i % 2 ? -1 : 1,
+
+      pulse: config.breathing.enabled
+        ? 1 +
+          Math.sin(clock * config.breathing.speed + i) *
+          config.breathing.strength
+        : 1
+    });
+  }
+
+  const world = pick(pointer.x, pointer.y);
+  const px = world[0];
+  const py = world[1];
+
+  if (pointer.reset) {
+    pointer.lastX = px;
+    pointer.lastY = py;
+    pointer.reset = false;
+  }
+
+  const dx = px - pointer.lastX;
+  const dy = py - pointer.lastY;
+  const travel = Math.hypot(dx, dy);
+
+  const pressure = config.brush.pressure
+    ? clamp(
+        travel / Math.max(dt, 0.001) / 650,
+        0.08,
+        1
+      )
+    : 0.6;
+
+  const brushAngle = Math.atan2(dy, dx);
+
+  const radius =
+    config.brush.radius * (1 + pressure * 0.55);
+
+  if (pointer.down && pointer.active) {
+    pointer.hx = px;
+    pointer.hy = py;
+  }
+
+  const holdTarget =
+    pointer.down &&
+    pointer.active &&
+    config.whirlpool.enabled
+      ? 1
+      : 0;
+
+  pointer.hold +=
+    (holdTarget - pointer.hold) *
+    (1 - Math.exp(-dt * 5));
+
+  const decay = Math.exp(
+    -Math.LN2 * dt / config.brush.persistence
+  );
+
+  const response = initial
+    ? 1
+    : 1 - Math.exp(-dt * 4);
+
+  for (let i = 0; i < memory.length; i++) {
+    const o = i * 6;
+    const x = data[o];
+    const y = data[o + 1];
+
+    let vx = Math.cos(f.direction * Math.PI / 180);
+    let vy = Math.sin(f.direction * Math.PI / 180);
+
+    for (const c of centers) {
+      const xx = x - c.x;
+      const yy = y - c.y;
+      const d = Math.hypot(xx, yy);
+
+      const w =
+        Math.exp(
+          -(xx * xx + yy * yy) /
+          Math.pow(f.radius * breath, 2)
+        ) *
+        f.strength *
+        c.sign *
+        c.pulse /
+        Math.max(d, 30);
+
+      vx -= yy * w;
+      vy += xx * w;
     }
-  </script>
+
+    let a = Math.atan2(vy, vx);
+
+    if (config.turbulence.enabled) {
+      const qx = x * 0.006 * config.turbulence.scale;
+      const qy = y * 0.006 * config.turbulence.scale;
+
+      a += (
+        Math.sin(
+          qx * 1.7 + Math.cos(qy * 1.3) + t
+        ) * 0.65 +
+        Math.sin(
+          qy * 3.1 - qx * 2.2 - t * 0.7
+        ) * 0.25 +
+        Math.cos(
+          qx * 5.1 + qy * 4.7 + t * 0.4
+        ) * 0.1
+      ) * config.turbulence.strength;
+    }
+
+    vx = Math.cos(a);
+    vy = Math.sin(a);
+
+    if (
+      config.whirlpool.enabled &&
+      pointer.hold > 0.001
+    ) {
+      const xx = x - pointer.hx;
+      const yy = y - pointer.hy;
+
+      const w =
+        Math.exp(
+          -(xx * xx + yy * yy) /
+          (config.whirlpool.radius ** 2)
+        ) *
+        config.whirlpool.strength *
+        pointer.hold /
+        Math.max(Math.hypot(xx, yy), 15);
+
+      vx -= yy * w;
+      vy += xx * w;
+    }
+
+    a = Math.atan2(vy, vx);
+
+    let ripple = 0;
+
+    if (config.ripples.enabled) {
+      for (const r of ripples) {
+        const age = clock - r.time;
+
+        if (
+          age < 0 ||
+          age > config.ripples.lifetime
+        ) {
+          continue;
+        }
+
+        const front =
+          Math.hypot(x - r.x, y - r.y) -
+          age * config.ripples.speed;
+
+        ripple +=
+          Math.sin(front * 0.065) *
+          Math.exp(-front * front / 2500) *
+          Math.pow(
+            1 - age / config.ripples.lifetime,
+            1.5
+          ) *
+          config.ripples.strength;
+      }
+    }
+
+    a += ripple * 0.85;
+
+    memory[i] *= decay;
+
+    if (
+      config.brush.enabled &&
+      pointer.active &&
+      pointer.moved &&
+      travel > 0.1 &&
+      dt > 0
+    ) {
+      const k = clamp(
+        (
+          (x - pointer.lastX) * dx +
+          (y - pointer.lastY) * dy
+        ) / Math.max(travel * travel, 0.001),
+        0,
+        1
+      );
+
+      const dist = Math.hypot(
+        x - pointer.lastX - dx * k,
+        y - pointer.lastY - dy * k
+      );
+
+      const contact =
+        Math.exp(-dist * dist / (radius * radius)) *
+        pressure *
+        config.brush.strength;
+
+      if (contact > 0.002) {
+        if (memory[i] < 0.005) {
+          comb[i] = brushAngle;
+        } else {
+          comb[i] +=
+            angleDiff(brushAngle, comb[i]) *
+            (1 - Math.exp(-contact * dt * 30));
+        }
+
+        memory[i] +=
+          (1 - memory[i]) *
+          (1 - Math.exp(-contact * dt * 35));
+      }
+    }
+
+    const m = config.brush.enabled ? memory[i] : 0;
+
+    a += angleDiff(comb[i], a) * m;
+
+    data[o + 4] +=
+      angleDiff(a, data[o + 4]) * response;
+
+    data[o + 5] = clamp(
+      m + Math.abs(ripple) * 0.2,
+      0,
+      1
+    );
+  }
+
+  pointer.lastX = px;
+  pointer.lastY = py;
+  pointer.moved = false;
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
+}
+
+function bindTexture(unit, texture) {
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+}
+
+function post(pass, input, output, direction = [0, 0]) {
+  gl.bindFramebuffer(
+    gl.FRAMEBUFFER,
+    output ? output.fbo : null
+  );
+
+  gl.viewport(
+    0,
+    0,
+    output ? output.w : canvas.width,
+    output ? output.h : canvas.height
+  );
+
+  bindTexture(0, input.texture);
+
+  gl.uniform1i(
+    gl.getUniformLocation(postProgram, "pass"),
+    pass
+  );
+
+  uniform(
+    postProgram,
+    "texel",
+    [1 / input.w, 1 / input.h]
+  );
+
+  uniform(postProgram, "direction", direction);
+
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+function render() {
+  gl.bindFramebuffer(
+    gl.FRAMEBUFFER,
+    targets[0].fbo
+  );
+
+  gl.viewport(0, 0, canvas.width, canvas.height);
+
+  gl.clearColor(
+    ...config.appearance.backgroundColor.map(v => v / 255),
+    1
+  );
+
+  gl.depthMask(true);
+
+  gl.clear(
+    gl.COLOR_BUFFER_BIT |
+    gl.DEPTH_BUFFER_BIT
+  );
+
+  gl.enable(gl.DEPTH_TEST);
+  gl.depthFunc(gl.LEQUAL);
+  gl.disable(gl.BLEND);
+
+  gl.useProgram(sceneProgram);
+
+  for (
+    const [section, values] of Object.entries(config)
+  ) {
+    for (
+      const [key, value] of Object.entries(values)
+    ) {
+      uniform(
+        sceneProgram,
+        section + "_" + key,
+        Array.isArray(value)
+          ? value.map(v => v / 255)
+          : value
+      );
+    }
+  }
+
+  const sceneUniforms = {
+    clock,
+    bounds,
+    eye: camera.eye,
+    forward: camera.forward,
+    up: camera.up,
+    aspect: width / height,
+    distanceToSurface: camera.d,
+    pixelRatio: canvas.height / height
+  };
+
+  for (
+    const [name, value] of Object.entries(sceneUniforms)
+  ) {
+    uniform(sceneProgram, name, value);
+  }
+
+  gl.bindVertexArray(emptyVAO);
+
+  gl.uniform1i(
+    gl.getUniformLocation(sceneProgram, "kind"),
+    0
+  );
+
+  gl.drawArrays(
+    gl.TRIANGLES,
+    0,
+    80 * 80 * 6
+  );
+
+  gl.enable(gl.BLEND);
+
+  gl.blendFunc(
+    gl.SRC_ALPHA,
+    gl.ONE_MINUS_SRC_ALPHA
+  );
+
+  if (config.pile.enabled) {
+    gl.bindVertexArray(fiberVAO);
+
+    gl.uniform1i(
+      gl.getUniformLocation(sceneProgram, "kind"),
+      1
+    );
+
+    gl.drawArraysInstanced(
+      gl.TRIANGLES,
+      0,
+      36,
+      memory.length
+    );
+  }
+
+  if (config.dust.enabled) {
+    gl.bindVertexArray(emptyVAO);
+    gl.depthMask(false);
+
+    gl.uniform1i(
+      gl.getUniformLocation(sceneProgram, "kind"),
+      2
+    );
+
+    gl.drawArrays(
+      gl.POINTS,
+      0,
+      Math.round(400 * config.dust.density)
+    );
+
+    gl.depthMask(true);
+  }
+
+  gl.disable(gl.BLEND);
+  gl.disable(gl.DEPTH_TEST);
+
+  gl.bindVertexArray(emptyVAO);
+  gl.useProgram(postProgram);
+
+  gl.uniform1i(
+    gl.getUniformLocation(postProgram, "image"),
+    0
+  );
+
+  gl.uniform1i(
+    gl.getUniformLocation(postProgram, "glow"),
+    1
+  );
+
+  bindTexture(1, null);
+
+  uniform(
+    postProgram,
+    "threshold",
+    config.bloom.threshold
+  );
+
+  uniform(
+    postProgram,
+    "radius",
+    config.bloom.radius
+  );
+
+  uniform(
+    postProgram,
+    "exposure",
+    config.appearance.exposure
+  );
+
+  if (
+    config.bloom.enabled &&
+    config.bloom.strength > 0
+  ) {
+    post(0, targets[0], targets[1]);
+    post(1, targets[1], targets[2], [1, 0]);
+    post(1, targets[2], targets[1], [0, 1]);
+  } else {
+    gl.bindFramebuffer(
+      gl.FRAMEBUFFER,
+      targets[1].fbo
+    );
+
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+
+  uniform(
+    postProgram,
+    "strength",
+    config.bloom.enabled
+      ? config.bloom.strength
+      : 0
+  );
+
+  bindTexture(1, targets[1].texture);
+
+  post(2, targets[0], null);
+}
+
+function initialize() {
+  locations = new Map();
+
+  hdr = Boolean(
+    gl.getExtension("EXT_color_buffer_float")
+  );
+
+  if (hdr) {
+    gl.getExtension("EXT_float_blend");
+  }
+
+  sceneProgram = program(
+    sceneVertex,
+    sceneFragment
+  );
+
+  postProgram = program(
+    postVertex,
+    postFragment
+  );
+
+  emptyVAO = gl.createVertexArray();
+  fiberVAO = gl.createVertexArray();
+  instanceBuffer = gl.createBuffer();
+
+  gl.bindVertexArray(fiberVAO);
+  gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+
+  gl.enableVertexAttribArray(0);
+
+  gl.vertexAttribPointer(
+    0,
+    4,
+    gl.FLOAT,
+    false,
+    24,
+    0
+  );
+
+  gl.vertexAttribDivisor(0, 1);
+
+  gl.enableVertexAttribArray(1);
+
+  gl.vertexAttribPointer(
+    1,
+    2,
+    gl.FLOAT,
+    false,
+    24,
+    16
+  );
+
+  gl.vertexAttribDivisor(1, 1);
+
+  targetKey = "";
+  geometryKey = "";
+  targets = [];
+
+  sync();
+}
+
+function reset() {
+  seed = Math.random() * 1000;
+  ripples.length = 0;
+  pointer.hold = 0;
+  geometryKey = "";
+
+  sync();
+}
+
+function frame(now) {
+  requestAnimationFrame(frame);
+
+  if (lost || document.hidden) return;
+
+  const dt = previous === null
+    ? 0
+    : Math.min((now - previous) / 1000, 0.05);
+
+  previous = now;
+
+  const still =
+    config.animation.paused ||
+    (
+      config.animation.respectReducedMotion &&
+      reduced.matches
+    );
+
+  if (!still) {
+    clock += dt * config.animation.speed;
+  }
+
+  const easing =
+    1 - Math.exp(-dt * config.parallax.smoothing);
+
+  const targetX = pointer.active
+    ? pointer.x / width * 2 - 1
+    : 0;
+
+  const targetY = pointer.active
+    ? 1 - pointer.y / height * 2
+    : 0;
+
+  pointer.cx += (targetX - pointer.cx) * easing;
+  pointer.cy += (targetY - pointer.cy) * easing;
+
+  updateCamera();
+  simulate(dt);
+  render();
+}
+
+function move(e) {
+  if (
+    e.target.closest?.("[data-background-editor]")
+  ) {
+    pointer.active = false;
+    pointer.reset = true;
+    return;
+  }
+
+  if (
+    pointerId !== null &&
+    e.pointerId !== pointerId
+  ) {
+    return;
+  }
+
+  if (!pointer.active) {
+    pointer.reset = true;
+  }
+
+  pointer.moved =
+    pointer.moved ||
+    e.clientX !== pointer.x ||
+    e.clientY !== pointer.y;
+
+  pointer.x = e.clientX;
+  pointer.y = e.clientY;
+  pointer.active = true;
+}
+
+function release() {
+  pointer.down = false;
+  pointerId = null;
+}
+
+addEventListener("pointermove", move);
+
+addEventListener("pointerdown", e => {
+  if (
+    e.button !== 0 ||
+    e.target.closest?.("[data-background-editor]") ||
+    pointerId !== null
+  ) {
+    return;
+  }
+
+  move(e);
+
+  pointer.down = true;
+  pointerId = e.pointerId;
+
+  if (config.ripples.enabled) {
+    const [x, y] = pick(e.clientX, e.clientY);
+
+    ripples.push({
+      x,
+      y,
+      time: clock
+    });
+
+    if (ripples.length > 16) {
+      ripples.shift();
+    }
+  }
+});
+
+addEventListener("pointerup", e => {
+  if (e.pointerId === pointerId) {
+    release();
+  }
+});
+
+addEventListener("pointercancel", () => {
+  release();
+  pointer.active = false;
+  pointer.reset = true;
+});
+
+addEventListener("blur", () => {
+  release();
+  pointer.active = false;
+  pointer.reset = true;
+});
+
+document.documentElement.addEventListener(
+  "pointerleave",
+  () => {
+    release();
+    pointer.active = false;
+    pointer.reset = true;
+  }
+);
+
+document.addEventListener(
+  "visibilitychange",
+  () => {
+    previous = null;
+    release();
+    pointer.active = false;
+    pointer.reset = true;
+  }
+);
+
+addEventListener("resize", () => {
+  try {
+    sync();
+  } catch (e) {
+    lost = true;
+    fail(e);
+  }
+});
+
+canvas.addEventListener(
+  "webglcontextlost",
+  e => {
+    e.preventDefault();
+    lost = true;
+    previous = null;
+  }
+);
+
+canvas.addEventListener(
+  "webglcontextrestored",
+  () => {
+    try {
+      lost = false;
+      initialize();
+      errorBox.hidden = true;
+    } catch (e) {
+      lost = true;
+      fail(e);
+    }
+  }
+);
+
+try {
+  initialize();
+  requestAnimationFrame(frame);
+} catch (e) {
+  lost = true;
+  fail(e);
+}
+
+if (config.panel.enabled) {
+  import("./settings-editor.js?v=velvet-enhanced-2")
+    .then(({ createSettingsEditor }) => {
+      createSettingsEditor({
+        config,
+        defaults,
+        onChange: sync,
+        onReset: reset
+      });
+    })
+    .catch(fail);
+}
+</script>
 </body>
 </html>
