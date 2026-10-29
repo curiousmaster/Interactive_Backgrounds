@@ -3,14 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Velvet Vortices</title>
+  <title>Velvet Vortices — WebGL</title>
 
   <style>
-    html,
-    body {
-      margin: 0;
+    html, body {
       width: 100%;
       height: 100%;
+      margin: 0;
       overflow: hidden;
       background: #090b16;
     }
@@ -22,40 +21,145 @@
       height: 100%;
       pointer-events: none;
     }
+
+    #error {
+      position: fixed;
+      left: 20px;
+      bottom: 20px;
+      max-width: 460px;
+      padding: 14px;
+      border-radius: 10px;
+      background: #201a2e;
+      color: #eee;
+      font: 14px/1.5 system-ui, sans-serif;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
   </style>
 </head>
 
 <body>
   <canvas id="background" aria-hidden="true"></canvas>
+  <div id="error" role="alert" hidden></div>
 
   <script type="module">
-    const config = {
-      strokes: {
-        count: 1500,
-        length: 12,
-        width: 3.2,
-        opacity: 0.45,
-        softness: 2,
-        lengthVariation: 0.55
+    const defaults = {
+      view: {
+        threeD: true,
+        perspective: true,
+        tilt: 28,
+        zoom: 1
+      },
+
+      pile: {
+        enabled: true,
+        density: 1,
+        length: 13,
+        width: 0.9,
+        curvature: 0.45,
+        variation: 0.55
       },
 
       flow: {
         vortexCount: 5,
-        vortexRadius: 300,
-        vortexStrength: 2.5,
+        radius: 300,
+        strength: 2.5,
         speed: 0.35,
         wandering: 0.22,
-        baseDirection: -20,
-        rippleStrength: 0.45,
-        response: 3
+        direction: -20
       },
 
-      mouse: {
+      lighting: {
         enabled: true,
-        radius: 150,
-        strength: 0.9,
+        direction: -45,
+        strength: 1.15,
+        sharpness: 5
+      },
+
+      iridescence: {
+        enabled: true,
+        strength: 0.22,
+        frequency: 2
+      },
+
+      movingLights: {
+        enabled: true,
+        strength: 0.55,
+        speed: 0.3
+      },
+
+      folds: {
+        enabled: true,
+        height: 0.13,
+        scale: 1,
+        speed: 0.2
+      },
+
+      shadows: {
+        enabled: true,
+        strength: 0.55
+      },
+
+      turbulence: {
+        enabled: true,
+        strength: 0.45,
+        scale: 1
+      },
+
+      breathing: {
+        enabled: true,
+        strength: 0.28,
+        speed: 0.6
+      },
+
+      shimmer: {
+        enabled: true,
+        strength: 0.22,
+        speed: 0.7,
+        width: 0.2
+      },
+
+      brush: {
+        enabled: true,
+        radius: 100,
+        strength: 0.85,
         persistence: 3,
-        smoothing: 10
+        pressure: true
+      },
+
+      ripples: {
+        enabled: true,
+        strength: 0.6,
+        speed: 130,
+        lifetime: 5
+      },
+
+      whirlpool: {
+        enabled: true,
+        radius: 180,
+        strength: 3
+      },
+
+      parallax: {
+        enabled: true,
+        strength: 0.12,
+        smoothing: 5
+      },
+
+      dust: {
+        enabled: true,
+        density: 0.45,
+        brightness: 0.6,
+        speed: 0.3
+      },
+
+      bloom: {
+        enabled: true,
+        strength: 0.45,
+        threshold: 0.7,
+        radius: 2.5
       },
 
       appearance: {
@@ -63,8 +167,11 @@
         colorA: [73, 111, 153],
         colorB: [161, 99, 165],
         highlightColor: [187, 205, 226],
-        sheen: 0.65,
-        lightDirection: -45
+        exposure: 1.15
+      },
+
+      quality: {
+        pixelRatio: 1.25
       },
 
       animation: {
@@ -78,307 +185,913 @@
       }
     };
 
-    window.getBackgroundConfig = () =>
-      JSON.parse(JSON.stringify(config));
+    const config = structuredClone(defaults);
+    window.getBackgroundConfig = () => structuredClone(config);
 
     const canvas = document.querySelector("#background");
-    const ctx = canvas.getContext("2d");
+    const errorBox = document.querySelector("#error");
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+    const gl = canvas.getContext("webgl2", {
+      alpha: false,
+      antialias: false,
+      depth: false,
+      powerPreference: "high-performance"
+    });
 
-    let width = 1;
-    let height = 1;
-    let strokes = [];
-    let vortices = [];
+    if (!gl) {
+      errorBox.hidden = false;
+      errorBox.textContent =
+        "This background requires WebGL2. Enable hardware acceleration " +
+        "or use a browser with WebGL2 support.";
+      throw new Error("WebGL2 is unavailable.");
+    }
+
+    const vertexSource = `#version 300 es
+      in vec2 position;
+      out vec2 uv;
+
+      void main() {
+        uv = position * 0.5 + 0.5;
+        gl_Position = vec4(position, 0.0, 1.0);
+      }
+    `;
+
+    const fragmentSource = `#version 300 es
+      precision highp float;
+
+      in vec2 uv;
+      out vec4 outputColor;
+
+      uniform vec2 resolution;
+      uniform vec2 viewport;
+      uniform float clock;
+      uniform vec2 cameraPointer;
+      uniform vec4 heldPointer;
+      uniform vec4 brushes[24];
+      uniform vec4 rippleEvents[8];
+      uniform float seed;
+
+      uniform bool view_threeD;
+      uniform bool view_perspective;
+      uniform float view_tilt;
+      uniform float view_zoom;
+
+      uniform bool pile_enabled;
+      uniform float pile_density;
+      uniform float pile_length;
+      uniform float pile_width;
+      uniform float pile_curvature;
+      uniform float pile_variation;
+
+      uniform float flow_vortexCount;
+      uniform float flow_radius;
+      uniform float flow_strength;
+      uniform float flow_speed;
+      uniform float flow_wandering;
+      uniform float flow_direction;
+
+      uniform bool lighting_enabled;
+      uniform float lighting_direction;
+      uniform float lighting_strength;
+      uniform float lighting_sharpness;
+
+      uniform bool iridescence_enabled;
+      uniform float iridescence_strength;
+      uniform float iridescence_frequency;
+
+      uniform bool movingLights_enabled;
+      uniform float movingLights_strength;
+      uniform float movingLights_speed;
+
+      uniform bool folds_enabled;
+      uniform float folds_height;
+      uniform float folds_scale;
+      uniform float folds_speed;
+
+      uniform bool shadows_enabled;
+      uniform float shadows_strength;
+
+      uniform bool turbulence_enabled;
+      uniform float turbulence_strength;
+      uniform float turbulence_scale;
+
+      uniform bool breathing_enabled;
+      uniform float breathing_strength;
+      uniform float breathing_speed;
+
+      uniform bool shimmer_enabled;
+      uniform float shimmer_strength;
+      uniform float shimmer_speed;
+      uniform float shimmer_width;
+
+      uniform bool brush_enabled;
+      uniform float brush_radius;
+      uniform float brush_strength;
+
+      uniform bool ripples_enabled;
+      uniform float ripples_strength;
+      uniform float ripples_speed;
+      uniform float ripples_lifetime;
+
+      uniform bool whirlpool_enabled;
+      uniform float whirlpool_radius;
+      uniform float whirlpool_strength;
+
+      uniform bool parallax_enabled;
+      uniform float parallax_strength;
+
+      uniform bool dust_enabled;
+      uniform float dust_density;
+      uniform float dust_brightness;
+      uniform float dust_speed;
+
+      uniform bool bloom_enabled;
+      uniform float bloom_strength;
+      uniform float bloom_threshold;
+      uniform float bloom_radius;
+
+      uniform vec3 appearance_backgroundColor;
+      uniform vec3 appearance_colorA;
+      uniform vec3 appearance_colorB;
+      uniform vec3 appearance_highlightColor;
+      uniform float appearance_exposure;
+
+      const float PI = 3.141592653589793;
+      const float WORLD = 300.0;
+
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7)) + seed) * 43758.5453);
+      }
+
+      vec2 rotate2(vec2 p, float a) {
+        float c = cos(a);
+        float s = sin(a);
+        return vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+      }
+
+      float heightAt(vec2 p) {
+        if (!folds_enabled) return 0.0;
+
+        vec2 q = p * folds_scale;
+        float t = clock * folds_speed;
+
+        return folds_height * (
+          sin(q.x * 1.35 + sin(q.y * 0.75 + t) * 0.65 + t) * 0.65 +
+          sin(q.y * 1.8 - q.x * 0.45 - t * 0.63) * 0.35
+        );
+      }
+
+      vec3 surfaceNormal(vec2 p) {
+        if (!folds_enabled) return vec3(0.0, 0.0, 1.0);
+
+        float e = 0.015;
+        float dx = heightAt(p + vec2(e, 0.0))
+                 - heightAt(p - vec2(e, 0.0));
+        float dy = heightAt(p + vec2(0.0, e))
+                 - heightAt(p - vec2(0.0, e));
+
+        return normalize(vec3(-dx / (2.0 * e), -dy / (2.0 * e), 1.0));
+      }
+
+      void cameraRay(out vec3 origin, out vec3 ray) {
+        vec2 screen = uv * 2.0 - 1.0;
+        screen.x *= viewport.x / viewport.y;
+
+        float tilt = view_threeD ? radians(view_tilt) : 0.0;
+        float c = cos(tilt);
+        float s = sin(tilt);
+
+        vec3 forward = vec3(0.0, s, -c);
+        vec3 up = vec3(0.0, c, s);
+        vec3 right = vec3(1.0, 0.0, 0.0);
+
+        float distanceToSurface = 4.0 / view_zoom;
+        origin = -forward * distanceToSurface;
+
+        if (parallax_enabled && view_threeD) {
+          origin.xy += cameraPointer * parallax_strength;
+        }
+
+        if (view_perspective) {
+          ray = normalize(
+            forward + right * screen.x * 0.46 + up * screen.y * 0.46
+          );
+        } else {
+          origin +=
+            (right * screen.x + up * screen.y) *
+            distanceToSurface * 0.46;
+          ray = forward;
+        }
+      }
+
+      vec2 surfacePoint() {
+        vec3 origin;
+        vec3 ray;
+        cameraRay(origin, ray);
+
+        float t = -origin.z / ray.z;
+
+        if (view_threeD && folds_enabled) {
+          // Fixed-point intersection with the gently displaced fabric.
+          for (int i = 0; i < 8; i++) {
+            vec3 p = origin + ray * t;
+            float target = (heightAt(p.xy) - origin.z) / ray.z;
+            t = mix(t, target, 0.8);
+          }
+        }
+
+        return (origin + ray * t).xy * WORLD;
+      }
+
+      vec2 flowAt(vec2 p) {
+        float base = radians(flow_direction);
+        vec2 velocity = vec2(cos(base), sin(base));
+        float t = clock * flow_speed;
+
+        float breath = breathing_enabled
+          ? 1.0 + sin(clock * breathing_speed) * breathing_strength
+          : 1.0;
+
+        float radius = flow_radius * breath;
+
+        for (int i = 0; i < 12; i++) {
+          if (float(i) >= flow_vortexCount) break;
+
+          float f = float(i);
+          vec2 randomCenter = vec2(
+            hash(vec2(f, 17.0)),
+            hash(vec2(f, 39.0))
+          );
+
+          vec2 center = (randomCenter - 0.5) * vec2(1800.0, 1200.0);
+          center += vec2(
+            sin(t * (0.23 + f * 0.017) + f * 2.7),
+            cos(t * (0.19 + f * 0.013) + f * 1.9)
+          ) * flow_wandering * 1000.0;
+
+          vec2 delta = p - center;
+          float distanceToCenter = length(delta);
+          float influence = exp(
+            -dot(delta, delta) / max(radius * radius, 1.0)
+          );
+
+          float direction = mod(f, 2.0) < 1.0 ? 1.0 : -1.0;
+          float pulse = breathing_enabled
+            ? 1.0 + sin(clock * breathing_speed + f) *
+              breathing_strength
+            : 1.0;
+
+          velocity += vec2(-delta.y, delta.x) /
+            max(distanceToCenter, 30.0) *
+            influence * flow_strength * direction * pulse;
+        }
+
+        if (turbulence_enabled) {
+          vec2 q = p * 0.006 * turbulence_scale;
+          float curl =
+            sin(q.x * 1.7 + cos(q.y * 1.3) + t) * 0.65 +
+            sin(q.y * 3.1 - q.x * 2.2 - t * 0.7) * 0.25 +
+            cos(q.x * 5.1 + q.y * 4.7 + t * 0.4) * 0.1;
+
+          velocity = rotate2(velocity, curl * turbulence_strength);
+        }
+
+        if (whirlpool_enabled && heldPointer.w > 0.001) {
+          vec2 delta = p - heldPointer.xy;
+          float influence = exp(
+            -dot(delta, delta) /
+            max(whirlpool_radius * whirlpool_radius, 1.0)
+          );
+
+          velocity += vec2(-delta.y, delta.x) /
+            max(length(delta), 15.0) *
+            influence * whirlpool_strength * heldPointer.w;
+        }
+
+        return velocity;
+      }
+
+      float rippleAt(vec2 p) {
+        if (!ripples_enabled) return 0.0;
+
+        float disturbance = 0.0;
+
+        for (int i = 0; i < 8; i++) {
+          vec4 event = rippleEvents[i];
+          if (event.w <= 0.0) continue;
+
+          float age = clock - event.z;
+          if (age < 0.0 || age > ripples_lifetime) continue;
+
+          float distanceToCenter = length(p - event.xy);
+          float front = distanceToCenter - age * ripples_speed;
+          float envelope = exp(-front * front / 2500.0);
+          float fade = pow(
+            max(0.0, 1.0 - age / ripples_lifetime),
+            1.5
+          );
+
+          disturbance +=
+            sin(front * 0.065) * envelope * fade * event.w;
+        }
+
+        return disturbance * ripples_strength;
+      }
+
+      vec3 velvet(vec2 p) {
+        vec2 velocity = flowAt(p);
+        float angle = atan(velocity.y, velocity.x);
+        float flatten = 0.0;
+
+        if (brush_enabled) {
+          // Stamps retain a direction and decay independently on the CPU.
+          for (int i = 0; i < 24; i++) {
+            vec4 stamp = brushes[i];
+            if (stamp.w < 0.002) continue;
+
+            vec2 delta = p - stamp.xy;
+            float radius = brush_radius * (1.0 + stamp.w * 0.55);
+            float influence = exp(-dot(delta, delta) / (radius * radius));
+            float weight = clamp(
+              influence * stamp.w * brush_strength,
+              0.0, 0.95
+            );
+
+            vec2 direction = vec2(cos(angle), sin(angle));
+            vec2 brushed = vec2(cos(stamp.z), sin(stamp.z));
+            direction = mix(direction, brushed, weight);
+
+            angle = atan(direction.y, direction.x);
+            flatten = max(flatten, weight);
+          }
+        }
+
+        float ripple = rippleAt(p);
+        angle += ripple * 0.65;
+
+        float spacing = 5.0 / sqrt(pile_density);
+        if (!pile_enabled) spacing *= 1.8;
+
+        vec2 cell = floor(p / spacing);
+        float fiber = 0.0;
+        float halo = 0.0;
+        float tips = 0.0;
+        float microShade = 0.0;
+
+        // Curved, jittered fibers in neighboring cells.
+        for (int y = -1; y <= 1; y++) {
+          for (int x = -1; x <= 1; x++) {
+            vec2 id = cell + vec2(float(x), float(y));
+            float random = hash(id);
+            vec2 jitter = vec2(
+              hash(id + 13.4),
+              hash(id + 71.2)
+            ) - 0.5;
+
+            vec2 root = (id + 0.5 + jitter * 0.7) * spacing;
+            vec2 local = rotate2(
+              p - root,
+              -angle - (random - 0.5) * 0.25
+            );
+
+            float lengthVariation =
+              1.0 - pile_variation * hash(id + 91.0);
+
+            // Limit reach so the neighboring-cell search remains complete.
+            float fiberLength = min(
+              pile_length * lengthVariation,
+              spacing * 1.7
+            );
+
+            fiberLength *= mix(1.0, 1.15, flatten);
+
+            float along = local.x / max(fiberLength, 0.1);
+            float curve = pile_enabled
+              ? pile_curvature * fiberLength *
+                (along * along - 0.08) * (random * 2.0 - 1.0)
+              : 0.0;
+
+            float distanceToFiber = abs(local.y - curve);
+            float cap = 1.0 - smoothstep(0.35, 0.55, abs(along));
+            float width = pile_width * mix(0.65, 1.15, random);
+
+            float strand =
+              (1.0 - smoothstep(width * 0.25, width, distanceToFiber)) *
+              cap;
+
+            float glowWidth = width + bloom_radius;
+            float glow =
+              exp(-distanceToFiber * distanceToFiber /
+                  max(glowWidth * glowWidth, 0.1)) * cap;
+
+            fiber = max(fiber, strand);
+            halo = max(halo, glow);
+            tips = max(tips, strand * smoothstep(-0.1, 0.5, along));
+            microShade = max(
+              microShade,
+              exp(-distanceToFiber * distanceToFiber /
+                  max(width * width * 5.0, 0.1)) * cap
+            );
+          }
+        }
+
+        vec2 world = p / WORLD;
+        vec3 normal = surfaceNormal(world);
+        float lightAngle = radians(lighting_direction);
+        vec3 light = normalize(vec3(
+          cos(lightAngle) * 0.7,
+          sin(lightAngle) * 0.7,
+          0.85
+        ));
+
+        float tint = clamp(
+          0.5 + sin(world.y * 0.8 + world.x * 0.3) * 0.3 +
+          sin(world.x * 0.47) * 0.2,
+          0.0, 1.0
+        );
+
+        vec3 base = mix(appearance_colorA, appearance_colorB, tint);
+        float alignment = pow(
+          abs(cos(angle - lightAngle)),
+          lighting_sharpness
+        );
+
+        float diffuse = max(dot(normal, light), 0.0);
+        float highlight = lighting_enabled
+          ? alignment * lighting_strength * (0.35 + diffuse * 0.65)
+          : 0.0;
+
+        if (movingLights_enabled) {
+          float t = clock * movingLights_speed;
+          vec2 a = vec2(sin(t * 0.7) * 2.1, cos(t * 0.5) * 1.4);
+          vec2 b = vec2(cos(t * 0.43 + 2.0) * 2.5, sin(t * 0.61) * 1.7);
+
+          float pools =
+            exp(-dot(world - a, world - a) * 0.6) +
+            exp(-dot(world - b, world - b) * 0.8) * 0.7;
+
+          highlight += pools * movingLights_strength *
+            (0.2 + alignment * 0.8);
+        }
+
+        if (shimmer_enabled) {
+          float phase =
+            world.x * 1.1 + world.y * 0.7 -
+            clock * shimmer_speed;
+
+          float wave = 0.5 + 0.5 * sin(phase * 2.0);
+          wave = pow(wave, 1.0 / max(shimmer_width, 0.02));
+
+          highlight += wave * shimmer_strength *
+            (0.3 + alignment * 0.7);
+        }
+
+        highlight += abs(ripple) * 0.35;
+
+        if (iridescence_enabled) {
+          vec3 rainbow = 0.5 + 0.5 * cos(
+            vec3(0.0, 2.1, 4.2) +
+            angle * iridescence_frequency +
+            dot(normal.xy, vec2(3.0, 2.0))
+          );
+
+          base = mix(
+            base,
+            rainbow * 0.65 + base * 0.35,
+            iridescence_strength * (0.3 + alignment * 0.7)
+          );
+        }
+
+        float shadow = 1.0;
+
+        if (shadows_enabled) {
+          float ahead = heightAt(world + light.xy * 0.22);
+          float foldOcclusion = clamp(
+            (ahead - heightAt(world)) * 5.0,
+            0.0, 0.6
+          );
+
+          shadow -= shadows_strength * (
+            foldOcclusion + microShade * (1.0 - fiber) * 0.28
+          );
+        }
+
+        base *= mix(1.0, 0.57, flatten);
+        float substrate = 0.2 + diffuse * 0.12;
+        vec3 color = mix(
+          appearance_backgroundColor,
+          base * substrate,
+          0.88
+        );
+
+        vec3 strandColor =
+          base * (0.45 + diffuse * 0.35) +
+          appearance_highlightColor * highlight * (0.3 + tips * 0.7);
+
+        color = mix(color, strandColor, fiber * 0.9);
+        color *= max(shadow, 0.15);
+
+        if (bloom_enabled) {
+          // Selective, analytic soft glow around bright fiber highlights.
+          float bright = max(
+            0.0,
+            highlight * (0.5 + tips * 0.5) - bloom_threshold
+          );
+
+          color += appearance_highlightColor *
+            halo * bright * bloom_strength;
+        }
+
+        return color;
+      }
+
+      vec3 dustLayer(vec2 screen) {
+        if (!dust_enabled || dust_density <= 0.0) return vec3(0.0);
+
+        vec3 color = vec3(0.0);
+        float t = clock * dust_speed;
+
+        for (int layer = 0; layer < 2; layer++) {
+          float depth = float(layer);
+          float scale = 8.0 + depth * 5.0;
+
+          vec2 q = screen * scale;
+          q += vec2(t * (0.11 + depth * 0.04), -t * 0.16);
+
+          if (parallax_enabled && view_threeD) {
+            q += cameraPointer * parallax_strength * (depth + 1.0);
+          }
+
+          vec2 cell = floor(q);
+
+          for (int y = -1; y <= 1; y++) {
+            for (int x = -1; x <= 1; x++) {
+              vec2 id = cell + vec2(float(x), float(y));
+              float random = hash(id + depth * 83.0);
+              if (random > dust_density * 0.12) continue;
+
+              vec2 center = id + vec2(
+                hash(id + 12.0),
+                hash(id + 43.0)
+              );
+
+              vec2 delta = q - center;
+              float radius = 0.018 + random * 0.025;
+              float particle = exp(
+                -dot(delta, delta) / (radius * radius)
+              );
+
+              float lightBeam = pow(
+                0.5 + 0.5 * sin(center.x * 0.7 + t * 0.3),
+                3.0
+              );
+
+              color += appearance_highlightColor *
+                particle * lightBeam * dust_brightness;
+            }
+          }
+        }
+
+        return color;
+      }
+
+      void main() {
+        vec2 p = surfacePoint();
+        vec3 color = velvet(p);
+
+        vec2 screen = (uv - 0.5) * vec2(viewport.x / viewport.y, 1.0);
+        color += dustLayer(screen);
+
+        color *= appearance_exposure;
+        color = 1.0 - exp(-max(color, vec3(0.0)));
+        color = pow(color, vec3(0.85));
+
+        outputColor = vec4(color, 1.0);
+      }
+    `;
+
+    let program;
+    let vao;
+    let buffer;
+    let uniforms = new Map();
+    let contextLost = false;
+
+    let width = innerWidth;
+    let height = innerHeight;
     let previous = null;
-    let time = 0;
+    let clock = 0;
+    let seed = Math.random() * 1000;
 
-    const mouse = {
-      x: 0,
-      y: 0,
-      targetX: 0,
-      targetY: 0,
-      previousX: 0,
-      previousY: 0,
-      directionX: 1,
-      directionY: 0,
-      motion: 0,
+    const brushData = new Float32Array(24 * 4);
+    const rippleData = new Float32Array(8 * 4);
+    let brushIndex = 0;
+    let rippleIndex = 0;
+
+    const pointer = {
       active: false,
-      influence: 0
+      down: false,
+      id: null,
+      x: width / 2,
+      y: height / 2,
+      worldX: 0,
+      worldY: 0,
+      lastX: 0,
+      lastY: 0,
+      lastTime: 0,
+      lastStamp: 0,
+      cameraX: 0,
+      cameraY: 0,
+      holdX: 0,
+      holdY: 0,
+      holdStrength: 0
     };
 
-    const random = (min, max) => min + Math.random() * (max - min);
-    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-    const radians = degrees => degrees * Math.PI / 180;
-    const rgba = (color, alpha = 1) =>
-      `rgba(${color.join(",")},${clamp(alpha, 0, 1)})`;
+    const clamp = (value, min, max) =>
+      Math.max(min, Math.min(max, value));
 
-    function mix(a, b, amount) {
-      return a.map((value, i) =>
-        Math.round(value + (b[i] - value) * amount)
+    function compile(type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const message = gl.getShaderInfoLog(shader);
+        gl.deleteShader(shader);
+        throw new Error(message);
+      }
+
+      return shader;
+    }
+
+    function initializeGL() {
+      uniforms = new Map();
+
+      const vertex = compile(gl.VERTEX_SHADER, vertexSource);
+      const fragment = compile(gl.FRAGMENT_SHADER, fragmentSource);
+
+      program = gl.createProgram();
+      gl.attachShader(program, vertex);
+      gl.attachShader(program, fragment);
+      gl.linkProgram(program);
+
+      gl.deleteShader(vertex);
+      gl.deleteShader(fragment);
+
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(program));
+      }
+
+      vao = gl.createVertexArray();
+      buffer = gl.createBuffer();
+
+      gl.bindVertexArray(vao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array([-1, -1, 3, -1, -1, 3]),
+        gl.STATIC_DRAW
       );
+
+      const location = gl.getAttribLocation(program, "position");
+      gl.enableVertexAttribArray(location);
+      gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
+
+      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.BLEND);
+      gl.useProgram(program);
+
+      resize();
     }
 
-    function angleDifference(target, current) {
-      return Math.atan2(
-        Math.sin(target - current),
-        Math.cos(target - current)
-      );
-    }
+    function location(name) {
+      if (!uniforms.has(name)) {
+        uniforms.set(name, gl.getUniformLocation(program, name));
+      }
 
-    function makeStroke() {
-      return {
-        x: Math.random(),
-        y: Math.random(),
-        size: Math.random(),
-        tint: Math.random(),
-        angle: radians(config.flow.baseDirection),
-        combAngle: 0,
-        memory: 0
-      };
-    }
-
-    function makeVortex() {
-      return {
-        x: random(0.1, 0.9),
-        y: random(0.1, 0.9),
-        phase: random(0, Math.PI * 2),
-        rate: random(0.6, 1.3),
-        direction: Math.random() < 0.5 ? -1 : 1
-      };
-    }
-
-    function syncScene() {
-      const strokeCount = Math.round(config.strokes.count);
-      const vortexCount = Math.round(config.flow.vortexCount);
-
-      while (strokes.length < strokeCount) strokes.push(makeStroke());
-      strokes.length = strokeCount;
-
-      while (vortices.length < vortexCount) vortices.push(makeVortex());
-      vortices.length = vortexCount;
-    }
-
-    function reset() {
-      strokes = [];
-      vortices = [];
-      syncScene();
+      return uniforms.get(name);
     }
 
     function resize() {
-      width = innerWidth;
-      height = innerHeight;
+      width = Math.max(1, innerWidth);
+      height = Math.max(1, innerHeight);
 
-      const dpr = Math.min(devicePixelRatio || 1, 2);
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const limit = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
+      const ratio = Math.min(
+        devicePixelRatio || 1,
+        config.quality.pixelRatio,
+        limit[0] / width,
+        limit[1] / height
+      );
+
+      canvas.width = Math.max(1, Math.round(width * ratio));
+      canvas.height = Math.max(1, Math.round(height * ratio));
+
+      gl.viewport(0, 0, canvas.width, canvas.height);
     }
 
-    function vortexPositions() {
-      const clock = time * config.flow.speed;
-      const wander = config.flow.wandering;
+    function heightAt(x, y) {
+      if (!config.folds.enabled) return 0;
 
-      return vortices.map(vortex => ({
-        x: (
-          vortex.x +
-          Math.sin(clock * vortex.rate * 0.43 + vortex.phase) *
-          wander
-        ) * width,
+      const qx = x * config.folds.scale;
+      const qy = y * config.folds.scale;
+      const t = clock * config.folds.speed;
 
-        y: (
-          vortex.y +
-          Math.cos(clock * vortex.rate * 0.37 + vortex.phase) *
-          wander
-        ) * height,
-
-        direction: vortex.direction
-      }));
-    }
-
-    function flowAngle(x, y, centers) {
-      const baseAngle = radians(config.flow.baseDirection);
-      const radius = config.flow.vortexRadius;
-
-      let vx = Math.cos(baseAngle);
-      let vy = Math.sin(baseAngle);
-
-      for (const center of centers) {
-        const dx = x - center.x;
-        const dy = y - center.y;
-        const distance = Math.hypot(dx, dy);
-        const normalized = distance / radius;
-
-        const influence =
-          Math.exp(-normalized * normalized) *
-          config.flow.vortexStrength;
-
-        // The softened denominator keeps vortex centers stable.
-        const denominator = Math.max(distance, 30);
-
-        vx += -dy / denominator * influence * center.direction;
-        vy += dx / denominator * influence * center.direction;
-      }
-
-      const ripple =
+      return config.folds.height * (
         Math.sin(
-          x / radius * 2.4 +
-          Math.cos(y / radius * 1.7) +
-          time * config.flow.speed
-        ) * config.flow.rippleStrength;
-
-      return Math.atan2(vy, vx) + ripple;
+          qx * 1.35 + Math.sin(qy * 0.75 + t) * 0.65 + t
+        ) * 0.65 +
+        Math.sin(qy * 1.8 - qx * 0.45 - t * 0.63) * 0.35
+      );
     }
 
-    function updateMouse(dt) {
-      const smoothing =
-        1 - Math.exp(-config.mouse.smoothing * dt);
+    function screenToWorld(x, y) {
+      const sx = (x / width * 2 - 1) * width / height;
+      const sy = 1 - y / height * 2;
+      const tilt = config.view.threeD
+        ? config.view.tilt * Math.PI / 180
+        : 0;
 
-      mouse.x += (mouse.targetX - mouse.x) * smoothing;
-      mouse.y += (mouse.targetY - mouse.y) * smoothing;
+      const c = Math.cos(tilt);
+      const s = Math.sin(tilt);
+      const distance = 4 / config.view.zoom;
 
-      mouse.influence +=
-        (
-          (mouse.active && config.mouse.enabled ? 1 : 0) -
-          mouse.influence
-        ) * smoothing;
+      let ox = 0;
+      let oy = -s * distance;
+      let oz = c * distance;
+      let rx = 0;
+      let ry = s;
+      let rz = -c;
 
-      const dx = mouse.x - mouse.previousX;
-      const dy = mouse.y - mouse.previousY;
-      const distance = Math.hypot(dx, dy);
-      const speed = dt > 0 ? distance / dt : 0;
-
-      if (distance > 0.01) {
-        mouse.directionX = dx / distance;
-        mouse.directionY = dy / distance;
+      if (config.parallax.enabled && config.view.threeD) {
+        ox += pointer.cameraX * config.parallax.strength;
+        oy += pointer.cameraY * config.parallax.strength;
       }
 
-      const targetMotion = clamp(speed / 250, 0, 1);
-      mouse.motion +=
-        (targetMotion - mouse.motion) *
-        (1 - Math.exp(-12 * dt));
+      if (config.view.perspective) {
+        rx += sx * 0.46;
+        ry += sy * c * 0.46;
+        rz += sy * s * 0.46;
+      } else {
+        ox += sx * distance * 0.46;
+        oy += sy * c * distance * 0.46;
+        oz += sy * s * distance * 0.46;
+      }
 
-      mouse.previousX = mouse.x;
-      mouse.previousY = mouse.y;
-    }
+      let t = -oz / rz;
 
-    function drawStroke(stroke, centers, dt, interactionDt) {
-      const x = stroke.x * width;
-      const y = stroke.y * height;
-      const targetFlow = flowAngle(x, y, centers);
-
-      const distance = Math.hypot(x - mouse.x, y - mouse.y);
-      const proximity = clamp(
-        1 - distance / config.mouse.radius,
-        0,
-        1
-      );
-
-      const contact =
-        proximity * proximity *
-        mouse.influence *
-        mouse.motion *
-        config.mouse.strength;
-
-      // Half-life gives "persistence" a direct, predictable meaning.
-      stroke.memory *= Math.exp(
-        -Math.LN2 * interactionDt / config.mouse.persistence
-      );
-
-      if (contact > 0.001) {
-        const brushAngle = Math.atan2(
-          mouse.directionY,
-          mouse.directionX
-        );
-
-        if (stroke.memory < 0.005) {
-          stroke.combAngle = brushAngle;
-        } else {
-          stroke.combAngle +=
-            angleDifference(brushAngle, stroke.combAngle) *
-            (1 - Math.exp(-contact * 20 * interactionDt));
+      if (config.view.threeD && config.folds.enabled) {
+        for (let i = 0; i < 8; i++) {
+          const target =
+            (heightAt(ox + rx * t, oy + ry * t) - oz) / rz;
+          t += (target - t) * 0.8;
         }
-
-        stroke.memory +=
-          (1 - stroke.memory) *
-          (1 - Math.exp(-contact * 14 * interactionDt));
       }
 
-      const targetAngle =
-        targetFlow +
-        angleDifference(stroke.combAngle, targetFlow) *
-        stroke.memory;
+      return [(ox + rx * t) * 300, (oy + ry * t) * 300];
+    }
 
-      // Ambient orientation freezes when paused, but brushing still works.
-      const responseDt = stroke.memory > 0.005 ? interactionDt : dt;
+    function editorEvent(event) {
+      return Boolean(event.target.closest?.("[data-background-editor]"));
+    }
 
-      stroke.angle +=
-        angleDifference(targetAngle, stroke.angle) *
-        (1 - Math.exp(-config.flow.response * responseDt));
+    function updatePointer(event) {
+      if (editorEvent(event)) {
+        pointer.active = false;
+        return;
+      }
 
-      const sizeFactor =
-        1 - config.strokes.lengthVariation * (1 - stroke.size);
+      if (pointer.down && event.pointerId !== pointer.id) return;
 
-      const length = config.strokes.length * sizeFactor;
-      const directionX = Math.cos(stroke.angle);
-      const directionY = Math.sin(stroke.angle);
+      const now = performance.now() / 1000;
+      const [x, y] = screenToWorld(event.clientX, event.clientY);
 
-      const lightAngle = radians(config.appearance.lightDirection);
+      if (pointer.active) {
+        const dx = x - pointer.lastX;
+        const dy = y - pointer.lastY;
+        const distance = Math.hypot(dx, dy);
+        const dt = Math.max(now - pointer.lastTime, 0.001);
 
-      // Squared alignment gives fibers a directional sheen.
-      const alignment = Math.pow(
-        Math.cos(stroke.angle - lightAngle),
-        2
-      );
+        if (
+          config.brush.enabled &&
+          distance > 0.4 &&
+          (distance > 8 || now - pointer.lastStamp > 0.025)
+        ) {
+          const speed = distance / dt;
+          const pressure = config.brush.pressure
+            ? clamp(speed / 650, 0.12, 1)
+            : 0.6;
 
-      const sheen = alignment * config.appearance.sheen;
+          const offset = brushIndex * 4;
+          brushData[offset] = x;
+          brushData[offset + 1] = y;
+          brushData[offset + 2] = Math.atan2(dy, dx);
+          brushData[offset + 3] = pressure;
 
-      const tint = clamp(
-        stroke.y * 0.65 +
-        stroke.tint * 0.2 +
-        Math.sin(stroke.x * Math.PI * 2) * 0.15,
-        0,
-        1
-      );
+          brushIndex = (brushIndex + 1) % 24;
+          pointer.lastStamp = now;
+        }
+      }
 
-      const baseColor = mix(
-        config.appearance.colorA,
-        config.appearance.colorB,
-        tint
-      );
+      pointer.active = true;
+      pointer.x = event.clientX;
+      pointer.y = event.clientY;
+      pointer.worldX = x;
+      pointer.worldY = y;
+      pointer.lastX = x;
+      pointer.lastY = y;
+      pointer.lastTime = now;
+    }
 
-      const color = mix(
-        baseColor,
-        config.appearance.highlightColor,
-        sheen * 0.7
-      );
+    addEventListener("pointermove", updatePointer);
 
-      const alpha =
-        config.strokes.opacity *
-        (0.35 + alignment * 0.65) *
-        (0.65 + stroke.size * 0.35);
+    addEventListener("pointerdown", event => {
+      if (editorEvent(event) || event.button !== 0) return;
 
-      ctx.strokeStyle = rgba(color, alpha);
-      ctx.lineWidth =
-        config.strokes.width * (0.65 + stroke.size * 0.35);
+      updatePointer(event);
+      pointer.down = true;
+      pointer.id = event.pointerId;
+      pointer.holdX = pointer.worldX;
+      pointer.holdY = pointer.worldY;
 
-      ctx.shadowColor = rgba(color, alpha * 0.5);
-      ctx.shadowBlur = config.strokes.softness;
+      if (config.ripples.enabled) {
+        const offset = rippleIndex * 4;
+        rippleData[offset] = pointer.worldX;
+        rippleData[offset + 1] = pointer.worldY;
+        rippleData[offset + 2] = clock;
+        rippleData[offset + 3] = 1;
+        rippleIndex = (rippleIndex + 1) % 8;
+      }
+    });
 
-      ctx.beginPath();
-      ctx.moveTo(
-        x - directionX * length / 2,
-        y - directionY * length / 2
-      );
+    function releasePointer(event) {
+      if (event && pointer.id !== null && event.pointerId !== pointer.id) {
+        return;
+      }
 
-      ctx.lineTo(
-        x + directionX * length / 2,
-        y + directionY * length / 2
-      );
+      pointer.down = false;
+      pointer.id = null;
+    }
 
-      ctx.stroke();
+    addEventListener("pointerup", releasePointer);
+    addEventListener("pointercancel", event => {
+      releasePointer(event);
+      pointer.active = false;
+    });
+
+    addEventListener("blur", () => {
+      releasePointer();
+      pointer.active = false;
+    });
+
+    document.documentElement.addEventListener("pointerleave", () => {
+      releasePointer();
+      pointer.active = false;
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      previous = null;
+      releasePointer();
+      pointer.active = false;
+    });
+
+    function resetWeave() {
+      seed = Math.random() * 1000;
+      brushData.fill(0);
+      rippleData.fill(0);
+      pointer.holdStrength = 0;
+    }
+
+    function syncSettings() {
+      if (!contextLost) resize();
+    }
+
+    function uploadSettings() {
+      for (const [section, values] of Object.entries(config)) {
+        for (const [key, value] of Object.entries(values)) {
+          const name = `${section}_${key}`;
+          const uniform = location(name);
+          if (uniform === null) continue;
+
+          if (Array.isArray(value)) {
+            gl.uniform3f(
+              uniform,
+              value[0] / 255,
+              value[1] / 255,
+              value[2] / 255
+            );
+          } else if (typeof value === "boolean") {
+            gl.uniform1i(uniform, value ? 1 : 0);
+          } else {
+            gl.uniform1f(uniform, value);
+          }
+        }
+      }
     }
 
     function frame(timestamp) {
+      requestAnimationFrame(frame);
+      if (contextLost || document.hidden) return;
+
       const realDt = previous === null
         ? 0
         : Math.min((timestamp - previous) / 1000, 0.05);
@@ -392,82 +1105,114 @@
           reducedMotion.matches
         );
 
-      const dt = still ? 0 : realDt * config.animation.speed;
-      time += dt;
+      if (!still) clock += realDt * config.animation.speed;
 
-      updateMouse(realDt);
+      const cameraResponse =
+        1 - Math.exp(-config.parallax.smoothing * realDt);
 
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = rgba(config.appearance.backgroundColor);
-      ctx.fillRect(0, 0, width, height);
+      const targetX = pointer.active ? pointer.x / width * 2 - 1 : 0;
+      const targetY = pointer.active ? 1 - pointer.y / height * 2 : 0;
 
-      const centers = vortexPositions();
+      pointer.cameraX += (targetX - pointer.cameraX) * cameraResponse;
+      pointer.cameraY += (targetY - pointer.cameraY) * cameraResponse;
 
-      ctx.lineCap = "round";
+      const decay = Math.exp(
+        -Math.LN2 * realDt / config.brush.persistence
+      );
 
-      for (const stroke of strokes) {
-        drawStroke(stroke, centers, dt, realDt);
+      for (let i = 3; i < brushData.length; i += 4) {
+        brushData[i] *= decay;
       }
 
-      requestAnimationFrame(frame);
+      if (pointer.down && pointer.active) {
+        const world = screenToWorld(pointer.x, pointer.y);
+        pointer.holdX = world[0];
+        pointer.holdY = world[1];
+      }
+
+      const holdTarget =
+        pointer.down && pointer.active && config.whirlpool.enabled ? 1 : 0;
+
+      pointer.holdStrength +=
+        (holdTarget - pointer.holdStrength) *
+        (1 - Math.exp(-realDt * 5));
+
+      gl.useProgram(program);
+      gl.bindVertexArray(vao);
+
+      gl.uniform2f(
+        location("resolution"),
+        canvas.width,
+        canvas.height
+      );
+      gl.uniform2f(location("viewport"), width, height);
+      gl.uniform1f(location("clock"), clock);
+      gl.uniform1f(location("seed"), seed);
+      gl.uniform2f(
+        location("cameraPointer"),
+        pointer.cameraX,
+        pointer.cameraY
+      );
+      gl.uniform4f(
+        location("heldPointer"),
+        pointer.holdX,
+        pointer.holdY,
+        0,
+        pointer.holdStrength
+      );
+      gl.uniform4fv(location("brushes[0]"), brushData);
+      gl.uniform4fv(location("rippleEvents[0]"), rippleData);
+
+      uploadSettings();
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
 
-    function updatePointer(event) {
-      if (event.target.closest?.("[data-background-editor]")) {
-        mouse.active = false;
-        return;
-      }
-
-      if (!mouse.active) {
-        mouse.x = event.clientX;
-        mouse.y = event.clientY;
-        mouse.previousX = event.clientX;
-        mouse.previousY = event.clientY;
-        mouse.motion = 0;
-      }
-
-      mouse.targetX = event.clientX;
-      mouse.targetY = event.clientY;
-      mouse.active = true;
-    }
-
-    addEventListener("pointermove", updatePointer);
-    addEventListener("pointerdown", updatePointer);
-
-    addEventListener("pointerup", event => {
-      if (event.pointerType !== "mouse") mouse.active = false;
-    });
-
-    addEventListener("pointercancel", () => mouse.active = false);
-    addEventListener("blur", () => mouse.active = false);
-
-    document.documentElement.addEventListener(
-      "pointerleave",
-      () => mouse.active = false
-    );
-
-    document.addEventListener("visibilitychange", () => {
+    canvas.addEventListener("webglcontextlost", event => {
+      event.preventDefault();
+      contextLost = true;
       previous = null;
-      mouse.active = false;
-      mouse.motion = 0;
     });
 
-    addEventListener("resize", resize);
+    canvas.addEventListener("webglcontextrestored", () => {
+      try {
+        initializeGL();
+        contextLost = false;
+        errorBox.hidden = true;
+      } catch (error) {
+        errorBox.hidden = false;
+        errorBox.textContent = `Unable to restore WebGL: ${error.message}`;
+      }
+    });
 
-    resize();
-    reset();
-    requestAnimationFrame(frame);
+    addEventListener("resize", () => {
+      if (!contextLost) resize();
+    });
+
+    try {
+      initializeGL();
+      requestAnimationFrame(frame);
+    } catch (error) {
+      errorBox.hidden = false;
+      errorBox.textContent = `Unable to start WebGL: ${error.message}`;
+      throw error;
+    }
 
     if (config.panel.enabled) {
-      import("./settings-editor.js")
+      import("./settings-editor.js?v=velvet-webgl-1")
         .then(({ createSettingsEditor }) => {
           createSettingsEditor({
             config,
-            onChange: syncScene,
-            onReset: reset
+            defaults,
+            onChange: syncSettings,
+            onReset: resetWeave
           });
         })
-        .catch(error => console.error("Editor could not load:", error));
+        .catch(error => {
+          console.error("Settings editor could not load:", error);
+          errorBox.hidden = false;
+          errorBox.textContent =
+            "The background is running, but settings-editor.js could not load.";
+        });
     }
   </script>
 </body>
