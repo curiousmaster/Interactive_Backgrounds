@@ -283,21 +283,6 @@ export const backgrounds = [
             "Your pointer illuminates the foliage like a soft spotlight.",
     },
     {
-        name: "Stellar Bloom",
-        folder: "stellar-bloom",
-        description:
-            "Drifting stars gather under gravity and merge into glowing giants. " +
-            "Occasional explosions scatter them into new stars against colorful nebulas.",
-    },
-    {
-        name: "Stellar Bloom (WebGL)",
-        folder: "stellar-bloom-webgl",
-        description:
-            "Hundreds of glowing stars drift through a colorful nebula, " +
-            "pulled together by gravity to form massive stellar giants. " +
-            "Spectacular explosions scatter new stars across an interactive 3D universe.",
-    },
-    {
         name: "Stellar Extreme",
         folder: "stellar-extreme",
         description:
