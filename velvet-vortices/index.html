@@ -43,122 +43,138 @@ html,body {
 
 <script type="module">
 const defaults = {
-  view: {
-    threeD: false,
-    perspective: true,
-    tilt: 41,
-    zoom: 1
+  "view": {
+    "threeD": true,
+    "perspective": true,
+    "tilt": 45,
+    "zoom": 1.9
   },
-  pile: {
-    enabled: true,
-    density: 1,
-    length: 25,
-    width: 0.75,
-    curvature: 0.65,
-    variation: 0.07
+  "pile": {
+    "enabled": true,
+    "density": 0.5,
+    "length": 40,
+    "width": 1.6,
+    "curvature": 0.05,
+    "variation": 0.28
   },
-  flow: {
-    vortexCount: 4,
-    radius: 300,
-    strength: 2.5,
-    speed: 0.35,
-    wandering: 0.22,
-    direction: -20
+  "flow": {
+    "vortexCount": 4,
+    "radius": 220,
+    "strength": 2.9,
+    "speed": 0.35,
+    "wandering": 0.1,
+    "direction": 9
   },
-  lighting: {
-    enabled: true,
-    direction: -45,
-    strength: 1.15,
-    sharpness: 5
+  "lighting": {
+    "enabled": true,
+    "direction": -45,
+    "strength": 1.15,
+    "sharpness": 5
   },
-  iridescence: {
-    enabled: true,
-    strength: 0.22,
-    frequency: 2
+  "iridescence": {
+    "enabled": true,
+    "strength": 0.22,
+    "frequency": 2
   },
-  movingLights: {
-    enabled: true,
-    strength: 0.55,
-    speed: 0.3
+  "movingLights": {
+    "enabled": true,
+    "strength": 0.55,
+    "speed": 0.3
   },
-  folds: {
-    enabled: true,
-    height: 0.13,
-    scale: 1,
-    speed: 0.2
+  "folds": {
+    "enabled": false,
+    "height": 0.13,
+    "scale": 1,
+    "speed": 0.2
   },
-  shadows: {
-    enabled: true,
-    strength: 0.55
+  "shadows": {
+    "enabled": true,
+    "strength": 0.55
   },
-  turbulence: {
-    enabled: true,
-    strength: 0.45,
-    scale: 1
+  "turbulence": {
+    "enabled": false,
+    "strength": 0.45,
+    "scale": 0.2
   },
-  breathing: {
-    enabled: true,
-    strength: 0.28,
-    speed: 0.6
+  "breathing": {
+    "enabled": false,
+    "strength": 0.28,
+    "speed": 0.6
   },
-  shimmer: {
-    enabled: true,
-    strength: 0.22,
-    speed: 0.7,
-    width: 0.2
+  "shimmer": {
+    "enabled": false,
+    "strength": 0.22,
+    "speed": 0.7,
+    "width": 0.2
   },
-  brush: {
-    enabled: true,
-    radius: 100,
-    strength: 0.85,
-    persistence: 3,
-    pressure: true
+  "brush": {
+    "enabled": true,
+    "radius": 50,
+    "strength": 0.85,
+    "persistence": 1.1,
+    "pressure": true
   },
-  ripples: {
-    enabled: true,
-    strength: 0.6,
-    speed: 130,
-    lifetime: 5
+  "ripples": {
+    "enabled": true,
+    "strength": 1.8,
+    "speed": 230,
+    "lifetime": 6
   },
-  whirlpool: {
-    enabled: true,
-    radius: 180,
-    strength: 3
+  "whirlpool": {
+    "enabled": true,
+    "radius": 180,
+    "strength": 3
   },
-  parallax: {
-    enabled: true,
-    strength: 0.12,
-    smoothing: 5
+  "parallax": {
+    "enabled": false,
+    "strength": 0.12,
+    "smoothing": 5
   },
-  dust: {
-    enabled: true,
-    density: 0.45,
-    brightness: 0.6,
-    speed: 0.3
+  "dust": {
+    "enabled": false,
+    "density": 0.45,
+    "brightness": 0.6,
+    "speed": 0.3
   },
-  bloom: {
-    enabled: true,
-    strength: 0.45,
-    threshold: 0.7,
-    radius: 2.5
+  "bloom": {
+    "enabled": true,
+    "strength": 1.35,
+    "threshold": 0.4,
+    "radius": 3.25
   },
-  appearance: {
-    backgroundColor: [9,11,22],
-    colorA: [73,111,153],
-    colorB: [161,99,165],
-    highlightColor: [187,205,226],
-    exposure: 1.15
+  "appearance": {
+    "backgroundColor": [
+      9,
+      11,
+      22
+    ],
+    "colorA": [
+      99,
+      99,
+      99
+    ],
+    "colorB": [
+      72,
+      71,
+      72
+    ],
+    "highlightColor": [
+      187,
+      205,
+      226
+    ],
+    "exposure": 1.15
   },
-  quality: {
-    pixelRatio: 1.25
+  "quality": {
+    "pixelRatio": 1.75
   },
-  animation: {
-    speed: 1,
-    paused: false,
-    respectReducedMotion: true
+  "animation": {
+    "speed": 1,
+    "paused": false,
+    "respectReducedMotion": true
   },
-  panel: {
-    enabled: true
+  "panel": {
+    "enabled": true
   }
 };
 
