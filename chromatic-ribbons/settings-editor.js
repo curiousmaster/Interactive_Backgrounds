@@ -3,6 +3,10 @@ export function createSettingsEditor({
   onChange = () => {},
   onReset = () => {}
 }) {
+  const initialConfig = JSON.parse(JSON.stringify(config));
+  const syncInputs = [];
+  const sections = [];
+
   const limits = {
     "ribbons.points": [2, 40, 1],
     "ribbons.speed": [5, 180, 1],
@@ -17,9 +21,7 @@ export function createSettingsEditor({
     "colors.lightness": [10, 90, 1],
     "colors.hueDrift": [0, 20, 0.1],
 
-    "canvas.trailLifetime": [0, 30, 0.5],
-    "canvas.maxSteps": [0, 30000, 100],
-    "canvas.restartDelay": [0, 30, 0.5],
+    "canvas.trailLifetime": [0.5, 60, 0.5],
     "canvas.pixelRatio": [1, 2, 0.5],
 
     "mouse.radius": [40, 500, 1],
@@ -44,9 +46,8 @@ export function createSettingsEditor({
       "Additive blending brightens overlapping strands.",
 
     canvas:
-      "Trail lifetime is a fade half-life; 0 preserves all marks. " +
-      "Max steps 0 keeps the flow interactive indefinitely. " +
-      "Existing marks remain where they were drawn.",
+      "Trail lifetime controls how many animation seconds old lines remain. " +
+      "Lines fade smoothly while new ribbons keep flowing. Changing lifetime starts a fresh trail.",
 
     mouse:
       "Ribbon bend deforms nearby connections. Flow influence redirects " +
@@ -63,6 +64,30 @@ export function createSettingsEditor({
       font:13px/1.5 system-ui,sans-serif; color-scheme:dark;
     }
     .ribbon-editor * { box-sizing:border-box; }
+    .ribbon-editor [hidden] { display:none !important; }
+    .ribbon-section {
+      border-top:1px solid #ffffff24;
+      padding:12px 0;
+    }
+    .ribbon-section summary {
+      cursor:pointer;
+      font-weight:600;
+      color:#b9d3e9;
+      padding:6px 0 12px;
+    }
+    .ribbon-search,
+    .ribbon-presets {
+      width:100%;
+      padding:10px;
+      margin:6px 0 12px;
+      color:inherit;
+      background:#1c2333;
+      border:1px solid #ffffff30;
+      border-radius:6px;
+      font:inherit;
+    }
+    .ribbon-search-label { display:block; }
+
     .ribbon-editor button,
     .ribbon-editor input,
     .ribbon-editor textarea { font:inherit; }
@@ -166,6 +191,25 @@ export function createSettingsEditor({
         Copy your settings before disabling the editor.
       </p>
 
+      <label class="ribbon-search-label" for="ribbon-search">
+        Search settings
+      </label>
+      <input id="ribbon-search" class="ribbon-search" type="search"
+        placeholder="Try lifetime, hue, or mouse…">
+
+      <label for="ribbon-presets">Preset</label>
+      <select id="ribbon-presets" class="ribbon-presets">
+        <option value="">Custom settings</option>
+        <option value="original">Original flow</option>
+        <option value="aurora">Aurora</option>
+        <option value="embers">Embers</option>
+        <option value="silk">Slow silk</option>
+      </select>
+
+      <p class="ribbon-no-results ribbon-help" role="status" hidden>
+        No matching settings.
+      </p>
+
       <div class="ribbon-controls"></div>
 
       <div class="ribbon-actions">
@@ -234,8 +278,10 @@ export function createSettingsEditor({
   ).join("");
 
   for (const [groupName, group] of Object.entries(config)) {
-    const fieldset = element("fieldset");
-    const legend = element("legend");
+    const fieldset = element("details", "ribbon-section");
+    fieldset.open = groupName === "ribbons";
+
+    const legend = element("summary");
     legend.textContent = title(groupName);
     fieldset.append(legend);
 
@@ -248,6 +294,10 @@ export function createSettingsEditor({
     for (const [key, value] of Object.entries(group)) {
       const path = `${groupName}.${key}`;
       const container = element("div", "ribbon-control");
+
+      container.dataset.search =
+        `${title(groupName)} ${title(key)} ${path}`.toLowerCase();
+
       const heading = element("div", "ribbon-control-title");
       const label = element("label");
       const id = `ribbon-${groupName}-${key}`;
@@ -262,6 +312,10 @@ export function createSettingsEditor({
         input.id = id;
         input.type = "checkbox";
         input.checked = value;
+
+        syncInputs.push(() => {
+          input.checked = group[key];
+        });
 
         input.addEventListener("change", () => {
           group[key] = input.checked;
@@ -324,6 +378,14 @@ export function createSettingsEditor({
           changed();
         });
 
+        syncInputs.push(() => {
+          picker.value = toHex(group[key]);
+
+          channels.forEach((input, index) => {
+            input.value = group[key][index];
+          });
+        });
+
         container.append(row);
 
       } else if (typeof value === "number") {
@@ -369,6 +431,10 @@ export function createSettingsEditor({
           });
         }
 
+        syncInputs.push(() => {
+          number.value = range.value = group[key];
+        });
+
         heading.append(number);
         container.append(range);
       }
@@ -377,7 +443,133 @@ export function createSettingsEditor({
     }
 
     controls.append(fieldset);
+    sections.push({ node: fieldset, savedOpen: fieldset.open });
   }
+
+  const search = root.querySelector(".ribbon-search");
+  const preset = root.querySelector(".ribbon-presets");
+  let searching = false;
+
+  search.addEventListener("input", () => {
+    const words = search.value
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    let count = 0;
+
+    for (const section of sections) {
+      if (!searching && words.length) {
+        section.savedOpen = section.node.open;
+      }
+
+      let matches = 0;
+
+      for (const row of section.node.querySelectorAll(".ribbon-control")) {
+        row.hidden = !words.every(word =>
+          row.dataset.search.includes(word)
+        );
+
+        if (!row.hidden) matches++;
+      }
+
+      section.node.hidden = !matches;
+      section.node.open = words.length ? matches > 0 : section.savedOpen;
+      count += matches;
+    }
+
+    searching = words.length > 0;
+    root.querySelector(".ribbon-no-results").hidden = count > 0;
+  });
+
+  const presets = {
+    original: {},
+
+    aurora: {
+      ribbons: {
+        speed: 55,
+        opacity: 0.008,
+        curvature: 0.6
+      },
+      colors: {
+        hue: 155,
+        hueSpread: 100,
+        randomizeOnReset: false,
+        lightness: 55
+      },
+      canvas: {
+        trailLifetime: 12
+      }
+    },
+
+    embers: {
+      ribbons: {
+        points: 12,
+        speed: 110,
+        opacity: 0.012,
+        lineWidth: 0.8
+      },
+      colors: {
+        hue: 18,
+        hueSpread: 38,
+        randomizeOnReset: false,
+        saturation: 95,
+        lightness: 52
+      },
+      canvas: {
+        trailLifetime: 3
+      }
+    },
+
+    silk: {
+      ribbons: {
+        points: 6,
+        speed: 28,
+        opacity: 0.006,
+        lineWidth: 1.2,
+        curvature: 0.4
+      },
+      colors: {
+        hue: 265,
+        hueSpread: 75,
+        randomizeOnReset: false,
+        lightness: 65
+      },
+      canvas: {
+        trailLifetime: 20
+      }
+    }
+  };
+
+  preset.addEventListener("change", () => {
+    if (!preset.value) return;
+    const selected = preset.value;
+
+    // Mutate existing group objects so control event handlers keep their references.
+    for (const name of ["ribbons", "colors", "canvas"]) {
+      Object.assign(
+        config[name],
+        JSON.parse(JSON.stringify(initialConfig[name])),
+        presets[selected][name] || {}
+      );
+    }
+
+    syncInputs.forEach(sync => sync());
+    changed();
+    onReset();
+
+    status.textContent =
+      `${preset.selectedOptions[0].textContent} applied.`;
+  });
+
+  controls.addEventListener("input", () => {
+    preset.value = "";
+  });
+
+  controls.addEventListener("change", () => {
+    preset.value = "";
+  });
 
   toggle.addEventListener("click", () => setOpen(true));
   close.addEventListener("click", () => setOpen(false));

@@ -53,9 +53,6 @@ const config = {
       0
     ],
     "trailLifetime": 4,
-    "maxSteps": 18300,
-    "autoRestart": true,
-    "restartDelay": 5,
     "pixelRatio": 1
   },
   "mouse": {
@@ -84,17 +81,20 @@ window.getBackgroundConfig = () =>
   JSON.parse(JSON.stringify(config));
 
 const canvas = document.querySelector("#background");
-const ctx = canvas.getContext("2d");
+const displayCtx = canvas.getContext("2d");
+let ctx = displayCtx;
+const trailLayers = [];
+const layerCount = 8;
+let trailClock = 0;
+let activeLayer = null;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
 let width = 1;
 let height = 1;
 let points = [];
 let baseHue = 185;
-let steps = 0;
 let time = 0;
 let accumulator = 0;
-let finishedTime = 0;
 let previous = null;
 let sceneKey = "";
 let resolutionKey = "";
@@ -121,12 +121,80 @@ function backgroundColor(alpha = 1) {
   return `rgba(${config.canvas.backgroundColor.join(",")},${alpha})`;
 }
 
+// Reuse a bounded ring of transparent layers. Each layer fades independently,
+// avoiding the rounding residue caused by repeatedly painting tiny alpha fills.
 function clearCanvas() {
-  ctx.save();
-  ctx.globalCompositeOperation = "source-over";
-  ctx.fillStyle = backgroundColor();
-  ctx.fillRect(0, 0, width, height);
-  ctx.restore();
+  trailClock = 0;
+  activeLayer = null;
+  trailLayers.forEach(layer => { layer.canvas.width = 0; });
+  trailLayers.length = 0;
+  ctx = displayCtx;
+  renderTrails();
+}
+
+function trailContext() {
+  const bucketDuration = Math.max(0.5, config.canvas.trailLifetime) / layerCount;
+  const bucket = Math.floor(trailClock / bucketDuration);
+
+  if (!activeLayer || activeLayer.bucket !== bucket) {
+    let layer = trailLayers.find(item =>
+      trailClock - item.born >= config.canvas.trailLifetime);
+
+    if (!layer && trailLayers.length >= layerCount + 1) {
+      layer = trailLayers.reduce((a, b) => a.born < b.born ? a : b);
+    }
+
+    if (!layer) {
+      const surface = document.createElement("canvas");
+      layer = { canvas: surface, context: surface.getContext("2d") };
+      trailLayers.push(layer);
+    }
+
+    layer.canvas.width = canvas.width;
+    layer.canvas.height = canvas.height;
+
+    layer.context.setTransform(
+      canvas.width / width,
+      0,
+      0,
+      canvas.height / height,
+      0,
+      0
+    );
+
+    layer.bucket = bucket;
+    layer.born = trailClock;
+    activeLayer = layer;
+  }
+
+  return activeLayer.context;
+}
+
+function renderTrails() {
+  displayCtx.globalCompositeOperation = "source-over";
+  displayCtx.globalAlpha = 1;
+  displayCtx.fillStyle = backgroundColor();
+  displayCtx.fillRect(0, 0, width, height);
+
+  displayCtx.globalCompositeOperation =
+    config.colors.additive ? "lighter" : "source-over";
+
+  for (const layer of trailLayers) {
+    const remaining = Math.max(
+      0,
+      1 - (trailClock - layer.born) / config.canvas.trailLifetime
+    );
+
+    // Smoothstep gives each batch a gentle entrance into its fade and a soft exit.
+    displayCtx.globalAlpha = remaining * remaining * (3 - 2 * remaining);
+
+    if (remaining > 0) {
+      displayCtx.drawImage(layer.canvas, 0, 0, width, height);
+    }
+  }
+
+  displayCtx.globalAlpha = 1;
+  displayCtx.globalCompositeOperation = "source-over";
 }
 
 function makePoint() {
@@ -146,6 +214,7 @@ function makePoint() {
 function currentSceneKey() {
   return JSON.stringify([
     config.ribbons.points,
+    config.canvas.trailLifetime,
     config.colors.hue,
     config.colors.randomizeOnReset
   ]);
@@ -168,10 +237,8 @@ function reset() {
     ? random(0, 360)
     : config.colors.hue;
 
-  steps = 0;
   time = 0;
   accumulator = 0;
-  finishedTime = 0;
   sceneKey = currentSceneKey();
   clearCanvas();
 }
@@ -187,7 +254,7 @@ function resize() {
 
   canvas.width = Math.round(width * ratio);
   canvas.height = Math.round(height * ratio);
-  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  displayCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
 
   resolutionKey = String(config.canvas.pixelRatio);
   reset();
@@ -431,15 +498,8 @@ function drawConnection(point) {
 function simulateStep(dt) {
   time += dt;
 
-  if (config.canvas.trailLifetime > 0) {
-    ctx.globalCompositeOperation = "source-over";
-
-    const alpha =
-      1 - Math.exp(-Math.LN2 * dt / config.canvas.trailLifetime);
-
-    ctx.fillStyle = backgroundColor(alpha);
-    ctx.fillRect(0, 0, width, height);
-  }
+  trailClock += dt;
+  ctx = trailContext();
 
   updatePoints(dt);
 
@@ -451,13 +511,6 @@ function simulateStep(dt) {
   ctx.lineJoin = "round";
 
   for (const point of points) drawConnection(point);
-
-  steps++;
-}
-
-function isFinished() {
-  return config.canvas.maxSteps > 0 &&
-    steps >= config.canvas.maxSteps;
 }
 
 function frame(timestamp) {
@@ -504,37 +557,21 @@ function frame(timestamp) {
 
   const dt = still ? 0 : realDt * config.animation.speed;
 
-  if (isFinished()) {
-    finishedTime += dt;
-    accumulator = 0;
+  accumulator += dt;
+  const stepDt = 1 / config.ribbons.stepsPerSecond;
+  let iterations = 0;
 
-    if (
-      config.canvas.autoRestart &&
-      finishedTime >= config.canvas.restartDelay
-    ) {
-      reset();
-    }
-  } else {
-    finishedTime = 0;
-    accumulator += dt;
-
-    const stepDt = 1 / config.ribbons.stepsPerSecond;
-    let iterations = 0;
-
-    while (
-      accumulator >= stepDt &&
-      !isFinished() &&
-      iterations < 180
-    ) {
-      simulateStep(stepDt);
-      accumulator -= stepDt;
-      iterations++;
-    }
-
-    if (iterations === 180) {
-      accumulator = Math.min(accumulator, stepDt);
-    }
+  while (accumulator >= stepDt && iterations < 180) {
+    simulateStep(stepDt);
+    accumulator -= stepDt;
+    iterations++;
   }
+
+  if (iterations === 180) {
+    accumulator = Math.min(accumulator, stepDt);
+  }
+
+  renderTrails();
 
   requestAnimationFrame(frame);
 }
@@ -633,14 +670,13 @@ addEventListener("resize", resize);
 
 resize();
 
-const previewSteps = config.canvas.maxSteps > 0
-  ? Math.min(450, config.canvas.maxSteps)
-  : 450;
+const previewSteps = 450;
 
 for (let i = 0; i < previewSteps; i++) {
   simulateStep(1 / config.ribbons.stepsPerSecond);
 }
 
+renderTrails();
 requestAnimationFrame(frame);
 
 if (config.panel.enabled) {
