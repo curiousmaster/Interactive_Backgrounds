@@ -3,15 +3,92 @@ export function createSettingsEditor({
   onChange = () => {},
   onReset = () => {}
 }) {
-  const initialConfig = JSON.parse(JSON.stringify(config));
-  const syncInputs = [];
+  const clone = value => JSON.parse(JSON.stringify(value));
+
+  const defaults = clone(config);
+  const controls = [];
   const sections = [];
+  const featureViews = [];
+
+  const names = {
+    bloom: "Soft bloom",
+    iridescence: "Iridescent ribbons",
+    depth: "Depth and perspective",
+    depthOfField: "Depth of field",
+    pulses: "Traveling light pulses",
+    surface: "Flowing surface texture",
+    vortices: "Vortex fields",
+    sparks: "Crossing sparks",
+    chromatic: "Chromatic separation",
+    breathing: "Ribbon breathing"
+  };
+
+  const help = {
+    ribbons:
+      "More drawing steps make denser ribbons. Dense settings may " +
+      "shorten trails when the geometry budget is full.",
+
+    colors:
+      "Disable Randomize on reset to use the base hue. " +
+      "Additive blending brightens overlaps.",
+
+    canvas:
+      "Lifetime is measured in animation seconds. At speed 2.35, " +
+      "a 10-second trail lasts about 4.26 real seconds.",
+
+    mouse:
+      "Enable mouse interaction to pull, swirl and bend nearby " +
+      "connections. Hold for a stronger effect.",
+
+    features:
+      "Enable any combination. Controls appear only while a feature " +
+      "is enabled. Search never enables features.",
+
+    bloom:
+      "Extracts bright areas, blurs them and adds the glow back to " +
+      "the scene. Lower the threshold for more glow.",
+
+    iridescence:
+      "Animated rainbow shading across and along each strand.",
+
+    depth:
+      "Projects ribbon endpoints at different depths. Tilt is in " +
+      "degrees. Pointer forces still operate in the simulation plane.",
+
+    depthOfField:
+      "Analytic depth blur softens out-of-focus strands. Works " +
+      "independently of perspective; focus depth ranges from -1 to 1.",
+
+    pulses:
+      "Light packets travel along each connection. Frequency is " +
+      "pulses per animation second; length is in pixels.",
+
+    surface:
+      "Threads, grain or bands shade the ribbon surface. " +
+      "A wider line makes the texture easier to see.",
+
+    vortices:
+      "Wandering force fields curl the moving endpoints. " +
+      "Existing trails stay where they were drawn.",
+
+    sparks:
+      "Particles spawn at crossings of current endpoint connections, " +
+      "up to the selected rate. Lifetime uses animation seconds.",
+
+    chromatic:
+      "Offsets red and blue channels around bright strands. " +
+      "Direction is in degrees; distance is in CSS pixels.",
+
+    breathing:
+      "Animates strand width and brightness. Synchronization 1 " +
+      "makes every strand breathe together."
+  };
 
   const limits = {
     "ribbons.points": [2, 40, 1],
     "ribbons.speed": [5, 180, 1],
     "ribbons.stepsPerSecond": [30, 600, 10],
-    "ribbons.lineWidth": [0.2, 4, 0.1],
+    "ribbons.lineWidth": [0.2, 8, 0.1],
     "ribbons.opacity": [0.001, 0.08, 0.001],
     "ribbons.curvature": [0, 2, 0.01],
 
@@ -33,216 +110,360 @@ export function createSettingsEditor({
     "mouse.holdMultiplier": [1, 4, 0.1],
     "mouse.smoothing": [0.5, 20, 0.1],
 
-    "animation.speed": [0, 3, 0.05]
+    "animation.speed": [0, 3, 0.05],
+
+    "bloom.strength": [0, 4, 0.05],
+    "bloom.radius": [0.5, 12, 0.5],
+    "bloom.threshold": [0, 1, 0.01],
+
+    "iridescence.strength": [0, 1, 0.05],
+    "iridescence.frequency": [0.1, 8, 0.1],
+    "iridescence.speed": [0, 4, 0.05],
+
+    "depth.range": [0, 1, 0.05],
+    "depth.perspective": [0, 1, 0.05],
+    "depth.tilt": [-55, 55, 1],
+
+    "depthOfField.focus": [-1, 1, 0.05],
+    "depthOfField.focusRange": [0, 1, 0.05],
+    "depthOfField.blur": [0, 16, 0.5],
+
+    "pulses.speed": [10, 500, 5],
+    "pulses.length": [10, 300, 5],
+    "pulses.frequency": [0.1, 4, 0.1],
+    "pulses.intensity": [0, 6, 0.1],
+
+    "surface.scale": [0.1, 5, 0.1],
+    "surface.contrast": [0, 1, 0.05],
+    "surface.speed": [0, 100, 1],
+
+    "vortices.count": [1, 8, 1],
+    "vortices.radius": [50, 800, 10],
+    "vortices.strength": [-300, 300, 5],
+    "vortices.wander": [0, 2, 0.05],
+
+    "sparks.rate": [1, 60, 1],
+    "sparks.size": [1, 20, 0.5],
+    "sparks.lifetime": [0.1, 4, 0.1],
+    "sparks.brightness": [0.1, 4, 0.1],
+
+    "chromatic.distance": [0, 15, 0.25],
+    "chromatic.direction": [-180, 180, 1],
+    "chromatic.threshold": [0, 1, 0.01],
+
+    "breathing.width": [0, 0.9, 0.05],
+    "breathing.brightness": [0, 0.9, 0.05],
+    "breathing.frequency": [0.05, 2, 0.05],
+    "breathing.synchronization": [0, 1, 0.05]
   };
 
-  const help = {
-    ribbons:
-      "Low opacity builds color gradually. More drawing steps " +
-      "produce denser ribbons without changing movement speed.",
+  const title = value => value
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, character => character.toUpperCase());
 
-    colors:
-      "Disable Randomize on reset to use the base hue. " +
-      "Additive blending brightens overlapping strands.",
+  const element = (tag, className, text) => {
+    const node = document.createElement(tag);
 
-    canvas:
-      "Trail lifetime controls how many animation seconds old lines remain. " +
-      "Every stroke fades independently on the GPU. Lifetime uses animation time. " +
-      "Changing lifetime starts a fresh trail.",
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
 
-    mouse:
-      "Ribbon bend deforms nearby connections. Flow influence redirects " +
-      "their endpoints. Drag strength transfers your pointer movement " +
-      "into the flow. Hold the mouse button for a stronger effect."
+    return node;
   };
 
-  const style = document.createElement("style");
+  const style = element("style");
 
   style.textContent = `
     .ribbon-editor {
-      position:fixed; inset:0; z-index:10000;
-      pointer-events:none; color:#e8eaf4;
-      font:13px/1.5 system-ui,sans-serif; color-scheme:dark;
+      position:fixed;
+      inset:0;
+      z-index:10000;
+      pointer-events:none;
+      color:#e8eaf4;
+      font:13px/1.5 system-ui,sans-serif;
+      color-scheme:dark;
     }
+
     .ribbon-editor * { box-sizing:border-box; }
-    .ribbon-editor [hidden] { display:none !important; }
+    .ribbon-editor [hidden] { display:none!important; }
+
+    .ribbon-editor button,
+    .ribbon-editor input,
+    .ribbon-editor select,
+    .ribbon-editor textarea {
+      font:inherit;
+    }
+
+    .ribbon-editor button {
+      min-height:40px;
+      padding:8px 11px;
+      border:1px solid #ffffff28;
+      border-radius:7px;
+      background:#2c3148;
+      color:inherit;
+      cursor:pointer;
+    }
+
+    .ribbon-editor button:hover {
+      background:#404760;
+    }
+
+    .ribbon-editor :focus-visible {
+      outline:2px solid #b2cdea;
+      outline-offset:3px;
+    }
+
+    .ribbon-toggle {
+      position:absolute;
+      top:16px;
+      right:16px;
+      pointer-events:auto;
+    }
+
+    .ribbon-panel {
+      position:absolute;
+      top:0;
+      right:0;
+      width:min(380px,100vw);
+      height:100%;
+      padding:22px;
+      overflow:auto;
+      overscroll-behavior:contain;
+      background:rgba(12,17,29,.96);
+      border-left:1px solid #ffffff20;
+      backdrop-filter:blur(16px);
+      pointer-events:auto;
+      transform:translateX(100%);
+      transition:transform .22s ease;
+    }
+
+    .ribbon-panel.open {
+      transform:translateX(0);
+    }
+
+    .ribbon-heading,
+    .ribbon-control-title {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+
+    .ribbon-heading h2 {
+      margin:0;
+      font-size:18px;
+    }
+
+    .ribbon-help,
+    .ribbon-status {
+      color:#adb9ce;
+      font-size:12px;
+      line-height:1.6;
+    }
 
     .ribbon-section {
       border-top:1px solid #ffffff24;
       padding:12px 0;
     }
-    .ribbon-section summary {
+
+    .ribbon-section > summary {
+      padding:5px 0 12px;
       cursor:pointer;
       font-weight:600;
       color:#b9d3e9;
-      padding:6px 0 12px;
     }
+
+    .ribbon-feature {
+      margin:8px 0;
+      padding:12px;
+      background:#ffffff05;
+      border:1px solid #ffffff18;
+      border-radius:8px;
+    }
+
+    .ribbon-feature-toggle {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      font-weight:600;
+    }
+
+    .ribbon-feature-body {
+      padding-top:8px;
+    }
+
+    .ribbon-control {
+      margin:0 0 13px;
+    }
+
+    .ribbon-control-title {
+      margin-bottom:6px;
+    }
+
+    .ribbon-panel input[type=range] {
+      width:100%;
+      accent-color:#a8c5df;
+    }
+
+    .ribbon-panel input[type=number] {
+      width:82px;
+      padding:5px;
+      border:1px solid #ffffff24;
+      border-radius:5px;
+      background:#ffffff08;
+      color:inherit;
+    }
+
+    .ribbon-panel input[type=checkbox] {
+      accent-color:#a8c5df;
+      width:18px;
+      height:18px;
+    }
+
     .ribbon-search,
-    .ribbon-presets {
+    .ribbon-presets,
+    .ribbon-panel select {
       width:100%;
       padding:10px;
       margin:6px 0 12px;
-      color:inherit;
-      background:#1c2333;
       border:1px solid #ffffff30;
       border-radius:6px;
-      font:inherit;
+      background:#1c2333;
+      color:inherit;
     }
-    .ribbon-search-label { display:block; }
 
-    .ribbon-editor button,
-    .ribbon-editor input,
-    .ribbon-editor textarea { font:inherit; }
+    .ribbon-colors {
+      display:flex;
+      align-items:center;
+      gap:6px;
+    }
 
-    .ribbon-editor button {
-      min-height:44px; padding:8px 11px;
-      border:1px solid #ffffff26; border-radius:7px;
-      background:#2c3148; color:inherit; cursor:pointer;
+    .ribbon-colors input[type=number] {
+      width:62px;
+      min-width:0;
     }
-    .ribbon-editor button:hover { background:#404760; }
-    .ribbon-editor :focus-visible {
-      outline:2px solid #b2cdea; outline-offset:3px;
-    }
-    .ribbon-toggle {
-      position:absolute; top:16px; right:16px; pointer-events:auto;
-    }
-    .ribbon-panel {
-      position:absolute; top:0; right:0;
-      width:min(350px,100vw); height:100%; padding:22px;
-      overflow:auto; overscroll-behavior:contain;
-      border-left:1px solid #ffffff20;
-      background:rgba(12,17,29,.94); backdrop-filter:blur(16px);
-      pointer-events:auto; transform:translateX(100%);
-      transition:transform 220ms ease;
-    }
-    .ribbon-panel.open { transform:translateX(0); }
-    .ribbon-heading {
-      display:flex; align-items:center; justify-content:space-between;
-      gap:12px; margin-bottom:8px;
-    }
-    .ribbon-heading h2 { margin:0; font-size:18px; }
-    .ribbon-description,
-    .ribbon-help,
-    .ribbon-status { color:#adb9ce; font-size:12px; }
-    .ribbon-description { margin:0 0 20px; }
-    .ribbon-help { margin:0 0 14px; line-height:1.6; }
 
-    .ribbon-panel fieldset {
-      min-width:0; margin:0 0 12px; padding:15px 0 8px;
-      border:0; border-top:1px solid #ffffff18;
-    }
-    .ribbon-panel legend {
-      padding-right:7px; color:#b9d3e9; font-weight:600;
-    }
-    .ribbon-control { margin-bottom:13px; }
-    .ribbon-control-title {
-      display:flex; align-items:center; justify-content:space-between;
-      gap:12px; margin-bottom:6px;
-    }
-    .ribbon-panel input[type="range"] {
-      width:100%; accent-color:#a8c5df;
-    }
-    .ribbon-panel input[type="number"] {
-      width:80px; padding:5px 6px;
-      border:1px solid #ffffff24; border-radius:5px;
-      background:#ffffff08; color:inherit;
-    }
-    .ribbon-panel input[type="checkbox"] { accent-color:#a8c5df; }
-    .ribbon-colors { display:flex; align-items:center; gap:7px; }
-    .ribbon-panel input[type="color"] {
-      width:42px; height:32px; padding:2px;
-      border:1px solid #ffffff24; border-radius:5px;
+    .ribbon-panel input[type=color] {
+      width:42px;
+      height:32px;
       background:transparent;
+      border:1px solid #ffffff24;
     }
-    .ribbon-colors input[type="number"] { width:65px; min-width:0; }
+
     .ribbon-actions {
-      display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top:12px;
     }
+
     .ribbon-code {
-      width:100%; min-height:260px; margin-top:14px; padding:12px;
-      resize:vertical; border:1px solid #ffffff24; border-radius:7px;
-      background:#060b16; color:#cddded;
-      font:11px/1.6 ui-monospace,monospace !important;
+      width:100%;
+      min-height:260px;
+      margin-top:14px;
+      padding:12px;
+      border:1px solid #ffffff24;
+      border-radius:7px;
+      background:#060b16;
+      color:#cddded;
+      font:11px/1.6 monospace!important;
     }
-    .ribbon-status { min-height:20px; margin-top:10px; }
+
+    .ribbon-status {
+      min-height:20px;
+      margin-top:10px;
+    }
 
     @media(prefers-reduced-motion:reduce) {
-      .ribbon-panel { transition:none; }
+      .ribbon-panel {
+        transition:none;
+      }
     }
   `;
 
   document.head.append(style);
 
-  const root = document.createElement("div");
-  root.className = "ribbon-editor";
+  const root = element("div", "ribbon-editor");
   root.dataset.backgroundEditor = "";
 
   root.innerHTML = `
-    <button class="ribbon-toggle" type="button"
-      aria-expanded="false" aria-controls="ribbon-settings-panel">
+    <button class="ribbon-toggle"
+      aria-expanded="false"
+      aria-controls="ribbon-settings-panel">
       Settings
     </button>
 
-    <aside id="ribbon-settings-panel" class="ribbon-panel"
-      aria-label="Chromatic Ribbons settings" inert>
+    <aside id="ribbon-settings-panel"
+      class="ribbon-panel"
+      aria-label="Chromatic Ribbons settings"
+      inert>
+
       <div class="ribbon-heading">
         <h2>Chromatic Ribbons</h2>
-        <button class="ribbon-close" type="button">Retract</button>
+        <button class="ribbon-close">Retract</button>
       </div>
 
-      <p class="ribbon-description">
-        Move to pull and swirl the ribbons. Hold for a stronger effect.
-        Double-click or double-tap for a new composition.
-        Copy your settings before disabling the editor.
+      <p class="ribbon-help">
+        Live WebGL settings. Enable mouse interaction to pull and
+        swirl ribbons. Copy your config to keep changes.
       </p>
 
-      <label class="ribbon-search-label" for="ribbon-search">
-        Search settings
-      </label>
-      <input id="ribbon-search" class="ribbon-search" type="search"
-        placeholder="Try lifetime, hue, or mouse…">
+      <label for="ribbon-search">Search settings</label>
+
+      <input id="ribbon-search"
+        class="ribbon-search"
+        type="search"
+        placeholder="Try bloom, lifetime, or pulses…">
 
       <label for="ribbon-presets">Preset</label>
+
       <select id="ribbon-presets" class="ribbon-presets">
         <option value="">Custom settings</option>
-        <option value="original">Preferred flow</option>
-        <option value="aurora">Aurora</option>
-        <option value="embers">Embers</option>
-        <option value="silk">Slow silk</option>
+        <option value="preferred">Preferred flow</option>
+        <option value="aurora">Aurora silk</option>
+        <option value="embers">Ember storm</option>
+        <option value="prism">Prismatic depth</option>
       </select>
 
-      <p class="ribbon-no-results ribbon-help" role="status" hidden>
+      <p class="ribbon-empty ribbon-help" role="status" hidden>
         No matching settings.
       </p>
 
       <div class="ribbon-controls"></div>
 
       <div class="ribbon-actions">
-        <button class="ribbon-show" type="button">Show code</button>
-        <button class="ribbon-copy" type="button">Copy config</button>
-        <button class="ribbon-reset" type="button">New composition</button>
+        <button class="ribbon-show">Show code</button>
+        <button class="ribbon-copy">Copy config</button>
+        <button class="ribbon-reset">New composition</button>
       </div>
 
-      <textarea class="ribbon-code" aria-label="Configuration code"
-        spellcheck="false" readonly hidden></textarea>
+      <textarea class="ribbon-code"
+        aria-label="Configuration code"
+        spellcheck="false"
+        readonly
+        hidden></textarea>
 
-      <div class="ribbon-status" role="status" aria-live="polite"></div>
+      <div class="ribbon-status"
+        role="status"
+        aria-live="polite"></div>
     </aside>
   `;
 
+  root.querySelectorAll("button").forEach(button => {
+    button.type = "button";
+  });
+
   document.body.append(root);
 
-  const toggle = root.querySelector(".ribbon-toggle");
   const panel = root.querySelector(".ribbon-panel");
+  const toggle = root.querySelector(".ribbon-toggle");
   const close = root.querySelector(".ribbon-close");
-  const controls = root.querySelector(".ribbon-controls");
+  const holder = root.querySelector(".ribbon-controls");
+  const search = root.querySelector(".ribbon-search");
+  const preset = root.querySelector(".ribbon-presets");
   const code = root.querySelector(".ribbon-code");
   const show = root.querySelector(".ribbon-show");
   const status = root.querySelector(".ribbon-status");
-
-  const title = value => value
-    .replace(/([A-Z])/g, " $1")
-    .replace(/^./, letter => letter.toUpperCase());
 
   const exportCode = () =>
     `const config = ${JSON.stringify(config, null, 2)};`;
@@ -263,7 +484,10 @@ export function createSettingsEditor({
   }
 
   function changed() {
+    preset.value = "";
     code.value = exportCode();
+
+    filter();
     onChange();
 
     if (!config.panel.enabled) {
@@ -272,376 +496,489 @@ export function createSettingsEditor({
     }
   }
 
-  function element(tag, className) {
-    const node = document.createElement(tag);
+  function section(key) {
+    const node = element("details", "ribbon-section");
 
-    if (className) {
-      node.className = className;
-    }
+    node.open = key === "ribbons" || key === "features";
+
+    node.append(
+      element("summary", null, title(key)),
+      element("p", "ribbon-help", help[key] || "")
+    );
+
+    holder.append(node);
+
+    sections.push({
+      node,
+      saved: node.open
+    });
 
     return node;
   }
 
-  const toHex = color => "#" + color.map(value =>
-    Math.round(value).toString(16).padStart(2, "0")
-  ).join("");
+  function control(parent, group, key, path, feature = null) {
+    const row = element("div", "ribbon-control");
+    const heading = element("div", "ribbon-control-title");
+    const label = element("label", null, title(key));
 
-  for (const [groupName, group] of Object.entries(config)) {
-    const fieldset = element("details", "ribbon-section");
-    fieldset.open = groupName === "ribbons";
+    const id = "ribbon-" + path.replaceAll(".", "-");
 
-    const legend = element("summary");
-    legend.textContent = title(groupName);
-    fieldset.append(legend);
+    label.htmlFor = id;
+    heading.append(label);
+    row.append(heading);
+    parent.append(row);
 
-    if (help[groupName]) {
-      const paragraph = element("p", "ribbon-help");
-      paragraph.textContent = help[groupName];
-      fieldset.append(paragraph);
-    }
+    const record = {
+      row,
+      feature,
+      text: (
+        path + " " +
+        title(key) + " " +
+        (feature ? names[feature] : "")
+      ).toLowerCase()
+    };
 
-    for (const [key, value] of Object.entries(group)) {
-      const path = `${groupName}.${key}`;
-      const container = element("div", "ribbon-control");
+    controls.push(record);
 
-      container.dataset.search =
-        `${title(groupName)} ${title(key)} ${path}`.toLowerCase();
+    const value = group[key];
+    let sync;
 
-      const heading = element("div", "ribbon-control-title");
-      const label = element("label");
-      const id = `ribbon-${groupName}-${key}`;
+    if (typeof value === "boolean") {
+      const input = element("input");
 
-      label.textContent = title(key);
-      label.htmlFor = id;
+      input.type = "checkbox";
+      input.id = id;
 
-      heading.append(label);
-      container.append(heading);
+      heading.append(input);
 
-      if (typeof value === "boolean") {
+      input.addEventListener("change", () => {
+        group[key] = input.checked;
+        changed();
+      });
+
+      sync = () => {
+        input.checked = group[key];
+      };
+
+    } else if (typeof value === "string") {
+      const input = element("select");
+      input.id = id;
+
+      ["threads", "grain", "bands"].forEach(value => {
+        const option = element("option", null, title(value));
+        option.value = value;
+        input.append(option);
+      });
+
+      row.append(input);
+
+      input.addEventListener("change", () => {
+        group[key] = input.value;
+        changed();
+      });
+
+      sync = () => {
+        input.value = group[key];
+      };
+
+    } else if (Array.isArray(value)) {
+      const colors = element("div", "ribbon-colors");
+      const picker = element("input");
+
+      picker.type = "color";
+      picker.id = id;
+      colors.append(picker);
+
+      const hex = () => "#" + group[key].map(channel =>
+        Math.round(channel).toString(16).padStart(2, "0")
+      ).join("");
+
+      const channels = value.map((channel, index) => {
         const input = element("input");
-        input.id = id;
-        input.type = "checkbox";
-        input.checked = value;
 
-        syncInputs.push(() => {
-          input.checked = group[key];
+        input.type = "number";
+        input.min = 0;
+        input.max = 255;
+        input.step = 1;
+
+        input.setAttribute(
+          "aria-label",
+          title(key) + " " + ["red", "green", "blue"][index]
+        );
+
+        colors.append(input);
+
+        input.addEventListener("input", () => {
+          if (
+            input.value === "" ||
+            !Number.isFinite(input.valueAsNumber)
+          ) {
+            return;
+          }
+
+          group[key][index] = Math.max(
+            0,
+            Math.min(255, Math.round(input.valueAsNumber))
+          );
+
+          picker.value = hex();
+          changed();
         });
 
         input.addEventListener("change", () => {
-          group[key] = input.checked;
-          changed();
+          input.value = group[key][index];
         });
 
-        heading.append(input);
+        return input;
+      });
 
-      } else if (Array.isArray(value)) {
-        const row = element("div", "ribbon-colors");
-        const picker = element("input");
+      picker.addEventListener("input", () => {
+        group[key] = [1, 3, 5].map(offset =>
+          parseInt(picker.value.slice(offset, offset + 2), 16)
+        );
 
-        picker.id = id;
-        picker.type = "color";
-        picker.value = toHex(value);
-        row.append(picker);
+        sync();
+        changed();
+      });
 
-        const channels = value.map((channel, index) => {
-          const input = element("input");
+      row.append(colors);
 
-          input.type = "number";
-          input.min = 0;
-          input.max = 255;
-          input.step = 1;
-          input.value = channel;
+      sync = () => {
+        picker.value = hex();
 
-          input.setAttribute(
-            "aria-label",
-            `${title(key)} ${["red", "green", "blue"][index]}`
+        channels.forEach((input, index) => {
+          input.value = group[key][index];
+        });
+      };
+
+    } else {
+      const lookup = path.replace("features.", "");
+
+      const [min, max, step] =
+        limits[lookup] || [0, 100, 1];
+
+      const number = element("input");
+      const range = element("input");
+
+      number.type = "number";
+      number.id = id;
+      range.type = "range";
+      range.setAttribute("aria-label", title(key));
+
+      heading.append(number);
+      row.append(range);
+
+      for (const input of [number, range]) {
+        Object.assign(input, { min, max, step });
+
+        input.addEventListener("input", () => {
+          if (
+            input.value === "" ||
+            !Number.isFinite(input.valueAsNumber)
+          ) {
+            return;
+          }
+
+          const raw = Math.max(
+            min,
+            Math.min(max, input.valueAsNumber)
           );
-
-          input.addEventListener("input", () => {
-            if (input.value === "") return;
-
-            const parsed = Number(input.value);
-            if (!Number.isFinite(parsed)) return;
-
-            group[key][index] = Math.max(
-              0,
-              Math.min(255, Math.round(parsed))
-            );
-
-            picker.value = toHex(group[key]);
-            changed();
-          });
-
-          input.addEventListener("change", () => {
-            input.value = group[key][index];
-          });
-
-          row.append(input);
-          return input;
-        });
-
-        picker.addEventListener("input", () => {
-          group[key] = [1, 3, 5].map(offset =>
-            parseInt(picker.value.slice(offset, offset + 2), 16)
-          );
-
-          channels.forEach((input, index) => {
-            input.value = group[key][index];
-          });
-
-          changed();
-        });
-
-        syncInputs.push(() => {
-          picker.value = toHex(group[key]);
-
-          channels.forEach((input, index) => {
-            input.value = group[key][index];
-          });
-        });
-
-        container.append(row);
-
-      } else if (typeof value === "number") {
-        const [min, max, step] = limits[path] || [0, 100, 1];
-        const number = element("input");
-        const range = element("input");
-
-        number.id = id;
-        number.type = "number";
-        range.type = "range";
-        range.setAttribute("aria-label", title(key));
-
-        function normalize(raw) {
-          const clamped = Math.max(min, Math.min(max, raw));
 
           const stepped =
-            min + Math.round((clamped - min) / step) * step;
+            min + Math.round((raw - min) / step) * step;
 
-          return Number(
+          group[key] = Number(
             Math.max(min, Math.min(max, stepped)).toFixed(6)
           );
-        }
 
-        for (const input of [number, range]) {
-          input.min = min;
-          input.max = max;
-          input.step = step;
-          input.value = value;
+          const other = input === number ? range : number;
+          other.value = group[key];
 
-          input.addEventListener("input", () => {
-            if (input.value === "") return;
-
-            const parsed = Number(input.value);
-            if (!Number.isFinite(parsed)) return;
-
-            group[key] = normalize(parsed);
-
-            if (input === number) {
-              range.value = group[key];
-            } else {
-              number.value = group[key];
-            }
-
-            changed();
-          });
-
-          input.addEventListener("change", () => {
-            input.value = group[key];
-          });
-        }
-
-        syncInputs.push(() => {
-          number.value = range.value = group[key];
+          changed();
         });
 
-        heading.append(number);
-        container.append(range);
+        input.addEventListener("change", () => {
+          sync();
+        });
       }
 
-      fieldset.append(container);
+      sync = () => {
+        number.value = range.value = group[key];
+      };
     }
 
-    controls.append(fieldset);
-
-    sections.push({
-      node: fieldset,
-      savedOpen: fieldset.open
-    });
+    record.sync = sync;
+    sync();
   }
 
-  const search = root.querySelector(".ribbon-search");
-  const preset = root.querySelector(".ribbon-presets");
+  for (const [key, group] of Object.entries(config)) {
+    const node = section(key);
+
+    if (key !== "features") {
+      Object.keys(group).forEach(setting => {
+        control(node, group, setting, `${key}.${setting}`);
+      });
+
+      continue;
+    }
+
+    for (const [feature, settings] of Object.entries(group)) {
+      const card = element("div", "ribbon-feature");
+
+      const label = element(
+        "label",
+        "ribbon-feature-toggle",
+        names[feature]
+      );
+
+      const input = element("input");
+
+      input.type = "checkbox";
+      input.setAttribute("aria-label", names[feature]);
+
+      label.append(input);
+
+      const body = element("div", "ribbon-feature-body");
+
+      body.append(
+        element("p", "ribbon-help", help[feature])
+      );
+
+      card.append(label, body);
+      node.append(card);
+
+      featureViews.push({
+        feature,
+        card,
+        body,
+        input,
+        text: (
+          "features " +
+          feature + " " +
+          names[feature] + " " +
+          Object.keys(settings).map(title).join(" ")
+        ).toLowerCase()
+      });
+
+      input.addEventListener("change", () => {
+        settings.enabled = input.checked;
+        changed();
+      });
+
+      Object.keys(settings)
+        .filter(setting => setting !== "enabled")
+        .forEach(setting => {
+          control(
+            body,
+            settings,
+            setting,
+            `features.${feature}.${setting}`,
+            feature
+          );
+        });
+    }
+  }
 
   let searching = false;
 
-  search.addEventListener("input", () => {
+  function filter() {
     const words = search.value
       .trim()
       .toLowerCase()
       .split(/\s+/)
       .filter(Boolean);
 
-    let count = 0;
+    const matches = text =>
+      words.every(word => text.includes(word));
 
-    for (const section of sections) {
+    for (const view of featureViews) {
+      const enabled = config.features[view.feature].enabled;
+
+      view.input.checked = enabled;
+      view.body.hidden = !enabled;
+      view.card.hidden = !matches(view.text);
+    }
+
+    for (const record of controls) {
+      record.row.hidden = !matches(record.text);
+    }
+
+    for (const item of sections) {
       if (!searching && words.length) {
-        section.savedOpen = section.node.open;
+        item.saved = item.node.open;
       }
 
-      let matches = 0;
+      const candidates = item.node.querySelectorAll(
+        ".ribbon-feature,.ribbon-control"
+      );
 
-      for (const row of section.node.querySelectorAll(".ribbon-control")) {
-        row.hidden = !words.every(word =>
-          row.dataset.search.includes(word)
-        );
+      const visible = Array.from(candidates).some(node =>
+        !node.hidden &&
+        !node.closest(".ribbon-feature-body[hidden]")
+      );
 
-        if (!row.hidden) {
-          matches++;
-        }
+      item.node.hidden = !visible;
+
+      if (words.length) {
+        item.node.open = visible;
+      } else if (searching) {
+        item.node.open = item.saved;
       }
-
-      section.node.hidden = !matches;
-
-      section.node.open = words.length
-        ? matches > 0
-        : section.savedOpen;
-
-      count += matches;
     }
 
     searching = words.length > 0;
 
-    root.querySelector(".ribbon-no-results").hidden = count > 0;
-  });
+    root.querySelector(".ribbon-empty").hidden =
+      sections.some(item => !item.node.hidden);
+  }
+
+  search.addEventListener("input", filter);
+
+  function merge(target, source) {
+    for (const [key, value] of Object.entries(source)) {
+      if (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value)
+      ) {
+        merge(target[key], value);
+      } else {
+        target[key] = clone(value);
+      }
+    }
+  }
 
   const presets = {
-    original: {},
+    preferred: {},
 
     aurora: {
-      ribbons: {
-        speed: 55,
-        opacity: 0.008,
-        curvature: 0.6
-      },
       colors: {
         hue: 155,
         hueSpread: 100,
-        randomizeOnReset: false,
-        lightness: 55
+        randomizeOnReset: false
       },
-      canvas: {
-        trailLifetime: 12
+      features: {
+        bloom: {
+          enabled: true,
+          threshold: 0.15
+        },
+        iridescence: {
+          enabled: true
+        },
+        breathing: {
+          enabled: true
+        }
       }
     },
 
     embers: {
-      ribbons: {
-        points: 12,
-        speed: 110,
-        opacity: 0.012,
-        lineWidth: 0.8
-      },
       colors: {
-        hue: 18,
-        hueSpread: 38,
-        randomizeOnReset: false,
-        saturation: 95,
-        lightness: 52
+        hue: 20,
+        hueSpread: 35,
+        randomizeOnReset: false
       },
-      canvas: {
-        trailLifetime: 3
+      features: {
+        bloom: {
+          enabled: true,
+          threshold: 0.15
+        },
+        vortices: {
+          enabled: true
+        },
+        sparks: {
+          enabled: true
+        },
+        pulses: {
+          enabled: true
+        }
       }
     },
 
-    silk: {
-      ribbons: {
-        points: 6,
-        speed: 28,
-        opacity: 0.006,
-        lineWidth: 1.2,
-        curvature: 0.4
-      },
-      colors: {
-        hue: 265,
-        hueSpread: 75,
-        randomizeOnReset: false,
-        lightness: 65
-      },
-      canvas: {
-        trailLifetime: 20
+    prism: {
+      features: {
+        depth: {
+          enabled: true
+        },
+        depthOfField: {
+          enabled: true
+        },
+        chromatic: {
+          enabled: true
+        },
+        surface: {
+          enabled: true
+        },
+        iridescence: {
+          enabled: true
+        },
+        bloom: {
+          enabled: true,
+          threshold: 0.15
+        }
       }
     }
   };
 
   preset.addEventListener("change", () => {
-    if (!preset.value) return;
-
     const selected = preset.value;
 
-    // Keep group references intact for existing control event handlers.
-    for (const name of ["ribbons", "colors", "canvas"]) {
-      Object.assign(
-        config[name],
-        JSON.parse(JSON.stringify(initialConfig[name])),
-        presets[selected][name] || {}
-      );
-    }
+    if (!selected) return;
 
-    syncInputs.forEach(sync => sync());
+    merge(config, defaults);
+    merge(config, presets[selected]);
+
+    controls.forEach(record => record.sync());
 
     changed();
     onReset();
 
+    preset.value = selected;
+
     status.textContent =
-      `${preset.selectedOptions[0].textContent} applied.`;
+      preset.selectedOptions[0].textContent + " applied.";
   });
 
-  controls.addEventListener("input", () => {
-    preset.value = "";
-  });
-
-  controls.addEventListener("change", () => {
-    preset.value = "";
-  });
-
-  toggle.addEventListener("click", () => {
-    setOpen(true);
-  });
-
-  close.addEventListener("click", () => {
-    setOpen(false);
-  });
+  toggle.addEventListener("click", () => setOpen(true));
+  close.addEventListener("click", () => setOpen(false));
 
   show.addEventListener("click", () => {
     code.hidden = !code.hidden;
     code.value = exportCode();
-    show.textContent = code.hidden ? "Show code" : "Hide code";
+
+    show.textContent = code.hidden
+      ? "Show code"
+      : "Hide code";
   });
 
-  root.querySelector(".ribbon-copy").addEventListener("click", async () => {
-    code.value = exportCode();
+  root.querySelector(".ribbon-copy").addEventListener(
+    "click",
+    async () => {
+      code.value = exportCode();
 
-    try {
-      await navigator.clipboard.writeText(code.value);
-      status.textContent = "Configuration copied.";
-    } catch {
-      code.hidden = false;
-      show.textContent = "Hide code";
+      try {
+        await navigator.clipboard.writeText(code.value);
+        status.textContent = "Configuration copied.";
+      } catch {
+        code.hidden = false;
+        show.textContent = "Hide code";
 
-      code.focus();
-      code.select();
+        code.focus();
+        code.select();
 
-      status.textContent = "Press Ctrl+C or ⌘C to copy.";
+        status.textContent = "Press Ctrl+C or ⌘C to copy.";
+      }
     }
-  });
+  );
 
-  root.querySelector(".ribbon-reset").addEventListener("click", () => {
-    onReset();
-    status.textContent = "A new composition has started.";
-  });
+  root.querySelector(".ribbon-reset").addEventListener(
+    "click",
+    () => {
+      onReset();
+      status.textContent = "A new composition has started.";
+    }
+  );
 
-  function onKeyDown(event) {
+  function keydown(event) {
     if (
       event.key === "Escape" &&
       panel.classList.contains("open")
@@ -650,13 +987,14 @@ export function createSettingsEditor({
     }
   }
 
-  document.addEventListener("keydown", onKeyDown);
+  document.addEventListener("keydown", keydown);
 
   code.value = exportCode();
+  filter();
 
   return {
     destroy() {
-      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", keydown);
       root.remove();
       style.remove();
     }

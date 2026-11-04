@@ -47,11 +47,7 @@ const config = {
     "additive": true
   },
   "canvas": {
-    "backgroundColor": [
-      0,
-      0,
-      0
-    ],
+    "backgroundColor": [0, 0, 0],
     "trailLifetime": 10,
     "pixelRatio": 1
   },
@@ -74,6 +70,73 @@ const config = {
   },
   "panel": {
     "enabled": true
+  },
+  "features": {
+    "bloom": {
+      "enabled": false,
+      "strength": 1.2,
+      "radius": 5,
+      "threshold": 0.35
+    },
+    "iridescence": {
+      "enabled": false,
+      "strength": 0.45,
+      "frequency": 2,
+      "speed": 0.4
+    },
+    "depth": {
+      "enabled": false,
+      "range": 0.8,
+      "perspective": 0.7,
+      "tilt": 15
+    },
+    "depthOfField": {
+      "enabled": false,
+      "focus": 0,
+      "focusRange": 0.3,
+      "blur": 6
+    },
+    "pulses": {
+      "enabled": false,
+      "speed": 160,
+      "length": 90,
+      "frequency": 0.7,
+      "intensity": 2
+    },
+    "surface": {
+      "enabled": false,
+      "type": "threads",
+      "scale": 1,
+      "contrast": 0.4,
+      "speed": 25
+    },
+    "vortices": {
+      "enabled": false,
+      "count": 3,
+      "radius": 300,
+      "strength": 100,
+      "wander": 0.3
+    },
+    "sparks": {
+      "enabled": false,
+      "rate": 12,
+      "size": 4,
+      "lifetime": 0.8,
+      "brightness": 1.5
+    },
+    "chromatic": {
+      "enabled": false,
+      "distance": 2,
+      "direction": 25,
+      "threshold": 0.15
+    },
+    "breathing": {
+      "enabled": false,
+      "width": 0.45,
+      "brightness": 0.35,
+      "frequency": 0.35,
+      "synchronization": 0.5
+    }
   }
 };
 
@@ -84,159 +147,1070 @@ const canvas = document.querySelector("#background");
 
 const gl = canvas.getContext("webgl", {
   alpha: false,
-  antialias: false,
   depth: false,
-  stencil: false,
-  premultipliedAlpha: false,
-  preserveDrawingBuffer: false
+  antialias: false
 });
 
 if (!gl) {
-  const message = document.createElement("p");
-  message.textContent =
-    "WebGL is unavailable. Enable hardware acceleration or try another browser.";
-  message.style.cssText =
-    "color:white;padding:24px;font:16px system-ui";
-  document.body.append(message);
-  throw new Error("WebGL is unavailable");
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    '<p style="color:white;padding:24px">WebGL is unavailable. Enable hardware acceleration.</p>'
+  );
+  throw new Error("WebGL unavailable");
 }
 
-// Each segment is two triangles. Birth times let the fragment shader fade
-// every stroke individually, without full-screen trail textures or restarts.
-const vertexSource = `
-  attribute vec2 aPosition;
-  attribute vec2 aNormal;
-  attribute vec3 aColor;
-  attribute float aBorn;
-  attribute float aSide;
+const precision = gl.getShaderPrecisionFormat(
+  gl.FRAGMENT_SHADER,
+  gl.HIGH_FLOAT
+).precision ? "highp" : "mediump";
 
+const header = `precision ${precision} float;\n`;
+
+const projection = `
   uniform vec2 uSize;
-  uniform float uWidth;
+  uniform vec3 uDepth;
 
-  varying vec3 vColor;
-  varying float vBorn;
-  varying float vSide;
+  vec2 project(vec2 p, float z) {
+    vec2 q = p - uSize * 0.5;
+    float angle = uDepth.z;
+    float zz = z * uDepth.x;
 
-  void main() {
-    vSide = aSide;
+    q.y = q.y * cos(angle) -
+      zz * uSize.y * 0.25 * sin(angle);
 
-    vec2 offset = aNormal * (uWidth * 0.5 + 1.0);
-    vec2 clip = (aPosition + offset) / uSize * 2.0 - 1.0;
+    float perspective = 1.0 /
+      max(0.4, 1.0 + zz * uDepth.y * 0.45);
 
-    gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
-    vColor = aColor;
-    vBorn = aBorn;
+    return q * perspective + uSize * 0.5;
   }
 `;
 
-const fragmentSource = `
-  #ifdef GL_FRAGMENT_PRECISION_HIGH
-  precision highp float;
-  #else
-  precision mediump float;
-  #endif
+const ribbonVS = header + projection + `
+  attribute vec4 aGeometry;
+  attribute vec4 aColorBorn;
+  attribute vec4 aDetail;
 
-  uniform float uTime;
-  uniform float uLifetime;
-  uniform float uOpacity;
-  uniform float uWidth;
+  uniform float uTime, uWidth;
+  uniform vec4 uBreathing;
+  uniform vec4 uFocus;
 
   varying vec3 vColor;
-  varying float vBorn;
-  varying float vSide;
+  varying vec4 vDetail;
+  varying vec3 vEdge;
 
   void main() {
-    float age = max(0.0, uTime - vBorn);
-    float life = clamp(1.0 - age / uLifetime, 0.0, 1.0);
+    float phase = aDetail.w * (1.0 - uBreathing.w);
+
+    float wave = sin(
+      uTime * uBreathing.z * 6.283185 + phase
+    );
+
+    float breathWidth = 1.0 + uBreathing.x * wave;
+    float z = aDetail.z;
+
+    float focus = max(
+      0.0,
+      abs(z - uFocus.x) - uFocus.y
+    );
+
+    float blur = uFocus.z * focus;
+
+    float perspective = 1.0 /
+      max(0.4, 1.0 + z * uDepth.x * uDepth.y * 0.45);
+
+    float halfWidth =
+      uWidth * 0.5 * breathWidth * perspective;
+
+    float extent = halfWidth + 1.0 + blur * 3.0;
+
+    vec2 p = project(aGeometry.xy, z) +
+      aGeometry.zw * extent;
+
+    vec2 clip = p / uSize * 2.0 - 1.0;
+
+    gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+
+    vColor = aColorBorn.rgb *
+      (1.0 + uBreathing.y * wave);
+
+    vDetail = vec4(
+      aColorBorn.a,
+      aDetail.xy,
+      aDetail.w
+    );
+
+    vEdge = vec3(halfWidth, extent, blur);
+  }
+`;
+
+const ribbonFS = header + `
+  uniform float uTime, uLifetime, uOpacity;
+  uniform vec3 uIridescence;
+  uniform vec4 uPulse;
+  uniform vec4 uSurface;
+
+  varying vec3 vColor;
+  varying vec4 vDetail;
+  varying vec3 vEdge;
+
+  void main() {
+    float life = clamp(
+      1.0 - (uTime - vDetail.x) / uLifetime,
+      0.0,
+      1.0
+    );
+
     float fade = life * life * (3.0 - 2.0 * life);
+    float side = vDetail.y;
+    float along = vDetail.z;
+    float distance = abs(side) * vEdge.y;
+    float blur = vEdge.z;
+    float coverage;
 
-    float halfWidth = uWidth * 0.5;
-    float distance = abs(vSide) * (halfWidth + 1.0);
+    if (blur > 0.05) {
+      float sigma = max(0.5, blur);
+      float outside = max(0.0, distance - vEdge.x);
 
-    float coverage = 1.0 - smoothstep(
-      max(0.0, halfWidth - 0.5),
-      halfWidth + 0.5,
-      distance
+      coverage = exp(
+        -0.5 * outside * outside / (sigma * sigma)
+      );
+
+      coverage *= vEdge.x / (vEdge.x + sigma);
+    } else {
+      coverage = 1.0 - smoothstep(
+        max(0.0, vEdge.x - 0.5),
+        vEdge.x + 0.5,
+        distance
+      );
+    }
+
+    vec3 color = vColor;
+
+    vec3 rainbow = 0.5 + 0.5 * cos(
+      vec3(0.0, 2.094, 4.189) +
+      side * uIridescence.y * 6.283185 +
+      uTime * uIridescence.z +
+      along * 0.003
+    );
+
+    color = mix(color, rainbow, uIridescence.x);
+
+    float spacing = max(
+      uPulse.y * 1.5,
+      uPulse.x / max(0.01, uPulse.z)
+    );
+
+    float pulseDistance = abs(
+      mod(
+        along - uTime * uPulse.x + spacing * 0.5,
+        spacing
+      ) - spacing * 0.5
+    );
+
+    float pulse = exp(
+      -pow(
+        pulseDistance / max(1.0, uPulse.y * 0.4),
+        2.0
+      )
+    );
+
+    color *= 1.0 + pulse * uPulse.w;
+
+    float coord =
+      along * uSurface.y * 0.08 -
+      uTime * uSurface.w * 0.08;
+
+    float pattern = 1.0;
+
+    if (uSurface.x < 1.5) {
+      pattern = 0.5 + 0.5 * sin(
+        side * uSurface.y * 30.0 + sin(coord)
+      );
+    } else if (uSurface.x < 2.5) {
+      pattern = fract(
+        sin(
+          floor(coord * 8.0) * 127.1 +
+          floor(side * 35.0) * 311.7
+        ) * 43758.5453
+      );
+    } else {
+      pattern = 0.5 + 0.5 * sin(coord + side * 4.0);
+    }
+
+    color *= mix(
+      1.0,
+      0.35 + pattern * 0.65,
+      uSurface.z
     );
 
     float alpha = uOpacity * fade * coverage;
 
-    if (alpha <= 0.0) discard;
+    if (alpha <= 0.00001) discard;
 
-    gl_FragColor = vec4(vColor, alpha);
+    gl_FragColor = vec4(color, alpha);
   }
 `;
 
-function shader(type, source) {
-  const result = gl.createShader(type);
-  gl.shaderSource(result, source);
-  gl.compileShader(result);
+const quadVS = header + `
+  attribute vec2 aPosition;
+  varying vec2 vUV;
 
-  if (!gl.getShaderParameter(result, gl.COMPILE_STATUS)) {
-    throw new Error(gl.getShaderInfoLog(result));
+  void main() {
+    vUV = aPosition * 0.5 + 0.5;
+    gl_Position = vec4(aPosition, 0.0, 1.0);
+  }
+`;
+
+const postFS = header + `
+  uniform sampler2D uImage, uGlow;
+  uniform vec2 uDirection, uSeparation;
+
+  uniform float uMode;
+  uniform float uThreshold;
+  uniform float uStrength;
+  uniform float uChromaticThreshold;
+
+  uniform vec3 uBackground;
+
+  varying vec2 vUV;
+
+  void main() {
+    vec3 color = texture2D(uImage, vUV).rgb;
+
+    if (uMode < 0.5) {
+      float brightness = max(
+        color.r,
+        max(color.g, color.b)
+      );
+
+      color *= smoothstep(
+        uThreshold,
+        uThreshold + 0.15,
+        brightness
+      );
+    } else if (uMode < 1.5) {
+      color =
+        texture2D(uImage, vUV).rgb * 0.227027;
+
+      color += texture2D(
+        uImage,
+        vUV + uDirection * 1.384615
+      ).rgb * 0.316216;
+
+      color += texture2D(
+        uImage,
+        vUV - uDirection * 1.384615
+      ).rgb * 0.316216;
+
+      color += texture2D(
+        uImage,
+        vUV + uDirection * 3.230769
+      ).rgb * 0.070270;
+
+      color += texture2D(
+        uImage,
+        vUV - uDirection * 3.230769
+      ).rgb * 0.070270;
+    } else {
+      vec3 separated = vec3(
+        texture2D(uImage, vUV + uSeparation).r,
+        color.g,
+        texture2D(uImage, vUV - uSeparation).b
+      );
+
+      float brightness = max(
+        color.r,
+        max(color.g, color.b)
+      );
+
+      color = mix(
+        color,
+        separated,
+        smoothstep(
+          uChromaticThreshold,
+          uChromaticThreshold + 0.15,
+          brightness
+        )
+      );
+
+      color += texture2D(uGlow, vUV).rgb * uStrength;
+      color = uBackground + color;
+    }
+
+    gl_FragColor = vec4(color, 1.0);
+  }
+`;
+
+const sparkVS = header + projection + `
+  attribute vec3 aPosition;
+  attribute vec4 aColor;
+
+  uniform float uPixelRatio;
+
+  varying vec4 vSpark;
+
+  void main() {
+    vec2 p = aPosition.xy / uSize * 2.0 - 1.0;
+
+    gl_Position = vec4(p.x, -p.y, 0.0, 1.0);
+    gl_PointSize = aPosition.z * uPixelRatio;
+
+    vSpark = aColor;
+  }
+`;
+
+const sparkFS = header + `
+  varying vec4 vSpark;
+
+  void main() {
+    float r = length(gl_PointCoord - 0.5) * 2.0;
+
+    if (r >= 1.0) discard;
+
+    gl_FragColor = vec4(
+      vSpark.rgb,
+      vSpark.a * exp(-r * r * 5.0) * (1.0 - r)
+    );
+  }
+`;
+
+function makeProgram(vertex, fragment, attributes, names) {
+  const shaders = [vertex, fragment].map((source, i) => {
+    const shader = gl.createShader(
+      i ? gl.FRAGMENT_SHADER : gl.VERTEX_SHADER
+    );
+
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      throw new Error(gl.getShaderInfoLog(shader));
+    }
+
+    return shader;
+  });
+
+  const program = gl.createProgram();
+
+  shaders.forEach(shader => gl.attachShader(program, shader));
+  gl.linkProgram(program);
+
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    throw new Error(gl.getProgramInfoLog(program));
   }
 
-  return result;
+  shaders.forEach(shader => gl.deleteShader(shader));
+
+  return {
+    p: program,
+
+    attributes: attributes.map(([name, size, offset]) => [
+      gl.getAttribLocation(program, name),
+      size,
+      offset
+    ]),
+
+    u: Object.fromEntries(
+      names.split(" ").map(name => [
+        name,
+        gl.getUniformLocation(program, name)
+      ])
+    )
+  };
 }
 
-const vs = shader(gl.VERTEX_SHADER, vertexSource);
-const fs = shader(gl.FRAGMENT_SHADER, fragmentSource);
-
-const program = gl.createProgram();
-gl.attachShader(program, vs);
-gl.attachShader(program, fs);
-gl.linkProgram(program);
-
-if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-  throw new Error(gl.getProgramInfoLog(program));
-}
-
-gl.deleteShader(vs);
-gl.deleteShader(fs);
-gl.useProgram(program);
-
-const buffer = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-
-// Position, normal, RGB, birth time, side.
-const stride = 9 * 4;
-
-for (const [name, size, offset] of [
-  ["aPosition", 2, 0],
-  ["aNormal", 2, 2],
-  ["aColor", 3, 4],
-  ["aBorn", 1, 7],
-  ["aSide", 1, 8]
-]) {
-  const location = gl.getAttribLocation(program, name);
-  gl.enableVertexAttribArray(location);
-
-  gl.vertexAttribPointer(
-    location,
-    size,
-    gl.FLOAT,
-    false,
-    stride,
-    offset * 4
-  );
-}
-
-const uniforms = Object.fromEntries(
-  ["uSize", "uWidth", "uTime", "uLifetime", "uOpacity"].map(name => [
-    name,
-    gl.getUniformLocation(program, name)
-  ])
+const ribbonProgram = makeProgram(
+  ribbonVS,
+  ribbonFS,
+  [
+    ["aGeometry", 4, 0],
+    ["aColorBorn", 4, 4],
+    ["aDetail", 4, 8]
+  ],
+  "uSize uDepth uTime uWidth uBreathing uFocus " +
+  "uLifetime uOpacity uIridescence uPulse uSurface"
 );
+
+const postProgram = makeProgram(
+  quadVS,
+  postFS,
+  [["aPosition", 2, 0]],
+  "uImage uGlow uDirection uSeparation uMode uThreshold " +
+  "uStrength uChromaticThreshold uBackground"
+);
+
+const sparkProgram = makeProgram(
+  sparkVS,
+  sparkFS,
+  [
+    ["aPosition", 3, 0],
+    ["aColor", 4, 3]
+  ],
+  "uSize uDepth uPixelRatio"
+);
+
+const ribbonBuffer = gl.createBuffer();
+const sparkBuffer = gl.createBuffer();
+const quadBuffer = gl.createBuffer();
+
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+
+gl.bufferData(
+  gl.ARRAY_BUFFER,
+  new Float32Array([
+    -1, -1,
+     1, -1,
+    -1,  1,
+    -1,  1,
+     1, -1,
+     1,  1
+  ]),
+  gl.STATIC_DRAW
+);
+
+const enabledAttributes = new Set();
+
+function use(program, buffer, stride) {
+  gl.useProgram(program.p);
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+
+  enabledAttributes.forEach(index =>
+    gl.disableVertexAttribArray(index)
+  );
+
+  enabledAttributes.clear();
+
+  for (const [index, size, offset] of program.attributes) {
+    if (index < 0) continue;
+
+    gl.enableVertexAttribArray(index);
+    enabledAttributes.add(index);
+
+    gl.vertexAttribPointer(
+      index,
+      size,
+      gl.FLOAT,
+      false,
+      stride * 4,
+      offset * 4
+    );
+  }
+
+  return program.u;
+}
 
 let capacity = 0;
 let start = 0;
 let count = 0;
-let births = new Float64Array(0);
 let pending = [];
 let trailClock = 0;
+let births = new Float64Array(0);
 let contextLost = false;
+let targets = [];
+let sparks = [];
+let sparkCredit = 0;
 
-const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+// Six vertices, twelve floats per vertex.
+const segmentFloats = 72;
+
+function clearTrails() {
+  // Bound GPU geometry memory. Very dense configurations can retire
+  // their oldest segments before the configured lifetime.
+  capacity = Math.max(
+    2048,
+    Math.min(
+      220000,
+      Math.ceil(
+        config.ribbons.points *
+        config.ribbons.stepsPerSecond *
+        config.canvas.trailLifetime *
+        2
+      )
+    )
+  );
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, ribbonBuffer);
+
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    capacity * segmentFloats * 4,
+    gl.DYNAMIC_DRAW
+  );
+
+  births = new Float64Array(capacity);
+  start = 0;
+  count = 0;
+  trailClock = 0;
+  pending = [];
+}
+
+function appendSegment(
+  a, b, color, alongA, alongB, zA, zB, seed
+) {
+  const length = Math.hypot(b.x - a.x, b.y - a.y);
+
+  if (length < 0.001) return;
+
+  const nx = -(b.y - a.y) / length;
+  const ny = (b.x - a.x) / length;
+
+  for (const [point, side, along, z] of [
+    [a, -1, alongA, zA],
+    [b, -1, alongB, zB],
+    [a,  1, alongA, zA],
+    [a,  1, alongA, zA],
+    [b, -1, alongB, zB],
+    [b,  1, alongB, zB]
+  ]) {
+    pending.push(
+      point.x,
+      point.y,
+      nx * side,
+      ny * side,
+      ...color,
+      trailClock,
+      side,
+      along,
+      z,
+      seed
+    );
+  }
+}
+
+function uploadTrails() {
+  if (!pending.length) return;
+
+  let data = new Float32Array(pending);
+  pending = [];
+
+  let n = data.length / segmentFloats;
+
+  if (n > capacity) {
+    data = data.subarray((n - capacity) * segmentFloats);
+    n = capacity;
+  }
+
+  const overflow = Math.max(0, count + n - capacity);
+
+  start = (start + overflow) % capacity;
+  count -= overflow;
+
+  const end = (start + count) % capacity;
+  const first = Math.min(n, capacity - end);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, ribbonBuffer);
+
+  gl.bufferSubData(
+    gl.ARRAY_BUFFER,
+    end * segmentFloats * 4,
+    data.subarray(0, first * segmentFloats)
+  );
+
+  if (first < n) {
+    gl.bufferSubData(
+      gl.ARRAY_BUFFER,
+      0,
+      data.subarray(first * segmentFloats)
+    );
+  }
+
+  for (let i = 0; i < n; i++) {
+    births[(end + i) % capacity] =
+      data[i * segmentFloats + 7];
+  }
+
+  count += n;
+}
+
+function resizeTargets() {
+  for (const target of targets) {
+    gl.deleteTexture(target.texture);
+    gl.deleteFramebuffer(target.fbo);
+  }
+
+  targets = [1, 0.5, 0.5].map(scale => {
+    const w = Math.max(1, Math.round(canvas.width * scale));
+    const h = Math.max(1, Math.round(canvas.height * scale));
+
+    const texture = gl.createTexture();
+
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+
+    gl.texParameteri(
+      gl.TEXTURE_2D,
+      gl.TEXTURE_MIN_FILTER,
+      gl.LINEAR
+    );
+
+    gl.texParameteri(
+      gl.TEXTURE_2D,
+      gl.TEXTURE_MAG_FILTER,
+      gl.LINEAR
+    );
+
+    gl.texParameteri(
+      gl.TEXTURE_2D,
+      gl.TEXTURE_WRAP_S,
+      gl.CLAMP_TO_EDGE
+    );
+
+    gl.texParameteri(
+      gl.TEXTURE_2D,
+      gl.TEXTURE_WRAP_T,
+      gl.CLAMP_TO_EDGE
+    );
+
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      w,
+      h,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null
+    );
+
+    const fbo = gl.createFramebuffer();
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D,
+      texture,
+      0
+    );
+
+    if (
+      gl.checkFramebufferStatus(gl.FRAMEBUFFER) !==
+      gl.FRAMEBUFFER_COMPLETE
+    ) {
+      throw new Error("Incomplete render target");
+    }
+
+    return { texture, fbo, w, h };
+  });
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+function bindTarget(target) {
+  gl.bindFramebuffer(
+    gl.FRAMEBUFFER,
+    target ? target.fbo : null
+  );
+
+  gl.viewport(
+    0,
+    0,
+    target ? target.w : canvas.width,
+    target ? target.h : canvas.height
+  );
+}
+
+function bindTexture(unit, texture) {
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+}
+
+function depthUniform(u) {
+  const depth = config.features.depth;
+
+  gl.uniform2f(u.uSize, width, height);
+
+  gl.uniform3f(
+    u.uDepth,
+    depth.enabled ? depth.range : 0,
+    depth.enabled ? depth.perspective : 0,
+    depth.enabled ? depth.tilt * Math.PI / 180 : 0
+  );
+}
+
+function renderTrails() {
+  if (contextLost) return;
+
+  uploadTrails();
+
+  while (
+    count &&
+    trailClock - births[start] >= config.canvas.trailLifetime
+  ) {
+    start = (start + 1) % capacity;
+    count--;
+  }
+
+  bindTarget(targets[0]);
+
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+  gl.enable(gl.BLEND);
+
+  gl.blendFunc(
+    gl.SRC_ALPHA,
+    config.colors.additive ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA
+  );
+
+  const u = use(ribbonProgram, ribbonBuffer, 12);
+  const f = config.features;
+
+  depthUniform(u);
+
+  gl.uniform1f(u.uTime, trailClock);
+  gl.uniform1f(u.uWidth, config.ribbons.lineWidth);
+  gl.uniform1f(u.uLifetime, config.canvas.trailLifetime);
+  gl.uniform1f(u.uOpacity, config.ribbons.opacity);
+
+  const breathing = f.breathing;
+  const focus = f.depthOfField;
+  const iridescence = f.iridescence;
+  const pulses = f.pulses;
+  const surface = f.surface;
+
+  gl.uniform4f(
+    u.uBreathing,
+    breathing.enabled ? breathing.width : 0,
+    breathing.enabled ? breathing.brightness : 0,
+    breathing.frequency,
+    breathing.synchronization
+  );
+
+  gl.uniform4f(
+    u.uFocus,
+    focus.focus,
+    focus.focusRange,
+    focus.enabled ? focus.blur : 0,
+    0
+  );
+
+  gl.uniform3f(
+    u.uIridescence,
+    iridescence.enabled ? iridescence.strength : 0,
+    iridescence.frequency,
+    iridescence.speed
+  );
+
+  gl.uniform4f(
+    u.uPulse,
+    pulses.speed,
+    pulses.length,
+    pulses.frequency,
+    pulses.enabled ? pulses.intensity : 0
+  );
+
+  gl.uniform4f(
+    u.uSurface,
+    { threads: 1, grain: 2, bands: 3 }[surface.type] || 1,
+    surface.scale,
+    surface.enabled ? surface.contrast : 0,
+    surface.speed
+  );
+
+  const first = Math.min(count, capacity - start);
+
+  if (first) {
+    gl.drawArrays(gl.TRIANGLES, start * 6, first * 6);
+  }
+
+  if (first < count) {
+    gl.drawArrays(gl.TRIANGLES, 0, (count - first) * 6);
+  }
+
+  drawSparks();
+
+  gl.disable(gl.BLEND);
+
+  const post = use(postProgram, quadBuffer, 2);
+
+  gl.uniform1i(post.uImage, 0);
+  gl.uniform1i(post.uGlow, 1);
+  gl.uniform2f(post.uSeparation, 0, 0);
+  gl.uniform3f(post.uBackground, 0, 0, 0);
+  gl.uniform1f(post.uStrength, 0);
+  gl.uniform1f(post.uThreshold, f.bloom.threshold);
+  gl.uniform1f(post.uChromaticThreshold, 1);
+
+  // Keep the unused sampler away from the destination framebuffer.
+  bindTexture(1, targets[0].texture);
+
+  if (f.bloom.enabled) {
+    bindTarget(targets[1]);
+    bindTexture(0, targets[0].texture);
+
+    gl.uniform1f(post.uMode, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    for (let pass = 0; pass < 4; pass++) {
+      const source = targets[pass % 2 ? 2 : 1];
+      const destination = targets[pass % 2 ? 1 : 2];
+
+      bindTarget(destination);
+      bindTexture(0, source.texture);
+
+      gl.uniform1f(post.uMode, 1);
+
+      gl.uniform2f(
+        post.uDirection,
+        pass % 2 ? 0 : f.bloom.radius / source.w,
+        pass % 2 ? f.bloom.radius / source.h : 0
+      );
+
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+  }
+
+  bindTarget(null);
+  bindTexture(0, targets[0].texture);
+  bindTexture(1, targets[1].texture);
+
+  gl.uniform1f(post.uMode, 2);
+
+  gl.uniform1f(
+    post.uStrength,
+    f.bloom.enabled ? f.bloom.strength : 0
+  );
+
+  const chromatic = f.chromatic;
+  const angle = chromatic.direction * Math.PI / 180;
+
+  gl.uniform2f(
+    post.uSeparation,
+    chromatic.enabled
+      ? Math.cos(angle) * chromatic.distance / width
+      : 0,
+    chromatic.enabled
+      ? Math.sin(angle) * chromatic.distance / height
+      : 0
+  );
+
+  gl.uniform1f(
+    post.uChromaticThreshold,
+    chromatic.threshold
+  );
+
+  gl.uniform3f(
+    post.uBackground,
+    ...config.canvas.backgroundColor.map(value => value / 255)
+  );
+
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+}
+
+function rgbFromHsl(h, s, l) {
+  h = ((h % 360) + 360) % 360 / 60;
+  s /= 100;
+  l /= 100;
+
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(h % 2 - 1));
+  const m = l - c / 2;
+
+  return [
+    [c, x, 0],
+    [x, c, 0],
+    [0, c, x],
+    [0, x, c],
+    [x, 0, c],
+    [c, 0, x]
+  ][Math.floor(h)].map(value => value + m);
+}
+
+function depthSpeed(z) {
+  return config.features.depth.enabled
+    ? 1 / (1 + z * config.features.depth.range * 0.35)
+    : 1;
+}
+
+function vortexForce(x, y) {
+  const vortex = config.features.vortices;
+
+  let fx = 0;
+  let fy = 0;
+
+  if (vortex.enabled) {
+    for (let i = 0; i < vortex.count; i++) {
+      const phase = i * 2.39996;
+
+      const cx = width * (
+        0.5 + 0.35 * Math.sin(
+          phase + time * vortex.wander * 0.19
+        )
+      );
+
+      const cy = height * (
+        0.5 + 0.35 * Math.cos(
+          phase * 1.3 + time * vortex.wander * 0.23
+        )
+      );
+
+      const dx = x - cx;
+      const dy = y - cy;
+      const radius = Math.hypot(dx, dy);
+
+      const falloff = Math.exp(
+        -radius * radius / (vortex.radius * vortex.radius)
+      );
+
+      const strength =
+        vortex.strength *
+        falloff *
+        (i % 2 ? -1 : 1) /
+        Math.max(25, radius);
+
+      fx -= dy * strength;
+      fy += dx * strength;
+    }
+  }
+
+  return { x: fx, y: fy };
+}
+
+function projectPoint(point) {
+  const depth = config.features.depth;
+
+  if (!depth.enabled) return point;
+
+  const z = point.z * depth.range;
+  const angle = depth.tilt * Math.PI / 180;
+
+  const scale = 1 / Math.max(
+    0.4,
+    1 + z * depth.perspective * 0.45
+  );
+
+  return {
+    x: (point.x - width / 2) * scale + width / 2,
+
+    y: (
+      (point.y - height / 2) * Math.cos(angle) -
+      z * height * 0.25 * Math.sin(angle)
+    ) * scale + height / 2
+  };
+}
+
+function intersection(a, b, c, d) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const ex = d.x - c.x;
+  const ey = d.y - c.y;
+  const cross = dx * ey - dy * ex;
+
+  if (Math.abs(cross) < 0.001) return null;
+
+  const qx = c.x - a.x;
+  const qy = c.y - a.y;
+  const t = (qx * ey - qy * ex) / cross;
+  const u = (qx * dy - qy * dx) / cross;
+
+  return t > 0.02 && t < 0.98 && u > 0.02 && u < 0.98
+    ? { x: a.x + dx * t, y: a.y + dy * t }
+    : null;
+}
+
+function updateSparks(dt) {
+  const feature = config.features.sparks;
+
+  if (!feature.enabled) {
+    sparks.length = 0;
+    sparkCredit = 0;
+    return;
+  }
+
+  sparks = sparks.filter(
+    spark => trailClock - spark.born < feature.lifetime
+  );
+
+  if (dt <= 0) return;
+
+  sparkCredit = Math.min(4, sparkCredit + feature.rate * dt);
+
+  const crossings = [];
+
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      const a = points[i];
+      const b = points[a.neighbor];
+      const c = points[j];
+      const d = points[c.neighbor];
+
+      if (a === d || b === c || b === d) continue;
+
+      const at = intersection(
+        projectPoint(a),
+        projectPoint(b),
+        projectPoint(c),
+        projectPoint(d)
+      );
+
+      if (at) crossings.push(at);
+    }
+  }
+
+  while (
+    sparkCredit >= 1 &&
+    crossings.length &&
+    sparks.length < 256
+  ) {
+    const at = crossings[
+      Math.floor(Math.random() * crossings.length)
+    ];
+
+    const angle = random(0, Math.PI * 2);
+
+    sparks.push({
+      ...at,
+      vx: Math.cos(angle) * random(10, 35),
+      vy: Math.sin(angle) * random(10, 35),
+      born: trailClock
+    });
+
+    sparkCredit--;
+  }
+}
+
+function drawSparks() {
+  const feature = config.features.sparks;
+
+  if (!feature.enabled || !sparks.length) return;
+
+  const data = [];
+
+  for (const spark of sparks) {
+    const age = trailClock - spark.born;
+    const life = Math.max(0, 1 - age / feature.lifetime);
+
+    data.push(
+      spark.x + spark.vx * age,
+      spark.y + spark.vy * age,
+      feature.size * (0.5 + life) * 2,
+      1,
+      0.85,
+      0.55,
+      life * feature.brightness
+    );
+  }
+
+  const u = use(sparkProgram, sparkBuffer, 7);
+
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    new Float32Array(data),
+    gl.DYNAMIC_DRAW
+  );
+
+  depthUniform(u);
+  gl.uniform1f(u.uPixelRatio, canvas.width / width);
+
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+  gl.drawArrays(gl.POINTS, 0, sparks.length);
+}
+
+const reducedMotion = matchMedia(
+  "(prefers-reduced-motion: reduce)"
+);
 
 let width = 1;
 let height = 1;
@@ -263,195 +1237,11 @@ const mouse = {
   influence: 0
 };
 
-const random = (min, max) => min + Math.random() * (max - min);
+const random = (min, max) =>
+  min + Math.random() * (max - min);
 
 const clamp = (value, min, max) =>
   Math.max(min, Math.min(max, value));
-
-function backgroundColor(alpha = 1) {
-  return `rgba(${config.canvas.backgroundColor.join(",")},${alpha})`;
-}
-
-function clearCanvas() {
-  // Bound retained geometry to about 54 MB on the GPU. Very dense settings
-  // can retire the oldest segments early when this budget is reached.
-  capacity = Math.max(
-    2048,
-    Math.min(
-      250000,
-      Math.ceil(
-        config.ribbons.points *
-        config.ribbons.stepsPerSecond *
-        config.canvas.trailLifetime *
-        2
-      )
-    )
-  );
-
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-
-  gl.bufferData(
-    gl.ARRAY_BUFFER,
-    capacity * 6 * stride,
-    gl.DYNAMIC_DRAW
-  );
-
-  births = new Float64Array(capacity);
-  start = 0;
-  count = 0;
-  pending = [];
-  trailClock = 0;
-
-  renderTrails();
-}
-
-function uploadTrails() {
-  if (!pending.length) return;
-
-  let data = new Float32Array(pending);
-  pending = [];
-
-  let segments = data.length / 54;
-
-  if (segments > capacity) {
-    data = data.subarray((segments - capacity) * 54);
-    segments = capacity;
-  }
-
-  const overflow = Math.max(0, count + segments - capacity);
-
-  start = (start + overflow) % capacity;
-  count -= overflow;
-
-  const end = (start + count) % capacity;
-  const first = Math.min(segments, capacity - end);
-
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-
-  gl.bufferSubData(
-    gl.ARRAY_BUFFER,
-    end * 6 * stride,
-    data.subarray(0, first * 54)
-  );
-
-  if (first < segments) {
-    gl.bufferSubData(
-      gl.ARRAY_BUFFER,
-      0,
-      data.subarray(first * 54)
-    );
-  }
-
-  for (let i = 0; i < segments; i++) {
-    births[(end + i) % capacity] = data[i * 54 + 7];
-  }
-
-  count += segments;
-}
-
-function renderTrails() {
-  if (contextLost) return;
-
-  uploadTrails();
-
-  while (
-    count &&
-    trailClock - births[start] >= config.canvas.trailLifetime
-  ) {
-    start = (start + 1) % capacity;
-    count--;
-  }
-
-  const color = config.canvas.backgroundColor;
-
-  gl.clearColor(
-    color[0] / 255,
-    color[1] / 255,
-    color[2] / 255,
-    1
-  );
-
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.enable(gl.BLEND);
-
-  gl.blendFunc(
-    gl.SRC_ALPHA,
-    config.colors.additive ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA
-  );
-
-  gl.uniform2f(uniforms.uSize, width, height);
-  gl.uniform1f(uniforms.uWidth, config.ribbons.lineWidth);
-  gl.uniform1f(uniforms.uTime, trailClock);
-
-  gl.uniform1f(
-    uniforms.uLifetime,
-    Math.max(0.5, config.canvas.trailLifetime)
-  );
-
-  gl.uniform1f(uniforms.uOpacity, config.ribbons.opacity);
-
-  const first = Math.min(count, capacity - start);
-
-  if (first) {
-    gl.drawArrays(gl.TRIANGLES, start * 6, first * 6);
-  }
-
-  if (first < count) {
-    gl.drawArrays(gl.TRIANGLES, 0, (count - first) * 6);
-  }
-}
-
-function rgbFromHsl(hue, saturation, lightness) {
-  const h = ((hue % 360) + 360) % 360 / 60;
-  const s = saturation / 100;
-  const l = lightness / 100;
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs(h % 2 - 1));
-  const m = l - c * 0.5;
-
-  const choices = [
-    [c, x, 0],
-    [x, c, 0],
-    [0, c, x],
-    [0, x, c],
-    [x, 0, c],
-    [c, 0, x]
-  ];
-
-  return choices[Math.floor(h)].map(channel => channel + m);
-}
-
-function appendSegment(a, b, color) {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const length = Math.hypot(dx, dy);
-
-  if (length < 0.0001) return;
-
-  const nx = -dy / length;
-  const ny = dx / length;
-
-  for (const [point, side] of [
-    [a, -1],
-    [b, -1],
-    [a, 1],
-    [a, 1],
-    [b, -1],
-    [b, 1]
-  ]) {
-    pending.push(
-      point.x,
-      point.y,
-      nx * side,
-      ny * side,
-      color[0],
-      color[1],
-      color[2],
-      trailClock,
-      side
-    );
-  }
-}
 
 function makePoint() {
   const angle = random(0, Math.PI * 2);
@@ -463,6 +1253,7 @@ function makePoint() {
     vy: Math.sin(angle) * config.ribbons.speed,
     hueOffset: random(-0.5, 0.5),
     phase: random(0, Math.PI * 2),
+    z: random(-1, 1),
     neighbor: 0
   };
 }
@@ -498,12 +1289,15 @@ function reset() {
   accumulator = 0;
   sceneKey = currentSceneKey();
 
-  clearCanvas();
+  clearTrails();
+
+  sparks.length = 0;
+  sparkCredit = 0;
 }
 
 function resize() {
-  width = innerWidth;
-  height = innerHeight;
+  width = Math.max(1, innerWidth);
+  height = Math.max(1, innerHeight);
 
   const ratio = Math.min(
     devicePixelRatio || 1,
@@ -513,7 +1307,7 @@ function resize() {
   canvas.width = Math.round(width * ratio);
   canvas.height = Math.round(height * ratio);
 
-  gl.viewport(0, 0, canvas.width, canvas.height);
+  resizeTargets();
 
   resolutionKey = String(config.canvas.pixelRatio);
   reset();
@@ -594,7 +1388,6 @@ function updatePoints(dt) {
     )
   );
 
-  // Pull on nearby connections even when both endpoints are far away.
   points.forEach((point, index) => {
     const neighborIndex = point.neighbor;
     const neighbor = points[neighborIndex];
@@ -619,6 +1412,11 @@ function updatePoints(dt) {
   });
 
   points.forEach((point, index) => {
+    const vortex = vortexForce(point.x, point.y);
+
+    forces[index].x += vortex.x;
+    forces[index].y += vortex.y;
+
     const turn =
       Math.sin(time * 0.35 + point.phase) *
       config.ribbons.curvature;
@@ -636,8 +1434,10 @@ function updatePoints(dt) {
     if (speed > 0.001) {
       const relaxedSpeed =
         speed +
-        (config.ribbons.speed - speed) *
-        (1 - Math.exp(-1.4 * dt));
+        (
+          config.ribbons.speed * depthSpeed(point.z) -
+          speed
+        ) * (1 - Math.exp(-1.4 * dt));
 
       const limitedSpeed = Math.min(
         relaxedSpeed,
@@ -674,6 +1474,7 @@ function updatePoints(dt) {
 
 function bendPoint(x, y) {
   const influence = influenceAt(x, y);
+
   if (influence <= 0) return { x, y };
 
   const dx = x - mouse.x;
@@ -691,12 +1492,18 @@ function bendPoint(x, y) {
   return {
     x:
       x +
-      (-dx / denominator * pull - dy / denominator * twist) * bend +
+      (
+        -dx / denominator * pull -
+        dy / denominator * twist
+      ) * bend +
       mouse.vx * dragScale,
 
     y:
       y +
-      (-dy / denominator * pull + dx / denominator * twist) * bend +
+      (
+        -dy / denominator * pull +
+        dx / denominator * twist
+      ) * bend +
       mouse.vy * dragScale
   };
 }
@@ -720,36 +1527,45 @@ function drawConnection(point) {
   const nearest = nearestOnSegment(point, neighbor);
   const affected = influenceAt(nearest.x, nearest.y) > 0.001;
 
-  if (!affected) {
-    appendSegment(point, neighbor, color);
-    return;
-  }
-
   const length = Math.hypot(
     neighbor.x - point.x,
     neighbor.y - point.y
   );
 
-  const samples = Math.min(
-    64,
-    Math.max(
-      8,
-      Math.ceil(length / Math.max(10, config.mouse.radius / 12))
-    )
-  );
+  const samples = affected
+    ? Math.min(
+        32,
+        Math.max(
+          8,
+          Math.ceil(
+            length / Math.max(10, config.mouse.radius / 12)
+          )
+        )
+      )
+    : 1;
 
-  let previousPoint = bendPoint(point.x, point.y);
+  let a = bendPoint(point.x, point.y);
 
   for (let i = 1; i <= samples; i++) {
     const t = i / samples;
 
-    const nextPoint = bendPoint(
+    const b = bendPoint(
       point.x + (neighbor.x - point.x) * t,
       point.y + (neighbor.y - point.y) * t
     );
 
-    appendSegment(previousPoint, nextPoint, color);
-    previousPoint = nextPoint;
+    appendSegment(
+      a,
+      b,
+      color,
+      length * (i - 1) / samples,
+      length * t,
+      point.z + (neighbor.z - point.z) * (i - 1) / samples,
+      point.z + (neighbor.z - point.z) * t,
+      point.phase
+    );
+
+    a = b;
   }
 }
 
@@ -811,6 +1627,7 @@ function frame(timestamp) {
     );
 
   const dt = still ? 0 : realDt * config.animation.speed;
+  const before = trailClock;
 
   accumulator += dt;
 
@@ -827,7 +1644,9 @@ function frame(timestamp) {
     accumulator = Math.min(accumulator, stepDt);
   }
 
+  updateSparks(trailClock - before);
   renderTrails();
+
   requestAnimationFrame(frame);
 }
 
@@ -935,7 +1754,7 @@ canvas.addEventListener("webglcontextlost", event => {
   previous = null;
 });
 
-// All GPU resources must be rebuilt after restoration.
+// Rebuild all GPU resources after restoration.
 canvas.addEventListener("webglcontextrestored", () => {
   location.reload();
 });
@@ -956,7 +1775,7 @@ renderTrails();
 requestAnimationFrame(frame);
 
 if (config.panel.enabled) {
-  import("./settings-editor.js")
+  import("./settings-editor.js?v=features-1")
     .then(({ createSettingsEditor }) => {
       createSettingsEditor({
         config,
