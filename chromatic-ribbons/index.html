@@ -81,12 +81,161 @@ window.getBackgroundConfig = () =>
   JSON.parse(JSON.stringify(config));
 
 const canvas = document.querySelector("#background");
-const displayCtx = canvas.getContext("2d");
-let ctx = displayCtx;
-const trailLayers = [];
-const layerCount = 8;
+
+const gl = canvas.getContext("webgl", {
+  alpha: false,
+  antialias: false,
+  depth: false,
+  stencil: false,
+  premultipliedAlpha: false,
+  preserveDrawingBuffer: false
+});
+
+if (!gl) {
+  const message = document.createElement("p");
+  message.textContent =
+    "WebGL is unavailable. Enable hardware acceleration or try another browser.";
+  message.style.cssText =
+    "color:white;padding:24px;font:16px system-ui";
+  document.body.append(message);
+  throw new Error("WebGL is unavailable");
+}
+
+// Each segment is two triangles. Birth times let the fragment shader fade
+// every stroke individually, without full-screen trail textures or restarts.
+const vertexSource = `
+  attribute vec2 aPosition;
+  attribute vec2 aNormal;
+  attribute vec3 aColor;
+  attribute float aBorn;
+  attribute float aSide;
+
+  uniform vec2 uSize;
+  uniform float uWidth;
+
+  varying vec3 vColor;
+  varying float vBorn;
+  varying float vSide;
+
+  void main() {
+    vSide = aSide;
+
+    vec2 offset = aNormal * (uWidth * 0.5 + 1.0);
+    vec2 clip = (aPosition + offset) / uSize * 2.0 - 1.0;
+
+    gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+    vColor = aColor;
+    vBorn = aBorn;
+  }
+`;
+
+const fragmentSource = `
+  #ifdef GL_FRAGMENT_PRECISION_HIGH
+  precision highp float;
+  #else
+  precision mediump float;
+  #endif
+
+  uniform float uTime;
+  uniform float uLifetime;
+  uniform float uOpacity;
+  uniform float uWidth;
+
+  varying vec3 vColor;
+  varying float vBorn;
+  varying float vSide;
+
+  void main() {
+    float age = max(0.0, uTime - vBorn);
+    float life = clamp(1.0 - age / uLifetime, 0.0, 1.0);
+    float fade = life * life * (3.0 - 2.0 * life);
+
+    float halfWidth = uWidth * 0.5;
+    float distance = abs(vSide) * (halfWidth + 1.0);
+
+    float coverage = 1.0 - smoothstep(
+      max(0.0, halfWidth - 0.5),
+      halfWidth + 0.5,
+      distance
+    );
+
+    float alpha = uOpacity * fade * coverage;
+
+    if (alpha <= 0.0) discard;
+
+    gl_FragColor = vec4(vColor, alpha);
+  }
+`;
+
+function shader(type, source) {
+  const result = gl.createShader(type);
+  gl.shaderSource(result, source);
+  gl.compileShader(result);
+
+  if (!gl.getShaderParameter(result, gl.COMPILE_STATUS)) {
+    throw new Error(gl.getShaderInfoLog(result));
+  }
+
+  return result;
+}
+
+const vs = shader(gl.VERTEX_SHADER, vertexSource);
+const fs = shader(gl.FRAGMENT_SHADER, fragmentSource);
+
+const program = gl.createProgram();
+gl.attachShader(program, vs);
+gl.attachShader(program, fs);
+gl.linkProgram(program);
+
+if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+  throw new Error(gl.getProgramInfoLog(program));
+}
+
+gl.deleteShader(vs);
+gl.deleteShader(fs);
+gl.useProgram(program);
+
+const buffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+
+// Position, normal, RGB, birth time, side.
+const stride = 9 * 4;
+
+for (const [name, size, offset] of [
+  ["aPosition", 2, 0],
+  ["aNormal", 2, 2],
+  ["aColor", 3, 4],
+  ["aBorn", 1, 7],
+  ["aSide", 1, 8]
+]) {
+  const location = gl.getAttribLocation(program, name);
+  gl.enableVertexAttribArray(location);
+
+  gl.vertexAttribPointer(
+    location,
+    size,
+    gl.FLOAT,
+    false,
+    stride,
+    offset * 4
+  );
+}
+
+const uniforms = Object.fromEntries(
+  ["uSize", "uWidth", "uTime", "uLifetime", "uOpacity"].map(name => [
+    name,
+    gl.getUniformLocation(program, name)
+  ])
+);
+
+let capacity = 0;
+let start = 0;
+let count = 0;
+let births = new Float64Array(0);
+let pending = [];
 let trailClock = 0;
-let activeLayer = null;
+let contextLost = false;
+
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
 let width = 1;
@@ -115,86 +264,193 @@ const mouse = {
 };
 
 const random = (min, max) => min + Math.random() * (max - min);
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+const clamp = (value, min, max) =>
+  Math.max(min, Math.min(max, value));
 
 function backgroundColor(alpha = 1) {
   return `rgba(${config.canvas.backgroundColor.join(",")},${alpha})`;
 }
 
-// Reuse a bounded ring of transparent layers. Each layer fades independently,
-// avoiding the rounding residue caused by repeatedly painting tiny alpha fills.
 function clearCanvas() {
+  // Bound retained geometry to about 54 MB on the GPU. Very dense settings
+  // can retire the oldest segments early when this budget is reached.
+  capacity = Math.max(
+    2048,
+    Math.min(
+      250000,
+      Math.ceil(
+        config.ribbons.points *
+        config.ribbons.stepsPerSecond *
+        config.canvas.trailLifetime *
+        2
+      )
+    )
+  );
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    capacity * 6 * stride,
+    gl.DYNAMIC_DRAW
+  );
+
+  births = new Float64Array(capacity);
+  start = 0;
+  count = 0;
+  pending = [];
   trailClock = 0;
-  activeLayer = null;
-  trailLayers.forEach(layer => { layer.canvas.width = 0; });
-  trailLayers.length = 0;
-  ctx = displayCtx;
+
   renderTrails();
 }
 
-function trailContext() {
-  const bucketDuration = Math.max(0.5, config.canvas.trailLifetime) / layerCount;
-  const bucket = Math.floor(trailClock / bucketDuration);
+function uploadTrails() {
+  if (!pending.length) return;
 
-  if (!activeLayer || activeLayer.bucket !== bucket) {
-    let layer = trailLayers.find(item =>
-      trailClock - item.born >= config.canvas.trailLifetime);
+  let data = new Float32Array(pending);
+  pending = [];
 
-    if (!layer && trailLayers.length >= layerCount + 1) {
-      layer = trailLayers.reduce((a, b) => a.born < b.born ? a : b);
-    }
+  let segments = data.length / 54;
 
-    if (!layer) {
-      const surface = document.createElement("canvas");
-      layer = { canvas: surface, context: surface.getContext("2d") };
-      trailLayers.push(layer);
-    }
-
-    layer.canvas.width = canvas.width;
-    layer.canvas.height = canvas.height;
-
-    layer.context.setTransform(
-      canvas.width / width,
-      0,
-      0,
-      canvas.height / height,
-      0,
-      0
-    );
-
-    layer.bucket = bucket;
-    layer.born = trailClock;
-    activeLayer = layer;
+  if (segments > capacity) {
+    data = data.subarray((segments - capacity) * 54);
+    segments = capacity;
   }
 
-  return activeLayer.context;
+  const overflow = Math.max(0, count + segments - capacity);
+
+  start = (start + overflow) % capacity;
+  count -= overflow;
+
+  const end = (start + count) % capacity;
+  const first = Math.min(segments, capacity - end);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+
+  gl.bufferSubData(
+    gl.ARRAY_BUFFER,
+    end * 6 * stride,
+    data.subarray(0, first * 54)
+  );
+
+  if (first < segments) {
+    gl.bufferSubData(
+      gl.ARRAY_BUFFER,
+      0,
+      data.subarray(first * 54)
+    );
+  }
+
+  for (let i = 0; i < segments; i++) {
+    births[(end + i) % capacity] = data[i * 54 + 7];
+  }
+
+  count += segments;
 }
 
 function renderTrails() {
-  displayCtx.globalCompositeOperation = "source-over";
-  displayCtx.globalAlpha = 1;
-  displayCtx.fillStyle = backgroundColor();
-  displayCtx.fillRect(0, 0, width, height);
+  if (contextLost) return;
 
-  displayCtx.globalCompositeOperation =
-    config.colors.additive ? "lighter" : "source-over";
+  uploadTrails();
 
-  for (const layer of trailLayers) {
-    const remaining = Math.max(
-      0,
-      1 - (trailClock - layer.born) / config.canvas.trailLifetime
-    );
-
-    // Smoothstep gives each batch a gentle entrance into its fade and a soft exit.
-    displayCtx.globalAlpha = remaining * remaining * (3 - 2 * remaining);
-
-    if (remaining > 0) {
-      displayCtx.drawImage(layer.canvas, 0, 0, width, height);
-    }
+  while (
+    count &&
+    trailClock - births[start] >= config.canvas.trailLifetime
+  ) {
+    start = (start + 1) % capacity;
+    count--;
   }
 
-  displayCtx.globalAlpha = 1;
-  displayCtx.globalCompositeOperation = "source-over";
+  const color = config.canvas.backgroundColor;
+
+  gl.clearColor(
+    color[0] / 255,
+    color[1] / 255,
+    color[2] / 255,
+    1
+  );
+
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.BLEND);
+
+  gl.blendFunc(
+    gl.SRC_ALPHA,
+    config.colors.additive ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA
+  );
+
+  gl.uniform2f(uniforms.uSize, width, height);
+  gl.uniform1f(uniforms.uWidth, config.ribbons.lineWidth);
+  gl.uniform1f(uniforms.uTime, trailClock);
+
+  gl.uniform1f(
+    uniforms.uLifetime,
+    Math.max(0.5, config.canvas.trailLifetime)
+  );
+
+  gl.uniform1f(uniforms.uOpacity, config.ribbons.opacity);
+
+  const first = Math.min(count, capacity - start);
+
+  if (first) {
+    gl.drawArrays(gl.TRIANGLES, start * 6, first * 6);
+  }
+
+  if (first < count) {
+    gl.drawArrays(gl.TRIANGLES, 0, (count - first) * 6);
+  }
+}
+
+function rgbFromHsl(hue, saturation, lightness) {
+  const h = ((hue % 360) + 360) % 360 / 60;
+  const s = saturation / 100;
+  const l = lightness / 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(h % 2 - 1));
+  const m = l - c * 0.5;
+
+  const choices = [
+    [c, x, 0],
+    [x, c, 0],
+    [0, c, x],
+    [0, x, c],
+    [x, 0, c],
+    [c, 0, x]
+  ];
+
+  return choices[Math.floor(h)].map(channel => channel + m);
+}
+
+function appendSegment(a, b, color) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = Math.hypot(dx, dy);
+
+  if (length < 0.0001) return;
+
+  const nx = -dy / length;
+  const ny = dx / length;
+
+  for (const [point, side] of [
+    [a, -1],
+    [b, -1],
+    [a, 1],
+    [a, 1],
+    [b, -1],
+    [b, 1]
+  ]) {
+    pending.push(
+      point.x,
+      point.y,
+      nx * side,
+      ny * side,
+      color[0],
+      color[1],
+      color[2],
+      trailClock,
+      side
+    );
+  }
 }
 
 function makePoint() {
@@ -215,6 +471,7 @@ function currentSceneKey() {
   return JSON.stringify([
     config.ribbons.points,
     config.canvas.trailLifetime,
+    config.ribbons.stepsPerSecond,
     config.colors.hue,
     config.colors.randomizeOnReset
   ]);
@@ -240,6 +497,7 @@ function reset() {
   time = 0;
   accumulator = 0;
   sceneKey = currentSceneKey();
+
   clearCanvas();
 }
 
@@ -254,7 +512,8 @@ function resize() {
 
   canvas.width = Math.round(width * ratio);
   canvas.height = Math.round(height * ratio);
-  displayCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+  gl.viewport(0, 0, canvas.width, canvas.height);
 
   resolutionKey = String(config.canvas.pixelRatio);
   reset();
@@ -349,7 +608,6 @@ function updatePoints(dt) {
 
     const force = forceAt(nearest.x, nearest.y, influence);
 
-    // Share the force between endpoints according to contact position.
     const aWeight = 0.25 + (1 - nearest.t) * 0.75;
     const bWeight = 0.25 + nearest.t * 0.75;
 
@@ -423,7 +681,6 @@ function bendPoint(x, y) {
   const distance = Math.hypot(dx, dy);
   const denominator = Math.max(distance, 25);
 
-  // Attraction and swirl also deform the freshly drawn ribbon.
   const pull = clamp(config.mouse.attraction / 200, -1, 1);
   const twist = clamp(config.mouse.swirl / 200, -1.5, 1.5);
   const bend = config.mouse.ribbonBend * influence;
@@ -454,63 +711,56 @@ function drawConnection(point) {
     360
   ) % 360;
 
-  ctx.strokeStyle =
-    `hsla(${hue},${config.colors.saturation}%,` +
-    `${config.colors.lightness}%,${config.ribbons.opacity})`;
+  const color = rgbFromHsl(
+    hue,
+    config.colors.saturation,
+    config.colors.lightness
+  );
 
   const nearest = nearestOnSegment(point, neighbor);
   const affected = influenceAt(nearest.x, nearest.y) > 0.001;
 
-  ctx.beginPath();
-
   if (!affected) {
-    ctx.moveTo(point.x, point.y);
-    ctx.lineTo(neighbor.x, neighbor.y);
-  } else {
-    const length = Math.hypot(
-      neighbor.x - point.x,
-      neighbor.y - point.y
-    );
-
-    const samples = Math.max(
-      8,
-      Math.ceil(
-        length / Math.max(10, config.mouse.radius / 12)
-      )
-    );
-
-    for (let i = 0; i <= samples; i++) {
-      const t = i / samples;
-
-      const sample = bendPoint(
-        point.x + (neighbor.x - point.x) * t,
-        point.y + (neighbor.y - point.y) * t
-      );
-
-      if (!i) ctx.moveTo(sample.x, sample.y);
-      else ctx.lineTo(sample.x, sample.y);
-    }
+    appendSegment(point, neighbor, color);
+    return;
   }
 
-  ctx.stroke();
+  const length = Math.hypot(
+    neighbor.x - point.x,
+    neighbor.y - point.y
+  );
+
+  const samples = Math.min(
+    64,
+    Math.max(
+      8,
+      Math.ceil(length / Math.max(10, config.mouse.radius / 12))
+    )
+  );
+
+  let previousPoint = bendPoint(point.x, point.y);
+
+  for (let i = 1; i <= samples; i++) {
+    const t = i / samples;
+
+    const nextPoint = bendPoint(
+      point.x + (neighbor.x - point.x) * t,
+      point.y + (neighbor.y - point.y) * t
+    );
+
+    appendSegment(previousPoint, nextPoint, color);
+    previousPoint = nextPoint;
+  }
 }
 
 function simulateStep(dt) {
   time += dt;
-
   trailClock += dt;
-  ctx = trailContext();
-
   updatePoints(dt);
 
-  ctx.globalCompositeOperation =
-    config.colors.additive ? "lighter" : "source-over";
-
-  ctx.lineWidth = config.ribbons.lineWidth;
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-
-  for (const point of points) drawConnection(point);
+  for (const point of points) {
+    drawConnection(point);
+  }
 }
 
 function frame(timestamp) {
@@ -519,6 +769,11 @@ function frame(timestamp) {
     : Math.min((timestamp - previous) / 1000, 0.05);
 
   previous = timestamp;
+
+  if (contextLost) {
+    requestAnimationFrame(frame);
+    return;
+  }
 
   const smoothing =
     1 - Math.exp(-config.mouse.smoothing * realDt);
@@ -558,6 +813,7 @@ function frame(timestamp) {
   const dt = still ? 0 : realDt * config.animation.speed;
 
   accumulator += dt;
+
   const stepDt = 1 / config.ribbons.stepsPerSecond;
   let iterations = 0;
 
@@ -572,7 +828,6 @@ function frame(timestamp) {
   }
 
   renderTrails();
-
   requestAnimationFrame(frame);
 }
 
@@ -594,6 +849,7 @@ function updatePointer(event) {
   mouse.targetX = event.clientX;
   mouse.targetY = event.clientY;
   mouse.active = true;
+
   return true;
 }
 
@@ -640,7 +896,10 @@ addEventListener("pointerdown", event => {
 
 addEventListener("pointerup", event => {
   mouse.held = false;
-  if (event.pointerType !== "mouse") mouse.active = false;
+
+  if (event.pointerType !== "mouse") {
+    mouse.active = false;
+  }
 });
 
 addEventListener("dblclick", event => {
@@ -666,7 +925,20 @@ document.addEventListener("visibilitychange", () => {
   deactivatePointer();
 });
 
-addEventListener("resize", resize);
+addEventListener("resize", () => {
+  if (!contextLost) resize();
+});
+
+canvas.addEventListener("webglcontextlost", event => {
+  event.preventDefault();
+  contextLost = true;
+  previous = null;
+});
+
+// All GPU resources must be rebuilt after restoration.
+canvas.addEventListener("webglcontextrestored", () => {
+  location.reload();
+});
 
 resize();
 
@@ -674,6 +946,10 @@ const previewSteps = 450;
 
 for (let i = 0; i < previewSteps; i++) {
   simulateStep(1 / config.ribbons.stepsPerSecond);
+
+  if (i % 30 === 0) {
+    uploadTrails();
+  }
 }
 
 renderTrails();
@@ -688,7 +964,9 @@ if (config.panel.enabled) {
         onReset: reset
       });
     })
-    .catch(error => console.error("Editor could not load:", error));
+    .catch(error => {
+      console.error("Editor could not load:", error);
+    });
 }
 </script>
 </body>
