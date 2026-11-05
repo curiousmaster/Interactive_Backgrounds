@@ -213,6 +213,13 @@ export const backgrounds = [
             "landscape. Your pointer raises nearby ridges.",
     },
     {
+        name: "Pacman",
+        folder: "packman",
+        description:
+            "Pac-Man munches glowing pellets as ghosts close in through a neon maze. " +
+            "Drop a power pellet into a cleared corridor and watch the chase reverse.",
+    },
+    {
         name: "Paper Weather",
         folder: "paper-weather",
         description:

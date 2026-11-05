@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Midnight Maze</title>
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; background: #050815; }
+  #maze { display: block; width: 100%; height: 100%; }
+  #scan { position: fixed; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(transparent 0 2px, #000 2px 3px); }
+  #status { position: fixed; left: 1rem; bottom: 1rem; color: #fff;
+    font: 14px system-ui; margin: 0; }
+</style>
+</head>
+<body>
+<canvas id="maze" aria-label="Animated Midnight Maze"></canvas>
+<div id="scan" aria-hidden="true"></div>
+<p id="status" role="status"></p>
+<script src="./settings-editor.js"></script>
+<script>
+(async () => {
+  const config = {
+    chase: { pacmen: 1, ghosts: 4, speed: 3.5, refill: 13, power: 7 },
+    view: { mode: '2D', zoom: 1, panX: 0, panY: 0 },
+    camera: { zoom: 1, panX: 0, panY: 0, tilt: 32, rotation: 0, fov: 38 },
+    style: { background: '#040715', wall: '#253eff', brightness: 1, glass: .48 },
+    input: { drop: true, control: false, player: 1, idle: 5 },
+    features: {
+      corners: { enabled: true, strength: .6 },
+      surge: { enabled: true, strength: .45 },
+      sparks: { enabled: true, strength: .65 },
+      regrowth: { enabled: true, strength: .8 },
+      eyes: { enabled: true, strength: .12 },
+      pressure: { enabled: true, strength: .65 },
+      rings: { enabled: true, strength: .75 },
+      tunnel: { enabled: true, strength: .7 },
+      pools: { enabled: false, strength: .55 },
+      crt: { enabled: true, strength: .24 }
+    }
+  };
+  const presets = {
+    'Arcade CRT': {},
+    'Neon Glass': {
+      view: { mode: '3D' },
+      style: { background: '#080918', wall: '#618bff' },
+      features: { crt: { enabled: false }, pools: { enabled: true } }
+    },
+    'Quiet Chase': {
+      chase: { speed: 2.4 },
+      style: { background: '#090c14', wall: '#31435d', brightness: .57 },
+      features: {
+        sparks: { enabled: false }, crt: { enabled: false },
+        pressure: { enabled: false }, surge: { strength: .18 }
+      }
+    }
+  };
+  const defaults = structuredClone(config);
+  const canvas = document.querySelector('#maze');
+  const status = document.querySelector('#status');
+  let T;
+  try {
+    T = await import('https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js');
+  } catch (error) {
+    status.textContent = 'Could not load Three.js. Check that this browser can reach cdn.jsdelivr.net.';
+    console.error(error);
+    return;
+  }
+
+  let renderer;
+  try {
+    renderer = new T.WebGLRenderer({ canvas, antialias: true });
+  } catch (error) {
+    status.textContent = 'Could not start WebGL. Check that WebGL is available in this browser.';
+    console.error(error);
+    return;
+  }
+
+  const scene = new T.Scene();
+  const ortho = new T.OrthographicCamera();
+  const perspective = new T.PerspectiveCamera();
+  const walls = new T.Group();
+  const floor = new T.Group();
+  scene.add(walls, floor);
+  const layout = [
+    '#####################',
+    '#.........#.........#',
+    '#.###.###.#.###.###.#',
+    '#o#...............#o#',
+    '#.#.##.#####.##.#.#.#',
+    '#...........#.......#',
+    '###.#.###.#.#.###.###',
+    '....#.....#.....#....',
+    '###.#.###.#.###.#.###',
+    '#.......#...........#',
+    '#.#.#.##.#####.##.#.#',
+    '#o#...............#o#',
+    '#.###.###.#.###.###.#',
+    '#.........#.........#',
+    '#####################'
+  ];
+  const width = layout[0].length;
+  const height = layout.length;
+  const tunnelRow = 7;
+  const directions = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+  const grid = layout.map(row => Array.from(row, () => null));
+  const cells = [];
+  const regular = [];
+  const powers = new Map();
+  const wallMaterial = new T.MeshBasicMaterial();
+  const edgeMaterial = new T.LineBasicMaterial();
+  const wallBox = new T.BoxGeometry(1.01, .82, 1.01);
+  const wallEdges = new T.EdgesGeometry(wallBox);
+  const circle = new T.CircleGeometry(1, 24);
+  const sphere = new T.SphereGeometry(1, 16, 12);
+  const ring = new T.RingGeometry(.85, 1, 32);
+  const skirtGeometry = new T.CylinderGeometry(.33, .36, .32, 16);
+  const mouths = Array.from({ length: 7 }, (_, bite) => {
+    const opening = .05 + bite * .095;
+    const shape = new T.Shape();
+    shape.moveTo(0, 0);
+    shape.absarc(0, 0, .38, opening, Math.PI * 2 - opening);
+    shape.lineTo(0, 0);
+    return {
+      flat: new T.ShapeGeometry(shape),
+      solid: new T.SphereGeometry(1, 24, 14, Math.PI + opening, Math.PI * 2 - opening * 2)
+    };
+  });
+  const yellow = '#ffd34f';
+  const ghostColors = ['#ff4968', '#ff84cc', '#46e4ff', '#ffa457'];
+  const xAt = x => x - (width - 1) / 2;
+  const zAt = z => z - (height - 1) / 2;
+  const light = new T.Color();
+  const dotMaterial = new T.MeshBasicMaterial({ color: yellow });
+  const powerMaterial = new T.MeshBasicMaterial({ color: '#ffba53' });
+  const textureCanvas = document.createElement('canvas');
+  textureCanvas.width = textureCanvas.height = 64;
+  const brush = textureCanvas.getContext('2d');
+  const gradient = brush.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gradient.addColorStop(0, '#fff');
+  gradient.addColorStop(.45, '#ffffff70');
+  gradient.addColorStop(1, '#ffffff00');
+  brush.fillStyle = gradient;
+  brush.fillRect(0, 0, 64, 64);
+  const glowTexture = new T.CanvasTexture(textureCanvas);
+
+  function disk(geometry, color, y, soft = false) {
+    const material = new T.MeshBasicMaterial({
+      color, transparent: true, depthWrite: false, opacity: 0,
+      blending: T.AdditiveBlending, map: soft ? glowTexture : null
+    });
+    const mesh = new T.Mesh(geometry, material);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.y = y;
+    floor.add(mesh);
+    return mesh;
+  }
+
+  for (let z = 0; z < height; z++) {
+    for (let x = 0; x < width; x++) {
+      const character = layout[z][x];
+      if (character === '#') {
+        const wall = new T.Mesh(wallBox, wallMaterial);
+        wall.position.set(xAt(x), .41, zAt(z));
+        wall.add(new T.LineSegments(wallEdges, edgeMaterial));
+        walls.add(wall);
+        continue;
+      }
+      const cell = { id: cells.length, x, z, links: [], ready: 0 };
+      grid[z][x] = cell;
+      cells.push(cell);
+      cell.dot = new T.Mesh(sphere, character === 'o' ? powerMaterial : dotMaterial);
+      cell.dot.position.set(xAt(x), .12, zAt(z));
+      floor.add(cell.dot);
+      cell.pool = disk(circle, '#ffad37', .015, true);
+      cell.pool.position.set(xAt(x), .015, zAt(z));
+      if (character === 'o') powers.set(cell, 0);
+      else regular.push(cell);
+    }
+  }
+
+  for (const cell of cells) {
+    directions.forEach(([dx, dz], direction) => {
+      const x = cell.x + dx;
+      const wrap = cell.z === tunnelRow && (x < 0 || x >= width);
+      const next = grid[cell.z + dz]?.[(x + width) % width];
+      if (next && (wrap || (x >= 0 && x < width))) {
+        cell.links.push({ next, direction, wrap });
+      }
+    });
+  }
+
+  function distances(start) {
+    const distance = new Int16Array(cells.length).fill(32767);
+    const queue = [start];
+    distance[start.id] = 0;
+    for (const cell of queue) {
+      for (const { next } of cell.links) {
+        if (distance[next.id] !== 32767) continue;
+        distance[next.id] = distance[cell.id] + 1;
+        queue.push(next);
+      }
+    }
+    return distance;
+  }
+
+  const routes = cells.map(distances);
+  const junctions = cells.filter(cell => cell.links.length > 2);
+  const pacSpawns = [grid[7][9], grid[7][11], grid[5][3], grid[9][17]];
+  const ghostSpawns = [grid[3][10], grid[11][10], grid[5][9], grid[9][11]];
+  const pacmen = [];
+  const ghosts = [];
+  const effects = Array.from({ length: 160 }, () => disk(circle, yellow, .23));
+  const charge = disk(ring, '#ffc25e', .17);
+  const pressure = disk(ring, '#ff658d', .05);
+  const ray = new T.Raycaster();
+  const mouse = new T.Vector2();
+  const plane = new T.Plane(new T.Vector3(0, 1, 0), 0);
+  const hit = new T.Vector3();
+  let effectIndex = 0;
+  let clock = 0;
+  let powerStart = -100;
+  let powerEnd = -100;
+  let wave = null;
+  let dropped = null;
+  let manual = null;
+  let pointer = null;
+
+  function body(geometry, color, parent) {
+    const mesh = new T.Mesh(geometry, new T.MeshBasicMaterial({ color }));
+    parent.add(mesh);
+    return mesh;
+  }
+
+  function spawn(ghost, index) {
+    const home = (ghost ? ghostSpawns : pacSpawns)[index % 4];
+    const group = new T.Group();
+    scene.add(group);
+    const color = ghost ? ghostColors[index % 4] : yellow;
+    const shape = new T.Shape();
+    shape.absarc(0, 0, .36, -Math.PI / 2, Math.PI / 2);
+    shape.lineTo(-.29, .36);
+    for (const y of [.36, .12, -.12]) {
+      shape.quadraticCurveTo(-.48, y - .12, -.29, y - .24);
+    }
+    shape.closePath();
+    const flat = body(ghost ? new T.ShapeGeometry(shape) : mouths[0].flat, color, group);
+    flat.rotation.x = -Math.PI / 2;
+    const solid = body(ghost ? sphere : mouths[0].solid, color, group);
+    solid.scale.set(.36, .34, .36);
+    const skirt = ghost ? body(skirtGeometry, color, group) : null;
+    if (skirt) skirt.position.y = -.12;
+    const eyes = ghost ? [-.13, .13].map(x => {
+      const eye = body(sphere, '#edf7ff', group);
+      eye.scale.set(.09, .06, .09);
+      const pupil = body(sphere, '#102448', group);
+      pupil.scale.set(.043, .033, .043);
+      return { x, eye, pupil };
+    }) : [];
+    const glow = disk(circle, color, .04, true);
+    const corner = disk(circle, color, .06, true);
+    return {
+      ghost, index, home, group, color, flat, solid, skirt, eyes, glow, corner,
+      cell: home, edge: null, progress: 0, direction: index % 4,
+      goal: null, safe: clock + 1.3, captured: -10, trail: 0, bite: -1
+    };
+  }
+
+  function resizeTeam(team, count, ghost) {
+    while (team.length < count) team.push(spawn(ghost, team.length));
+    while (team.length > count) {
+      const actor = team.pop();
+      actor.group.traverse(item => item.material?.dispose());
+      if (ghost) actor.flat.geometry.dispose();
+      scene.remove(actor.group);
+      for (const mesh of [actor.glow, actor.corner]) {
+        floor.remove(mesh);
+        mesh.material.dispose();
+      }
+    }
+  }
+
+  function feature(name) {
+    const setting = config.features[name];
+    return setting.enabled ? setting.strength : 0;
+  }
+
+  function emit(name, x, z, color, size, life, dx = 0, dz = 0) {
+    if (!feature(name)) return;
+    const mesh = effects[effectIndex++ % effects.length];
+    mesh.material.color.set(color);
+    mesh.userData = { name, x, z, size, life, dx, dz, start: clock };
+  }
+
+  const activePower = () => clock < powerEnd;
+  const anchor = actor => actor.edge?.next ?? actor.cell;
+  const controlled = () => pacmen[config.input.player - 1] ?? pacmen[0];
+  const distance = (a, b) => routes[a.id][b.id];
+
+  function closest(team, cell) {
+    return team.reduce((best, actor) =>
+      !best || distance(anchor(actor), cell) < distance(anchor(best), cell) ? actor : best, null);
+  }
+
+  function choose(actor) {
+    const { cell, direction, ghost, index } = actor;
+    const forward = cell.links.filter(link => link.direction !== (direction + 2) % 4);
+    let options = forward.length ? forward : cell.links;
+    if (!ghost && config.input.control && actor === controlled() && manual &&
+        clock - manual.time < config.input.idle) {
+      return cell.links.find(link => link.direction === manual.direction)
+        ?? cell.links.find(link => link.direction === direction) ?? null;
+    }
+    let goal;
+    if (ghost) {
+      const target = index % 4 === 0 ? closest(pacmen, cell) : pacmen[index % pacmen.length];
+      goal = anchor(target);
+      const role = index % 4;
+      if (!activePower() && role === 1) {
+        for (let step = 0; step < 4; step++) {
+          goal = goal.links.find(link => link.direction === target.direction)?.next ?? goal;
+        }
+      }
+      if (!activePower() && role === 2) {
+        const exits = junctions.filter(node => distance(node, goal) >= 3 && distance(node, goal) <= 6);
+        goal = exits.sort((a, b) => distance(cell, a) - distance(cell, b))[0] ?? goal;
+      }
+      if (!activePower() && role === 3 && distance(cell, goal) > 5) {
+        if (!actor.goal || actor.goal === cell) {
+          actor.goal = junctions[(index * 7 + Math.floor(clock * 3)) % junctions.length];
+        }
+        goal = actor.goal;
+      }
+      if (activePower()) {
+        return options.reduce((best, link) =>
+          distance(link.next, goal) > distance(best.next, goal) ? link : best);
+      }
+    } else if (dropped && closest(pacmen, dropped) === actor) {
+      goal = dropped;
+      options = cell.links;
+    } else if (activePower() && ghosts.length) {
+      goal = anchor(closest(ghosts, cell));
+    } else {
+      const danger = closest(ghosts, cell);
+      if (danger && distance(anchor(danger), cell) < 4) {
+        return options.reduce((best, link) =>
+          distance(link.next, anchor(danger)) > distance(best.next, anchor(danger)) ? link : best);
+      }
+      if (!actor.goal || actor.goal === cell || actor.goal.ready > clock) {
+        const edible = regular.filter(node => node !== cell && node.ready <= clock);
+        edible.sort((a, b) => distance(cell, a) - distance(cell, b));
+        actor.goal = edible[Math.floor(Math.random() * Math.min(5, edible.length))]
+          ?? junctions[(index + Math.floor(clock)) % junctions.length];
+      }
+      goal = actor.goal;
+    }
+    return options.reduce((best, link) =>
+      distance(link.next, goal) < distance(best.next, goal) ? link : best);
+  }
+
+  function eat(actor) {
+    const cell = actor.cell;
+    if (powers.has(cell) && powers.get(cell) <= clock) {
+      if (cell === dropped) {
+        powers.delete(cell);
+        dropped = null;
+      } else powers.set(cell, clock + 31);
+      powerStart = clock;
+      powerEnd = clock + config.chase.power;
+      wave = cell;
+    } else if (!powers.has(cell) && cell.ready <= clock) {
+      cell.ready = clock + config.chase.refill + ((cell.x + cell.z) % 5) * .15;
+      const [dx, dz] = directions[actor.direction];
+      for (const side of [-1, 1]) {
+        emit('sparks', xAt(cell.x), zAt(cell.z), yellow, .055, .46,
+          -dx * 1.4 + dz * side * .55, -dz * 1.4 - dx * side * .55);
+      }
+    }
+  }
+
+  function step(actor, dt) {
+    if (clock - actor.captured < .38) return;
+    if (!actor.edge) {
+      actor.edge = choose(actor);
+      if (!actor.edge) {
+        actor.progress = 0;
+        return;
+      }
+      actor.direction = actor.edge.direction;
+      if (actor.edge.wrap) {
+        const [dx] = directions[actor.direction];
+        emit('tunnel', xAt(actor.cell.x), zAt(actor.cell.z), actor.color, .65, .4, dx * 2);
+        emit('tunnel', xAt(actor.edge.next.x), zAt(actor.cell.z), actor.color, .65, .5, dx);
+      }
+    }
+    const pace = actor.ghost ? (activePower() ? .64 : .91) : 1;
+    actor.progress += dt * config.chase.speed * pace;
+    if (actor.progress >= 1) {
+      actor.cell = actor.edge.next;
+      actor.edge = null;
+      actor.progress -= 1;
+      if (!actor.ghost) eat(actor);
+    }
+  }
+
+  function position(actor) {
+    const [dx, dz] = directions[actor.direction];
+    const fraction = actor.edge ? actor.progress : 0;
+    let x = actor.cell.x + dx * fraction;
+    if (x < -.5) x += width;
+    if (x > width - .5) x -= width;
+    return [xAt(x), zAt(actor.cell.z + dz * fraction)];
+  }
+
+  function reset(actor) {
+    actor.cell = actor.ghost ? actor.home : grid[tunnelRow][actor.index % 2 ? width - 1 : 0];
+    actor.direction = actor.index % 2 ? 2 : 0;
+    actor.captured = clock;
+    actor.edge = null;
+    actor.progress = 0;
+    actor.goal = null;
+    actor.safe = clock + 1.5;
+  }
+
+  function simulate(dt) {
+    clock += dt;
+    resizeTeam(pacmen, config.chase.pacmen, false);
+    resizeTeam(ghosts, config.chase.ghosts, true);
+    for (const pac of pacmen) step(pac, dt);
+    for (const ghost of ghosts) {
+      step(ghost, dt);
+      const [gx, gz] = position(ghost);
+      for (const pac of pacmen) {
+        if (clock < pac.safe || clock < ghost.safe) continue;
+        const [px, pz] = position(pac);
+        const dx = Math.abs(px - gx);
+        if (Math.hypot(Math.min(dx, width - dx), pz - gz) > .53) continue;
+        reset(activePower() ? ghost : pac);
+        break;
+      }
+    }
+  }
+
+  function setDisk(mesh, x, z, size, opacity, color) {
+    mesh.position.x = x;
+    mesh.position.z = z;
+    mesh.scale.setScalar(size);
+    mesh.material.opacity = opacity;
+    if (color !== undefined) mesh.material.color.set(color);
+    mesh.visible = opacity > .001;
+  }
+
+  function drawActor(actor, is3D, dim) {
+    const [x, z] = position(actor);
+    const frightened = actor.ghost && activePower();
+    const blue = frightened && (!feature('surge') ||
+      clock - powerStart >= distance(wave, anchor(actor)) / 19);
+    const color = blue ? '#397aff' : actor.color;
+    dim *= Math.min(1, .2 + (clock - actor.captured) * 1.8);
+    const angle = actor.direction * Math.PI / 2;
+    actor.group.position.set(x, is3D ? .36 : .25, z);
+    actor.group.rotation.y = -angle;
+    actor.flat.visible = !is3D;
+    actor.solid.visible = is3D;
+    light.set(color).multiplyScalar(dim);
+    actor.flat.material.color.copy(light);
+    actor.solid.material.color.copy(light);
+    if (actor.skirt) {
+      actor.skirt.visible = is3D;
+      actor.skirt.material.color.copy(light);
+    }
+    if (!actor.ghost) {
+      const bite = Math.floor((1 + Math.sin(clock * 25)) * 3);
+      if (bite !== actor.bite) {
+        actor.flat.geometry = mouths[bite].flat;
+        actor.solid.geometry = mouths[bite].solid;
+        actor.bite = bite;
+      }
+    }
+    let look = actor.direction;
+    if (actor.ghost && frightened) {
+      const pac = closest(pacmen, actor.cell);
+      const next = actor.cell.links.reduce((best, link) =>
+        distance(link.next, anchor(pac)) < distance(best.next, anchor(pac)) ? link : best);
+      look = next.direction;
+    } else if (actor.ghost && actor.edge && actor.progress > .6) {
+      const next = actor.edge.next;
+      look = choose({ ...actor, cell: next })?.direction ?? actor.direction;
+    }
+    const eyeAngle = (look - actor.direction) * Math.PI / 2;
+    for (const { x: offset, eye, pupil } of actor.eyes) {
+      eye.position.set(.14, is3D ? .22 : .04, offset);
+      pupil.position.copy(eye.position);
+      pupil.position.y += .055;
+      pupil.position.x += Math.cos(eyeAngle) * feature('eyes');
+      pupil.position.z += Math.sin(eyeAngle) * feature('eyes');
+    }
+    const reflection = is3D && actor.ghost ? feature('pools') * .42 : 0;
+    setDisk(actor.glow, x, z, is3D ? .98 : .7, dim * (.11 + reflection), color);
+    const next = anchor(actor);
+    setDisk(actor.corner, xAt(next.x), zAt(next.z), .85,
+      actor.ghost ? feature('corners') * actor.progress * .28 : 0, color);
+    if (!is3D && clock >= actor.trail) {
+      emit('crt', Math.round(x * 8) / 8, Math.round(z * 8) / 8, color, .34, .36);
+      actor.trail = clock + .06;
+    }
+  }
+
+  function draw() {
+    const is3D = config.view.mode === '3D';
+    const elapsed = clock - powerStart;
+    const dim = config.style.brightness *
+      (1 - .85 * feature('surge') * Math.max(0, 1 - elapsed / .7));
+    scene.background = new T.Color(config.style.background).multiplyScalar(.55 + dim * .45);
+    wallMaterial.color.set(config.style.wall).multiplyScalar(dim * (is3D ? .66 : .37));
+    wallMaterial.transparent = is3D;
+    wallMaterial.depthWrite = !is3D;
+    wallMaterial.opacity = is3D ? config.style.glass : 1;
+    edgeMaterial.color.set(config.style.wall).multiplyScalar(dim);
+    walls.scale.y = is3D ? 1 : .08;
+    dotMaterial.color.set(yellow).multiplyScalar(dim);
+    powerMaterial.color.set('#ffbd53').multiplyScalar(dim);
+    for (const cell of cells) {
+      const power = powers.has(cell);
+      const ready = power ? powers.get(cell) : cell.ready;
+      const growth = feature('regrowth');
+      const fade = growth ? Math.min(1, (clock - ready) / (.25 + growth)) : 1;
+      const visible = clock >= ready;
+      cell.dot.visible = visible;
+      cell.dot.material = power ? powerMaterial : dotMaterial;
+      const size = power ? .18 + .045 * Math.sin(clock * 6) : .072;
+      cell.dot.scale.setScalar(size * (power ? 1 : Math.max(.14, fade)));
+      const pulse = wave && feature('surge') *
+        Math.max(0, 1 - Math.abs(distance(wave, cell) - elapsed * 19) / 2.2);
+      const pool = is3D && visible ? feature('pools') * size * dim * 1.4 : 0;
+      setDisk(cell.pool, xAt(cell.x), zAt(cell.z), pulse ? .55 : .31,
+        Math.max(pool, pulse * .55), pulse ? '#276fff' : '#ffad37');
+    }
+    if (dropped) {
+      const gap = distance(anchor(closest(pacmen, dropped)), dropped);
+      setDisk(charge, xAt(dropped.x), zAt(dropped.z),
+        .35 + Math.min(gap, 12) * .045 + .12 * (1 + Math.sin(clock * 5)),
+        feature('rings') * .52);
+    } else charge.visible = false;
+    const predicted = new Map();
+    pressure.visible = false;
+    for (const ghost of ghosts) {
+      const cell = anchor(ghost);
+      if (cell.links.length < 3) continue;
+      if (predicted.has(cell) && !activePower()) {
+        setDisk(pressure, xAt(cell.x), zAt(cell.z), .66, feature('pressure') * .45,
+          light.set(ghost.color).lerp(new T.Color(predicted.get(cell)), .5));
+        break;
+      }
+      predicted.set(cell, ghost.color);
+    }
+    for (const actor of [...pacmen, ...ghosts]) drawActor(actor, is3D, dim);
+    for (const mesh of effects) {
+      const { name, x, z, size, life, dx, dz, start } = mesh.userData;
+      const age = clock - start;
+      if (age < life && (name !== 'crt' || !is3D)) {
+        setDisk(mesh, x + dx * age, z + dz * age, size * (1 + age),
+          feature(name) * (1 - age / life) * dim * .65);
+      } else mesh.visible = false;
+    }
+    scan.style.opacity = is3D ? 0 : feature('crt') * .46;
+  }
+
+  let camera;
+  function frameCamera() {
+    const aspect = Math.max(1, canvas.clientWidth) / Math.max(1, canvas.clientHeight);
+    if (config.view.mode === '2D') {
+      const { zoom, panX, panY } = config.view;
+      const half = Math.max(height / 2, width / 2 / aspect) / zoom;
+      Object.assign(ortho, { left: -half * aspect, right: half * aspect, top: half, bottom: -half });
+      const x = T.MathUtils.clamp(panX, -Math.max(0, width / 2 - half * aspect),
+        Math.max(0, width / 2 - half * aspect));
+      const z = T.MathUtils.clamp(panY, -Math.max(0, height / 2 - half),
+        Math.max(0, height / 2 - half));
+      ortho.position.set(x, 32, z);
+      ortho.up.set(0, 0, -1);
+      ortho.lookAt(x, 0, z);
+      camera = ortho;
+    } else {
+      const { zoom, panX, panY, tilt, rotation, fov } = config.camera;
+      const pitch = T.MathUtils.degToRad(tilt);
+      const angle = T.MathUtils.degToRad(rotation);
+      const distance = Math.hypot(width, height) /
+        (2 * Math.tan(T.MathUtils.degToRad(fov / 2)) * Math.min(1, aspect) * zoom);
+      perspective.aspect = aspect;
+      perspective.fov = fov;
+      perspective.position.set(panX + Math.sin(angle) * Math.sin(pitch) * distance,
+        Math.cos(pitch) * distance, panY + Math.cos(angle) * Math.sin(pitch) * distance);
+      perspective.lookAt(panX, 0, panY);
+      camera = perspective;
+    }
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+  }
+
+  const scan = document.querySelector('#scan');
+  const keys = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'];
+  function steer(direction) {
+    if (camera === perspective) {
+      const angle = T.MathUtils.degToRad(config.camera.rotation);
+      const [x, z] = directions[direction];
+      const worldX = x * Math.cos(angle) + z * Math.sin(angle);
+      const worldZ = z * Math.cos(angle) - x * Math.sin(angle);
+      direction = Math.abs(worldX) > Math.abs(worldZ)
+        ? (worldX > 0 ? 0 : 2) : (worldZ > 0 ? 1 : 3);
+    }
+    manual = { direction, time: clock };
+  }
+  window.addEventListener('keydown', event => {
+    const direction = keys.indexOf(event.key);
+    if (!config.input.control || direction < 0 || event.altKey || event.ctrlKey ||
+        event.metaKey || event.target.closest?.('#maze-settings')) return;
+    event.preventDefault();
+    steer(direction);
+  });
+  canvas.addEventListener('pointerdown', event => {
+    if (!event.isPrimary || event.button !== 0) return;
+    pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    canvas.setPointerCapture(event.pointerId);
+  });
+  canvas.addEventListener('pointercancel', () => { pointer = null; });
+  canvas.addEventListener('pointerup', event => {
+    if (pointer?.id !== event.pointerId) return;
+    const dx = event.clientX - pointer.x;
+    const dy = event.clientY - pointer.y;
+    pointer = null;
+    if (Math.hypot(dx, dy) > 22) {
+      if (config.input.control) steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3));
+      return;
+    }
+    if (!config.input.drop || !camera) return;
+    const rect = canvas.getBoundingClientRect();
+    mouse.set((event.clientX - rect.left) / rect.width * 2 - 1,
+      1 - (event.clientY - rect.top) / rect.height * 2);
+    ray.setFromCamera(mouse, camera);
+    if (!ray.ray.intersectPlane(plane, hit)) return;
+    const cell = grid[Math.round(hit.z + (height - 1) / 2)]?.[Math.round(hit.x + (width - 1) / 2)];
+    if (!cell || powers.has(cell) || cell.ready <= clock ||
+        [...pacmen, ...ghosts].some(actor => actor.cell === cell || anchor(actor) === cell)) return;
+    if (dropped) powers.delete(dropped);
+    dropped = cell;
+    powers.set(cell, 0);
+  });
+
+  function applyInputSettings() {
+    canvas.style.touchAction = config.input.control ? 'none' : 'manipulation';
+    if (!config.input.control) manual = null;
+  }
+
+  if (typeof window.MidnightMazeSettings === 'function') {
+    window.MidnightMazeSettings({ config, defaults, presets, onChange: applyInputSettings });
+  } else {
+    applyInputSettings();
+    status.textContent = 'Settings unavailable. Put settings-editor.js next to index.html and reload.';
+  }
+  let last = performance.now();
+  let accumulator = 0;
+  let size = '';
+  function frame(now) {
+    const width = Math.max(1, canvas.clientWidth);
+    const height = Math.max(1, canvas.clientHeight);
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    const nextSize = [width, height, ratio].join('/');
+    if (nextSize !== size) {
+      renderer.setPixelRatio(ratio);
+      renderer.setSize(width, height, false);
+      size = nextSize;
+    }
+    accumulator += Math.min(.08, (now - last) / 1000);
+    last = now;
+    while (accumulator >= 1 / 120) {
+      simulate(1 / 120);
+      accumulator -= 1 / 120;
+    }
+    if (!pacmen.length) simulate(0);
+    frameCamera();
+    draw();
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
