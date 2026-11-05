@@ -21,14 +21,14 @@ export function mountEditor({
 
         "perspective.distance": [300, 1200, 10],
         "perspective.horizon": [0.2, 0.65, 0.01],
-        "perspective.spread": [200, 1200, 10],
+        "perspective.spread": [200, 3000, 10],
         "perspective.depth": [400, 2500, 10],
         "perspective.rotation": [-0.5, 0.5, 0.01],
 
         "appearance.lineWidth": [0, 3, 0.1],
         "appearance.opacity": [0, 1, 0.01],
         "appearance.constructionOpacity": [0, 0.5, 0.01],
-        "appearance.faceOpacity": [0, 0.2, 0.005],
+        "appearance.faceOpacity": [0, 1, 0.05],
 
         "mouse.radius": [50, 500, 1],
         "mouse.extraFloors": [0, 8, 1],
