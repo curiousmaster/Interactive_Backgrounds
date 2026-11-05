@@ -1,1796 +1,829 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Chromatic Ribbons</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Capillary Light</title>
 
-<style>
-  html, body {
-    margin: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: #050810;
-  }
+  <style>
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #080d17;
+    }
 
-  #background {
-    position: fixed;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-  }
-</style>
+    #renderer-status {
+      position: fixed;
+      inset: auto 1rem 0;
+      color: white;
+      font: 14px system-ui, sans-serif;
+    }
+
+    #background {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+  </style>
 </head>
 
 <body>
-<canvas id="background" aria-hidden="true"></canvas>
+  <canvas id="background" aria-hidden="true"></canvas>
 
-<script type="module">
-const config = {
-  "ribbons": {
-    "points": 20,
-    "speed": 110,
-    "stepsPerSecond": 350,
-    "lineWidth": 1.5,
-    "opacity": 0.008,
-    "curvature": 0.4
-  },
-  "colors": {
-    "hue": 265,
-    "hueSpread": 75,
-    "saturation": 85,
-    "lightness": 65,
-    "hueDrift": 3,
-    "randomizeOnReset": true,
-    "additive": true
-  },
-  "canvas": {
-    "backgroundColor": [
-      0,
-      0,
-      0
-    ],
-    "trailLifetime": 10,
-    "pixelRatio": 1
-  },
-  "mouse": {
-    "enabled": false,
-    "radius": 330,
-    "attraction": 85,
-    "swirl": 150,
-    "ribbonBend": 34,
-    "flowInfluence": 1.5,
-    "dragStrength": 0.8,
-    "holdMultiplier": 2,
-    "smoothing": 8,
-    "doubleClickToReset": true
-  },
-  "animation": {
-    "speed": 2.35,
-    "paused": false,
-    "respectReducedMotion": true
-  },
-  "panel": {
-    "enabled": true
-  },
-  "features": {
-    "bloom": {
-      "enabled": false,
-      "strength": 1.2,
-      "radius": 5,
-      "threshold": 0.35
-    },
-    "iridescence": {
-      "enabled": false,
-      "strength": 0.45,
-      "frequency": 2,
-      "speed": 0.4
-    },
-    "depth": {
-      "enabled": true,
-      "range": 0.8,
-      "perspective": 0.7,
-      "tilt": 15
-    },
-    "depthOfField": {
-      "enabled": false,
-      "focus": 0,
-      "focusRange": 0.3,
-      "blur": 6
-    },
-    "pulses": {
-      "enabled": false,
-      "speed": 160,
-      "length": 90,
-      "frequency": 0.7,
-      "intensity": 2
-    },
-    "surface": {
-      "enabled": false,
-      "type": "bands",
-      "scale": 3.4,
-      "contrast": 0.4,
-      "speed": 25
-    },
-    "vortices": {
-      "enabled": false,
-      "count": 3,
-      "radius": 300,
-      "strength": 100,
-      "wander": 0.3
-    },
-    "sparks": {
-      "enabled": true,
-      "rate": 28,
-      "size": 10,
-      "lifetime": 0.7,
-      "brightness": 3.6
-    },
-    "chromatic": {
-      "enabled": false,
-      "distance": 2,
-      "direction": 25,
-      "threshold": 0.15
-    },
-    "breathing": {
-      "enabled": false,
-      "width": 0.45,
-      "brightness": 0.35,
-      "frequency": 0.35,
-      "synchronization": 0.5
+  <p id="renderer-status" role="status" hidden></p>
+
+  <script type="module">
+    const config = {
+      channels: {
+        spacing: 45,
+        branching: 0.4,
+        irregularity: 0.65,
+        width: 1.1,
+        opacity: 0.08
+      },
+
+      ink: {
+        propagationSpeed: 2,
+        diffusion: 0.7,
+        sourceLifetime: 5,
+        sourceInterval: 4,
+        decay: 0.22,
+        intensity: 0.85,
+        glow: 9
+      },
+
+      mouse: {
+        enabled: true,
+        radius: 110,
+        strength: 1.4,
+        smoothing: 8,
+        colorCycleSpeed: 0.3,
+        showHalo: true
+      },
+
+      appearance: {
+        backgroundColor: [8, 13, 23],
+        channelColor: [91, 119, 138],
+        colorA: [81, 193, 196],
+        colorB: [185, 111, 211],
+        colorC: [236, 164, 102]
+      },
+
+      animation: {
+        speed: 1,
+        paused: false,
+        respectReducedMotion: true
+      },
+
+      features: {
+        view3D: { enabled: false, perspective: true, depth: 95, tilt: 22, zoom: 1 },
+        curves: { enabled: false, curvature: 0.35, variation: 0.5 },
+        sparks: { enabled: false, threshold: 0.2, brightness: 1.4, duration: 0.22 },
+        pulses: { enabled: false, speed: 85, length: 19, density: 0.4 },
+        particles: { enabled: false, count: 2, size: 1.4, speed: 55 },
+        bleed: { enabled: false, spread: 20, persistence: 2.5, opacity: 0.18 },
+        bloom: { enabled: false, threshold: 0.25, strength: 0.6, radius: 17 },
+        shockwaves: { enabled: false, speed: 330, width: 22, strength: 1 },
+        iridescence: { enabled: false, hueRange: 85, strength: 0.45, speed: 0.35 },
+        interference: { enabled: false, threshold: 0.15, spacing: 8, contrast: 0.5 }
+      },
+
+      panel: {
+        enabled: true
+      }
+    };
+
+    window.getBackgroundConfig = () =>
+      JSON.parse(JSON.stringify(config));
+
+    const canvas = document.querySelector("#background");
+    const gl = canvas.getContext("webgl2", { alpha: false, antialias: false });
+    const status = document.querySelector("#renderer-status");
+    if (!gl) {
+      status.textContent = "Capillary Light requires WebGL2.";
+      status.hidden = false;
+      throw new Error("WebGL2 is unavailable.");
     }
-  }
-};
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
-window.getBackgroundConfig = () =>
-  JSON.parse(JSON.stringify(config));
+    let width = 1;
+    let height = 1;
+    let nodes = [];
+    let edges = [];
+    let sources = [];
+    let graphKey = "";
+    let time = 0;
+    let sourceClock = 0;
+    let previous = null;
 
-const canvas = document.querySelector("#background");
+    const mouse = {
+      x: 0,
+      y: 0,
+      targetX: 0,
+      targetY: 0,
+      active: false,
+      influence: 0
+    };
 
-const gl = canvas.getContext("webgl", {
-  alpha: false,
-  depth: false,
-  antialias: false
-});
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const waves = [];
+    let renderer;
+    let projectionKey = "";
+    let edgeData;
+    let nodeData;
 
-if (!gl) {
-  document.body.insertAdjacentHTML(
-    "beforeend",
-    '<p style="color:white;padding:24px">WebGL is unavailable. Enable hardware acceleration.</p>'
-  );
-  throw new Error("WebGL unavailable");
-}
+    function buildGraph() {
+      nodes = [];
+      edges = [];
+      sources = [];
+      sourceClock = 0;
 
-const precision = gl.getShaderPrecisionFormat(
-  gl.FRAGMENT_SHADER,
-  gl.HIGH_FLOAT
-).precision ? "highp" : "mediump";
+      const spacing = config.channels.spacing;
+      const columns = Math.max(2, Math.ceil(width / spacing) + 3);
+      const rows = Math.max(2, Math.ceil(height / spacing) + 3);
 
-const header = `precision ${precision} float;\n`;
+      for (let row = 0; row < rows; row++) {
+        for (let column = 0; column < columns; column++) {
+          const jitter = spacing * config.channels.irregularity * 0.65;
 
-const projection = `
-  uniform vec2 uSize;
-  uniform vec3 uDepth;
+          nodes.push({
+            x: (column - 1) * spacing + (Math.random() - 0.5) * jitter,
+            y: (row - 1) * spacing + (Math.random() - 0.5) * jitter,
+            screenX: 0,
+            screenY: 0,
+            scale: 1,
+            stain: 0,
+            pulseDistance: -1,
+            neighbors: [],
+            ink: [0, 0, 0],
+            next: [0, 0, 0]
+          });
+        }
+      }
 
-  vec2 project(vec2 p, float z) {
-    vec2 q = p - uSize * 0.5;
-    float angle = uDepth.z;
-    float zz = z * uDepth.x;
+      function connect(a, b) {
+        nodes[a].neighbors.push(b);
+        nodes[b].neighbors.push(a);
+        edges.push([a, b, Math.random()]);
+      }
 
-    q.y = q.y * cos(angle) -
-      zz * uSize.y * 0.25 * sin(angle);
+      // Every row joins the one above, keeping the network connected.
+      // Additional horizontal links create branching and alternate paths.
+      for (let row = 0; row < rows; row++) {
+        for (let column = 0; column < columns; column++) {
+          const index = row * columns + column;
 
-    float perspective = 1.0 /
-      max(0.4, 1.0 + zz * uDepth.y * 0.45);
+          if (row > 0) {
+            const shift = Math.random() < 0.3
+              ? (Math.random() < 0.5 ? -1 : 1)
+              : 0;
 
-    return q * perspective + uSize * 0.5;
-  }
-`;
+            const parentColumn = clamp(column + shift, 0, columns - 1);
+            connect(index, (row - 1) * columns + parentColumn);
+          }
 
-const ribbonVS = header + projection + `
-  attribute vec4 aGeometry;
-  attribute vec4 aColorBorn;
-  attribute vec4 aDetail;
+          if (
+            column > 0 &&
+            (row === 0 || Math.random() < config.channels.branching)
+          ) {
+            connect(index, index - 1);
+          }
+        }
+      }
 
-  uniform float uTime, uWidth;
-  uniform vec4 uBreathing;
-  uniform vec4 uFocus;
+      graphKey = JSON.stringify([
+        width,
+        height,
+        config.channels.spacing,
+        config.channels.branching,
+        config.channels.irregularity
+      ]);
 
-  varying vec3 vColor;
-  varying vec4 vDetail;
-  varying vec3 vEdge;
+      // Give junctions a common pulse phase across all connected branches.
+      const queue = [Math.floor(columns / 2)];
+      nodes[queue[0]].pulseDistance = 0;
+      for (let index = 0; index < queue.length; index++) {
+        const node = nodes[queue[index]];
+        for (const neighbor of node.neighbors) {
+          if (nodes[neighbor].pulseDistance >= 0) continue;
+          nodes[neighbor].pulseDistance = node.pulseDistance + spacing;
+          queue.push(neighbor);
+        }
+      }
 
-  void main() {
-    float phase = aDetail.w * (1.0 - uBreathing.w);
-
-    float wave = sin(
-      uTime * uBreathing.z * 6.283185 + phase
-    );
-
-    float breathWidth = 1.0 + uBreathing.x * wave;
-    float z = aDetail.z;
-
-    float focus = max(
-      0.0,
-      abs(z - uFocus.x) - uFocus.y
-    );
-
-    float blur = uFocus.z * focus;
-
-    float perspective = 1.0 /
-      max(0.4, 1.0 + z * uDepth.x * uDepth.y * 0.45);
-
-    float halfWidth =
-      uWidth * 0.5 * breathWidth * perspective;
-
-    float extent = halfWidth + 1.0 + blur * 3.0;
-
-    vec2 p = project(aGeometry.xy, z) +
-      aGeometry.zw * extent;
-
-    vec2 clip = p / uSize * 2.0 - 1.0;
-
-    gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
-
-    vColor = aColorBorn.rgb *
-      (1.0 + uBreathing.y * wave);
-
-    vDetail = vec4(
-      aColorBorn.a,
-      aDetail.xy,
-      aDetail.w
-    );
-
-    vEdge = vec3(halfWidth, extent, blur);
-  }
-`;
-
-const ribbonFS = header + `
-  uniform float uTime, uLifetime, uOpacity;
-  uniform vec3 uIridescence;
-  uniform vec4 uPulse;
-  uniform vec4 uSurface;
-
-  varying vec3 vColor;
-  varying vec4 vDetail;
-  varying vec3 vEdge;
-
-  void main() {
-    float life = clamp(
-      1.0 - (uTime - vDetail.x) / uLifetime,
-      0.0,
-      1.0
-    );
-
-    float fade = life * life * (3.0 - 2.0 * life);
-    float side = vDetail.y;
-    float along = vDetail.z;
-    float distance = abs(side) * vEdge.y;
-    float blur = vEdge.z;
-    float coverage;
-
-    if (blur > 0.05) {
-      float sigma = max(0.5, blur);
-      float outside = max(0.0, distance - vEdge.x);
-
-      coverage = exp(
-        -0.5 * outside * outside / (sigma * sigma)
-      );
-
-      coverage *= vEdge.x / (vEdge.x + sigma);
-    } else {
-      coverage = 1.0 - smoothstep(
-        max(0.0, vEdge.x - 0.5),
-        vEdge.x + 0.5,
-        distance
-      );
+      edgeData = new Float32Array(edges.length * 20);
+      nodeData = new Float32Array((nodes.length + 1) * 8);
+      projectionKey = "";
+      waves.length = 0;
+      for (let i = 0; i < 3; i++) addSource(i);
     }
 
-    vec3 color = vColor;
-
-    vec3 rainbow = 0.5 + 0.5 * cos(
-      vec3(0.0, 2.094, 4.189) +
-      side * uIridescence.y * 6.283185 +
-      uTime * uIridescence.z +
-      along * 0.003
-    );
-
-    color = mix(color, rainbow, uIridescence.x);
-
-    float spacing = max(
-      uPulse.y * 1.5,
-      uPulse.x / max(0.01, uPulse.z)
-    );
-
-    float pulseDistance = abs(
-      mod(
-        along - uTime * uPulse.x + spacing * 0.5,
-        spacing
-      ) - spacing * 0.5
-    );
-
-    float pulse = exp(
-      -pow(
-        pulseDistance / max(1.0, uPulse.y * 0.4),
-        2.0
-      )
-    );
-
-    color *= 1.0 + pulse * uPulse.w;
-
-    float coord =
-      along * uSurface.y * 0.08 -
-      uTime * uSurface.w * 0.08;
-
-    float pattern = 1.0;
-
-    if (uSurface.x < 1.5) {
-      pattern = 0.5 + 0.5 * sin(
-        side * uSurface.y * 30.0 + sin(coord)
-      );
-    } else if (uSurface.x < 2.5) {
-      pattern = fract(
-        sin(
-          floor(coord * 8.0) * 127.1 +
-          floor(side * 35.0) * 311.7
-        ) * 43758.5453
-      );
-    } else {
-      pattern = 0.5 + 0.5 * sin(coord + side * 4.0);
-    }
-
-    color *= mix(
-      1.0,
-      0.35 + pattern * 0.65,
-      uSurface.z
-    );
-
-    float alpha = uOpacity * fade * coverage;
-
-    if (alpha <= 0.00001) discard;
-
-    gl_FragColor = vec4(color, alpha);
-  }
-`;
-
-const quadVS = header + `
-  attribute vec2 aPosition;
-  varying vec2 vUV;
-
-  void main() {
-    vUV = aPosition * 0.5 + 0.5;
-    gl_Position = vec4(aPosition, 0.0, 1.0);
-  }
-`;
-
-const postFS = header + `
-  uniform sampler2D uImage, uGlow;
-  uniform vec2 uDirection, uSeparation;
-
-  uniform float uMode;
-  uniform float uThreshold;
-  uniform float uStrength;
-  uniform float uChromaticThreshold;
-
-  uniform vec3 uBackground;
-
-  varying vec2 vUV;
-
-  void main() {
-    vec3 color = texture2D(uImage, vUV).rgb;
-
-    if (uMode < 0.5) {
-      float brightness = max(
-        color.r,
-        max(color.g, color.b)
-      );
-
-      color *= smoothstep(
-        uThreshold,
-        uThreshold + 0.15,
-        brightness
-      );
-    } else if (uMode < 1.5) {
-      color =
-        texture2D(uImage, vUV).rgb * 0.227027;
-
-      color += texture2D(
-        uImage,
-        vUV + uDirection * 1.384615
-      ).rgb * 0.316216;
-
-      color += texture2D(
-        uImage,
-        vUV - uDirection * 1.384615
-      ).rgb * 0.316216;
-
-      color += texture2D(
-        uImage,
-        vUV + uDirection * 3.230769
-      ).rgb * 0.070270;
-
-      color += texture2D(
-        uImage,
-        vUV - uDirection * 3.230769
-      ).rgb * 0.070270;
-    } else {
-      vec3 separated = vec3(
-        texture2D(uImage, vUV + uSeparation).r,
-        color.g,
-        texture2D(uImage, vUV - uSeparation).b
-      );
-
-      float brightness = max(
-        color.r,
-        max(color.g, color.b)
-      );
-
-      color = mix(
-        color,
-        separated,
-        smoothstep(
-          uChromaticThreshold,
-          uChromaticThreshold + 0.15,
-          brightness
-        )
-      );
-
-      color += texture2D(uGlow, vUV).rgb * uStrength;
-      color = uBackground + color;
-    }
-
-    gl_FragColor = vec4(color, 1.0);
-  }
-`;
-
-const sparkVS = header + projection + `
-  attribute vec3 aPosition;
-  attribute vec4 aColor;
-
-  uniform float uPixelRatio;
-
-  varying vec4 vSpark;
-
-  void main() {
-    vec2 p = aPosition.xy / uSize * 2.0 - 1.0;
-
-    gl_Position = vec4(p.x, -p.y, 0.0, 1.0);
-    gl_PointSize = aPosition.z * uPixelRatio;
-
-    vSpark = aColor;
-  }
-`;
-
-const sparkFS = header + `
-  varying vec4 vSpark;
-
-  void main() {
-    float r = length(gl_PointCoord - 0.5) * 2.0;
-
-    if (r >= 1.0) discard;
-
-    gl_FragColor = vec4(
-      vSpark.rgb,
-      vSpark.a * exp(-r * r * 5.0) * (1.0 - r)
-    );
-  }
-`;
-
-function makeProgram(vertex, fragment, attributes, names) {
-  const shaders = [vertex, fragment].map((source, i) => {
-    const shader = gl.createShader(
-      i ? gl.FRAGMENT_SHADER : gl.VERTEX_SHADER
-    );
-
-    gl.shaderSource(shader, source);
-    gl.compileShader(shader);
-
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      throw new Error(gl.getShaderInfoLog(shader));
-    }
-
-    return shader;
-  });
-
-  const program = gl.createProgram();
-
-  shaders.forEach(shader => gl.attachShader(program, shader));
-  gl.linkProgram(program);
-
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    throw new Error(gl.getProgramInfoLog(program));
-  }
-
-  shaders.forEach(shader => gl.deleteShader(shader));
-
-  return {
-    p: program,
-
-    attributes: attributes.map(([name, size, offset]) => [
-      gl.getAttribLocation(program, name),
-      size,
-      offset
-    ]),
-
-    u: Object.fromEntries(
-      names.split(" ").map(name => [
-        name,
-        gl.getUniformLocation(program, name)
-      ])
-    )
-  };
-}
-
-const ribbonProgram = makeProgram(
-  ribbonVS,
-  ribbonFS,
-  [
-    ["aGeometry", 4, 0],
-    ["aColorBorn", 4, 4],
-    ["aDetail", 4, 8]
-  ],
-  "uSize uDepth uTime uWidth uBreathing uFocus " +
-  "uLifetime uOpacity uIridescence uPulse uSurface"
-);
-
-const postProgram = makeProgram(
-  quadVS,
-  postFS,
-  [["aPosition", 2, 0]],
-  "uImage uGlow uDirection uSeparation uMode uThreshold " +
-  "uStrength uChromaticThreshold uBackground"
-);
-
-const sparkProgram = makeProgram(
-  sparkVS,
-  sparkFS,
-  [
-    ["aPosition", 3, 0],
-    ["aColor", 4, 3]
-  ],
-  "uSize uDepth uPixelRatio"
-);
-
-const ribbonBuffer = gl.createBuffer();
-const sparkBuffer = gl.createBuffer();
-const quadBuffer = gl.createBuffer();
-
-gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
-
-gl.bufferData(
-  gl.ARRAY_BUFFER,
-  new Float32Array([
-    -1, -1,
-     1, -1,
-    -1,  1,
-    -1,  1,
-     1, -1,
-     1,  1
-  ]),
-  gl.STATIC_DRAW
-);
-
-const enabledAttributes = new Set();
-
-function use(program, buffer, stride) {
-  gl.useProgram(program.p);
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-
-  enabledAttributes.forEach(index =>
-    gl.disableVertexAttribArray(index)
-  );
-
-  enabledAttributes.clear();
-
-  for (const [index, size, offset] of program.attributes) {
-    if (index < 0) continue;
-
-    gl.enableVertexAttribArray(index);
-    enabledAttributes.add(index);
-
-    gl.vertexAttribPointer(
-      index,
-      size,
-      gl.FLOAT,
-      false,
-      stride * 4,
-      offset * 4
-    );
-  }
-
-  return program.u;
-}
-
-let capacity = 0;
-let start = 0;
-let count = 0;
-let pending = [];
-let trailClock = 0;
-let births = new Float64Array(0);
-let contextLost = false;
-let targets = [];
-let sparks = [];
-let sparkCredit = 0;
-
-// Six vertices, twelve floats per vertex.
-const segmentFloats = 72;
-
-function clearTrails() {
-  // Bound GPU geometry memory. Very dense configurations can retire
-  // their oldest segments before the configured lifetime.
-  capacity = Math.max(
-    2048,
-    Math.min(
-      220000,
-      Math.ceil(
-        config.ribbons.points *
-        config.ribbons.stepsPerSecond *
-        config.canvas.trailLifetime *
-        2
-      )
-    )
-  );
-
-  gl.bindBuffer(gl.ARRAY_BUFFER, ribbonBuffer);
-
-  gl.bufferData(
-    gl.ARRAY_BUFFER,
-    capacity * segmentFloats * 4,
-    gl.DYNAMIC_DRAW
-  );
-
-  births = new Float64Array(capacity);
-  start = 0;
-  count = 0;
-  trailClock = 0;
-  pending = [];
-}
-
-function appendSegment(
-  a, b, color, alongA, alongB, zA, zB, seed
-) {
-  const length = Math.hypot(b.x - a.x, b.y - a.y);
-
-  if (length < 0.001) return;
-
-  const nx = -(b.y - a.y) / length;
-  const ny = (b.x - a.x) / length;
-
-  for (const [point, side, along, z] of [
-    [a, -1, alongA, zA],
-    [b, -1, alongB, zB],
-    [a,  1, alongA, zA],
-    [a,  1, alongA, zA],
-    [b, -1, alongB, zB],
-    [b,  1, alongB, zB]
-  ]) {
-    pending.push(
-      point.x,
-      point.y,
-      nx * side,
-      ny * side,
-      ...color,
-      trailClock,
-      side,
-      along,
-      z,
-      seed
-    );
-  }
-}
-
-function uploadTrails() {
-  if (!pending.length) return;
-
-  let data = new Float32Array(pending);
-  pending = [];
-
-  let n = data.length / segmentFloats;
-
-  if (n > capacity) {
-    data = data.subarray((n - capacity) * segmentFloats);
-    n = capacity;
-  }
-
-  const overflow = Math.max(0, count + n - capacity);
-
-  start = (start + overflow) % capacity;
-  count -= overflow;
-
-  const end = (start + count) % capacity;
-  const first = Math.min(n, capacity - end);
-
-  gl.bindBuffer(gl.ARRAY_BUFFER, ribbonBuffer);
-
-  gl.bufferSubData(
-    gl.ARRAY_BUFFER,
-    end * segmentFloats * 4,
-    data.subarray(0, first * segmentFloats)
-  );
-
-  if (first < n) {
-    gl.bufferSubData(
-      gl.ARRAY_BUFFER,
-      0,
-      data.subarray(first * segmentFloats)
-    );
-  }
-
-  for (let i = 0; i < n; i++) {
-    births[(end + i) % capacity] =
-      data[i * segmentFloats + 7];
-  }
-
-  count += n;
-}
-
-function resizeTargets() {
-  for (const target of targets) {
-    gl.deleteTexture(target.texture);
-    gl.deleteFramebuffer(target.fbo);
-  }
-
-  targets = [1, 0.5, 0.5].map(scale => {
-    const w = Math.max(1, Math.round(canvas.width * scale));
-    const h = Math.max(1, Math.round(canvas.height * scale));
-
-    const texture = gl.createTexture();
-
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-
-    gl.texParameteri(
-      gl.TEXTURE_2D,
-      gl.TEXTURE_MIN_FILTER,
-      gl.LINEAR
-    );
-
-    gl.texParameteri(
-      gl.TEXTURE_2D,
-      gl.TEXTURE_MAG_FILTER,
-      gl.LINEAR
-    );
-
-    gl.texParameteri(
-      gl.TEXTURE_2D,
-      gl.TEXTURE_WRAP_S,
-      gl.CLAMP_TO_EDGE
-    );
-
-    gl.texParameteri(
-      gl.TEXTURE_2D,
-      gl.TEXTURE_WRAP_T,
-      gl.CLAMP_TO_EDGE
-    );
-
-    gl.texImage2D(
-      gl.TEXTURE_2D,
-      0,
-      gl.RGBA,
-      w,
-      h,
-      0,
-      gl.RGBA,
-      gl.UNSIGNED_BYTE,
-      null
-    );
-
-    const fbo = gl.createFramebuffer();
-
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-
-    gl.framebufferTexture2D(
-      gl.FRAMEBUFFER,
-      gl.COLOR_ATTACHMENT0,
-      gl.TEXTURE_2D,
-      texture,
-      0
-    );
-
-    if (
-      gl.checkFramebufferStatus(gl.FRAMEBUFFER) !==
-      gl.FRAMEBUFFER_COMPLETE
-    ) {
-      throw new Error("Incomplete render target");
-    }
-
-    return { texture, fbo, w, h };
-  });
-
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-}
-
-function bindTarget(target) {
-  gl.bindFramebuffer(
-    gl.FRAMEBUFFER,
-    target ? target.fbo : null
-  );
-
-  gl.viewport(
-    0,
-    0,
-    target ? target.w : canvas.width,
-    target ? target.h : canvas.height
-  );
-}
-
-function bindTexture(unit, texture) {
-  gl.activeTexture(gl.TEXTURE0 + unit);
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-}
-
-function depthUniform(u) {
-  const depth = config.features.depth;
-
-  gl.uniform2f(u.uSize, width, height);
-
-  gl.uniform3f(
-    u.uDepth,
-    depth.enabled ? depth.range : 0,
-    depth.enabled ? depth.perspective : 0,
-    depth.enabled ? depth.tilt * Math.PI / 180 : 0
-  );
-}
-
-function renderTrails() {
-  if (contextLost) return;
-
-  uploadTrails();
-
-  while (
-    count &&
-    trailClock - births[start] >= config.canvas.trailLifetime
-  ) {
-    start = (start + 1) % capacity;
-    count--;
-  }
-
-  bindTarget(targets[0]);
-
-  gl.clearColor(0, 0, 0, 1);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-
-  gl.enable(gl.BLEND);
-
-  gl.blendFunc(
-    gl.SRC_ALPHA,
-    config.colors.additive ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA
-  );
-
-  const u = use(ribbonProgram, ribbonBuffer, 12);
-  const f = config.features;
-
-  depthUniform(u);
-
-  gl.uniform1f(u.uTime, trailClock);
-  gl.uniform1f(u.uWidth, config.ribbons.lineWidth);
-  gl.uniform1f(u.uLifetime, config.canvas.trailLifetime);
-  gl.uniform1f(u.uOpacity, config.ribbons.opacity);
-
-  const breathing = f.breathing;
-  const focus = f.depthOfField;
-  const iridescence = f.iridescence;
-  const pulses = f.pulses;
-  const surface = f.surface;
-
-  gl.uniform4f(
-    u.uBreathing,
-    breathing.enabled ? breathing.width : 0,
-    breathing.enabled ? breathing.brightness : 0,
-    breathing.frequency,
-    breathing.synchronization
-  );
-
-  gl.uniform4f(
-    u.uFocus,
-    focus.focus,
-    focus.focusRange,
-    focus.enabled ? focus.blur : 0,
-    0
-  );
-
-  gl.uniform3f(
-    u.uIridescence,
-    iridescence.enabled ? iridescence.strength : 0,
-    iridescence.frequency,
-    iridescence.speed
-  );
-
-  gl.uniform4f(
-    u.uPulse,
-    pulses.speed,
-    pulses.length,
-    pulses.frequency,
-    pulses.enabled ? pulses.intensity : 0
-  );
-
-  gl.uniform4f(
-    u.uSurface,
-    { threads: 1, grain: 2, bands: 3 }[surface.type] || 1,
-    surface.scale,
-    surface.enabled ? surface.contrast : 0,
-    surface.speed
-  );
-
-  const first = Math.min(count, capacity - start);
-
-  if (first) {
-    gl.drawArrays(gl.TRIANGLES, start * 6, first * 6);
-  }
-
-  if (first < count) {
-    gl.drawArrays(gl.TRIANGLES, 0, (count - first) * 6);
-  }
-
-  drawSparks();
-
-  gl.disable(gl.BLEND);
-
-  const post = use(postProgram, quadBuffer, 2);
-
-  gl.uniform1i(post.uImage, 0);
-  gl.uniform1i(post.uGlow, 1);
-  gl.uniform2f(post.uSeparation, 0, 0);
-  gl.uniform3f(post.uBackground, 0, 0, 0);
-  gl.uniform1f(post.uStrength, 0);
-  gl.uniform1f(post.uThreshold, f.bloom.threshold);
-  gl.uniform1f(post.uChromaticThreshold, 1);
-
-  // Keep the unused sampler away from the destination framebuffer.
-  bindTexture(1, targets[0].texture);
-
-  if (f.bloom.enabled) {
-    bindTarget(targets[1]);
-    bindTexture(0, targets[0].texture);
-
-    gl.uniform1f(post.uMode, 0);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-    for (let pass = 0; pass < 4; pass++) {
-      const source = targets[pass % 2 ? 2 : 1];
-      const destination = targets[pass % 2 ? 1 : 2];
-
-      bindTarget(destination);
-      bindTexture(0, source.texture);
-
-      gl.uniform1f(post.uMode, 1);
-
-      gl.uniform2f(
-        post.uDirection,
-        pass % 2 ? 0 : f.bloom.radius / source.w,
-        pass % 2 ? f.bloom.radius / source.h : 0
-      );
-
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
-    }
-  }
-
-  bindTarget(null);
-  bindTexture(0, targets[0].texture);
-  bindTexture(1, targets[1].texture);
-
-  gl.uniform1f(post.uMode, 2);
-
-  gl.uniform1f(
-    post.uStrength,
-    f.bloom.enabled ? f.bloom.strength : 0
-  );
-
-  const chromatic = f.chromatic;
-  const angle = chromatic.direction * Math.PI / 180;
-
-  gl.uniform2f(
-    post.uSeparation,
-    chromatic.enabled
-      ? Math.cos(angle) * chromatic.distance / width
-      : 0,
-    chromatic.enabled
-      ? Math.sin(angle) * chromatic.distance / height
-      : 0
-  );
-
-  gl.uniform1f(
-    post.uChromaticThreshold,
-    chromatic.threshold
-  );
-
-  gl.uniform3f(
-    post.uBackground,
-    ...config.canvas.backgroundColor.map(value => value / 255)
-  );
-
-  gl.drawArrays(gl.TRIANGLES, 0, 6);
-}
-
-function rgbFromHsl(h, s, l) {
-  h = ((h % 360) + 360) % 360 / 60;
-  s /= 100;
-  l /= 100;
-
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs(h % 2 - 1));
-  const m = l - c / 2;
-
-  return [
-    [c, x, 0],
-    [x, c, 0],
-    [0, c, x],
-    [0, x, c],
-    [x, 0, c],
-    [c, 0, x]
-  ][Math.floor(h)].map(value => value + m);
-}
-
-function depthSpeed(z) {
-  return config.features.depth.enabled
-    ? 1 / (1 + z * config.features.depth.range * 0.35)
-    : 1;
-}
-
-function vortexForce(x, y) {
-  const vortex = config.features.vortices;
-
-  let fx = 0;
-  let fy = 0;
-
-  if (vortex.enabled) {
-    for (let i = 0; i < vortex.count; i++) {
-      const phase = i * 2.39996;
-
-      const cx = width * (
-        0.5 + 0.35 * Math.sin(
-          phase + time * vortex.wander * 0.19
-        )
-      );
-
-      const cy = height * (
-        0.5 + 0.35 * Math.cos(
-          phase * 1.3 + time * vortex.wander * 0.23
-        )
-      );
-
-      const dx = x - cx;
-      const dy = y - cy;
-      const radius = Math.hypot(dx, dy);
-
-      const falloff = Math.exp(
-        -radius * radius / (vortex.radius * vortex.radius)
-      );
-
-      const strength =
-        vortex.strength *
-        falloff *
-        (i % 2 ? -1 : 1) /
-        Math.max(25, radius);
-
-      fx -= dy * strength;
-      fy += dx * strength;
-    }
-  }
-
-  return { x: fx, y: fy };
-}
-
-function projectPoint(point) {
-  const depth = config.features.depth;
-
-  if (!depth.enabled) return point;
-
-  const z = point.z * depth.range;
-  const angle = depth.tilt * Math.PI / 180;
-
-  const scale = 1 / Math.max(
-    0.4,
-    1 + z * depth.perspective * 0.45
-  );
-
-  return {
-    x: (point.x - width / 2) * scale + width / 2,
-
-    y: (
-      (point.y - height / 2) * Math.cos(angle) -
-      z * height * 0.25 * Math.sin(angle)
-    ) * scale + height / 2
-  };
-}
-
-function intersection(a, b, c, d) {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const ex = d.x - c.x;
-  const ey = d.y - c.y;
-  const cross = dx * ey - dy * ex;
-
-  if (Math.abs(cross) < 0.001) return null;
-
-  const qx = c.x - a.x;
-  const qy = c.y - a.y;
-  const t = (qx * ey - qy * ex) / cross;
-  const u = (qx * dy - qy * dx) / cross;
-
-  return t > 0.02 && t < 0.98 && u > 0.02 && u < 0.98
-    ? { x: a.x + dx * t, y: a.y + dy * t }
-    : null;
-}
-
-function updateSparks(dt) {
-  const feature = config.features.sparks;
-
-  if (!feature.enabled) {
-    sparks.length = 0;
-    sparkCredit = 0;
-    return;
-  }
-
-  sparks = sparks.filter(
-    spark => trailClock - spark.born < feature.lifetime
-  );
-
-  if (dt <= 0) return;
-
-  sparkCredit = Math.min(4, sparkCredit + feature.rate * dt);
-
-  const crossings = [];
-
-  for (let i = 0; i < points.length; i++) {
-    for (let j = i + 1; j < points.length; j++) {
-      const a = points[i];
-      const b = points[a.neighbor];
-      const c = points[j];
-      const d = points[c.neighbor];
-
-      if (a === d || b === c || b === d) continue;
-
-      const at = intersection(
-        projectPoint(a),
-        projectPoint(b),
-        projectPoint(c),
-        projectPoint(d)
-      );
-
-      if (at) crossings.push(at);
-    }
-  }
-
-  while (
-    sparkCredit >= 1 &&
-    crossings.length &&
-    sparks.length < 256
-  ) {
-    const at = crossings[
-      Math.floor(Math.random() * crossings.length)
-    ];
-
-    const angle = random(0, Math.PI * 2);
-
-    sparks.push({
-      ...at,
-      vx: Math.cos(angle) * random(10, 35),
-      vy: Math.sin(angle) * random(10, 35),
-      born: trailClock
-    });
-
-    sparkCredit--;
-  }
-}
-
-function drawSparks() {
-  const feature = config.features.sparks;
-
-  if (!feature.enabled || !sparks.length) return;
-
-  const data = [];
-
-  for (const spark of sparks) {
-    const age = trailClock - spark.born;
-    const life = Math.max(0, 1 - age / feature.lifetime);
-
-    data.push(
-      spark.x + spark.vx * age,
-      spark.y + spark.vy * age,
-      feature.size * (0.5 + life) * 2,
-      1,
-      0.85,
-      0.55,
-      life * feature.brightness
-    );
-  }
-
-  const u = use(sparkProgram, sparkBuffer, 7);
-
-  gl.bufferData(
-    gl.ARRAY_BUFFER,
-    new Float32Array(data),
-    gl.DYNAMIC_DRAW
-  );
-
-  depthUniform(u);
-  gl.uniform1f(u.uPixelRatio, canvas.width / width);
-
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-  gl.drawArrays(gl.POINTS, 0, sparks.length);
-}
-
-const reducedMotion = matchMedia(
-  "(prefers-reduced-motion: reduce)"
-);
-
-let width = 1;
-let height = 1;
-let points = [];
-let baseHue = 185;
-let time = 0;
-let accumulator = 0;
-let previous = null;
-let sceneKey = "";
-let resolutionKey = "";
-let lastTap = null;
-
-const mouse = {
-  x: 0,
-  y: 0,
-  targetX: 0,
-  targetY: 0,
-  previousX: 0,
-  previousY: 0,
-  vx: 0,
-  vy: 0,
-  active: false,
-  held: false,
-  influence: 0
-};
-
-const random = (min, max) =>
-  min + Math.random() * (max - min);
-
-const clamp = (value, min, max) =>
-  Math.max(min, Math.min(max, value));
-
-function makePoint() {
-  const angle = random(0, Math.PI * 2);
-
-  return {
-    x: random(0, width),
-    y: random(0, height),
-    vx: Math.cos(angle) * config.ribbons.speed,
-    vy: Math.sin(angle) * config.ribbons.speed,
-    hueOffset: random(-0.5, 0.5),
-    phase: random(0, Math.PI * 2),
-    z: random(-1, 1),
-    neighbor: 0
-  };
-}
-
-function currentSceneKey() {
-  return JSON.stringify([
-    config.ribbons.points,
-    config.canvas.trailLifetime,
-    config.ribbons.stepsPerSecond,
-    config.colors.hue,
-    config.colors.randomizeOnReset
-  ]);
-}
-
-function reset() {
-  points = Array.from(
-    { length: Math.max(2, Math.round(config.ribbons.points)) },
-    makePoint
-  );
-
-  points.forEach((point, index) => {
-    const offset =
-      1 + Math.floor(Math.random() * (points.length - 1));
-
-    point.neighbor = (index + offset) % points.length;
-  });
-
-  baseHue = config.colors.randomizeOnReset
-    ? random(0, 360)
-    : config.colors.hue;
-
-  time = 0;
-  accumulator = 0;
-  sceneKey = currentSceneKey();
-
-  clearTrails();
-
-  sparks.length = 0;
-  sparkCredit = 0;
-}
-
-function resize() {
-  width = Math.max(1, innerWidth);
-  height = Math.max(1, innerHeight);
-
-  const ratio = Math.min(
-    devicePixelRatio || 1,
-    config.canvas.pixelRatio
-  );
-
-  canvas.width = Math.round(width * ratio);
-  canvas.height = Math.round(height * ratio);
-
-  resizeTargets();
-
-  resolutionKey = String(config.canvas.pixelRatio);
-  reset();
-}
-
-function refresh() {
-  if (resolutionKey !== String(config.canvas.pixelRatio)) {
-    resize();
-  } else if (sceneKey !== currentSceneKey()) {
-    reset();
-  }
-}
-
-function pointerStrength() {
-  if (!config.mouse.enabled) return 0;
-
-  return mouse.influence *
-    (mouse.held ? config.mouse.holdMultiplier : 1);
-}
-
-function influenceAt(x, y) {
-  const distance = Math.hypot(x - mouse.x, y - mouse.y);
-  const u = clamp(distance / config.mouse.radius, 0, 1);
-
-  return Math.pow(1 - u * u, 2) * pointerStrength();
-}
-
-function nearestOnSegment(a, b) {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const lengthSquared = dx * dx + dy * dy;
-
-  const t = lengthSquared > 0.001
-    ? clamp(
-        (
-          (mouse.x - a.x) * dx +
-          (mouse.y - a.y) * dy
-        ) / lengthSquared,
-        0,
-        1
-      )
-    : 0.5;
-
-  return {
-    x: a.x + dx * t,
-    y: a.y + dy * t,
-    t
-  };
-}
-
-function forceAt(x, y, influence) {
-  const dx = mouse.x - x;
-  const dy = mouse.y - y;
-  const distance = Math.hypot(dx, dy);
-  const denominator = Math.max(distance, 25);
-
-  return {
-    x: (
-      dx / denominator * config.mouse.attraction -
-      dy / denominator * config.mouse.swirl +
-      mouse.vx * config.mouse.dragStrength
-    ) * influence,
-
-    y: (
-      dy / denominator * config.mouse.attraction +
-      dx / denominator * config.mouse.swirl +
-      mouse.vy * config.mouse.dragStrength
-    ) * influence
-  };
-}
-
-function updatePoints(dt) {
-  const forces = points.map(point =>
-    forceAt(
-      point.x,
-      point.y,
-      influenceAt(point.x, point.y)
-    )
-  );
-
-  points.forEach((point, index) => {
-    const neighborIndex = point.neighbor;
-    const neighbor = points[neighborIndex];
-    const nearest = nearestOnSegment(point, neighbor);
-
-    const influence =
-      influenceAt(nearest.x, nearest.y) *
-      config.mouse.flowInfluence;
-
-    if (influence <= 0) return;
-
-    const force = forceAt(nearest.x, nearest.y, influence);
-
-    const aWeight = 0.25 + (1 - nearest.t) * 0.75;
-    const bWeight = 0.25 + nearest.t * 0.75;
-
-    forces[index].x += force.x * aWeight;
-    forces[index].y += force.y * aWeight;
-
-    forces[neighborIndex].x += force.x * bWeight;
-    forces[neighborIndex].y += force.y * bWeight;
-  });
-
-  points.forEach((point, index) => {
-    const vortex = vortexForce(point.x, point.y);
-
-    forces[index].x += vortex.x;
-    forces[index].y += vortex.y;
-
-    const turn =
-      Math.sin(time * 0.35 + point.phase) *
-      config.ribbons.curvature;
-
-    const cos = Math.cos(turn * dt);
-    const sin = Math.sin(turn * dt);
-    const vx = point.vx * cos - point.vy * sin;
-    const vy = point.vx * sin + point.vy * cos;
-
-    point.vx = vx + forces[index].x * dt;
-    point.vy = vy + forces[index].y * dt;
-
-    const speed = Math.hypot(point.vx, point.vy);
-
-    if (speed > 0.001) {
-      const relaxedSpeed =
-        speed +
-        (
-          config.ribbons.speed * depthSpeed(point.z) -
-          speed
-        ) * (1 - Math.exp(-1.4 * dt));
-
-      const limitedSpeed = Math.min(
-        relaxedSpeed,
-        Math.max(40, config.ribbons.speed * 4)
-      );
-
-      point.vx *= limitedSpeed / speed;
-      point.vy *= limitedSpeed / speed;
-    }
-
-    point.x += point.vx * dt;
-    point.y += point.vy * dt;
-
-    if (point.x < 0) {
-      point.x = -point.x;
-      point.vx = Math.abs(point.vx);
-    } else if (point.x > width) {
-      point.x = width - (point.x - width);
-      point.vx = -Math.abs(point.vx);
-    }
-
-    if (point.y < 0) {
-      point.y = -point.y;
-      point.vy = Math.abs(point.vy);
-    } else if (point.y > height) {
-      point.y = height - (point.y - height);
-      point.vy = -Math.abs(point.vy);
-    }
-
-    point.x = clamp(point.x, 0, width);
-    point.y = clamp(point.y, 0, height);
-  });
-}
-
-function bendPoint(x, y) {
-  const influence = influenceAt(x, y);
-
-  if (influence <= 0) return { x, y };
-
-  const dx = x - mouse.x;
-  const dy = y - mouse.y;
-  const distance = Math.hypot(dx, dy);
-  const denominator = Math.max(distance, 25);
-
-  const pull = clamp(config.mouse.attraction / 200, -1, 1);
-  const twist = clamp(config.mouse.swirl / 200, -1.5, 1.5);
-  const bend = config.mouse.ribbonBend * influence;
-
-  const dragScale =
-    config.mouse.dragStrength * influence * 0.035;
-
-  return {
-    x:
-      x +
-      (
-        -dx / denominator * pull -
-        dy / denominator * twist
-      ) * bend +
-      mouse.vx * dragScale,
-
-    y:
-      y +
-      (
-        -dy / denominator * pull +
-        dx / denominator * twist
-      ) * bend +
-      mouse.vy * dragScale
-  };
-}
-
-function drawConnection(point) {
-  const neighbor = points[point.neighbor];
-
-  const hue = (
-    baseHue +
-    point.hueOffset * config.colors.hueSpread +
-    time * config.colors.hueDrift +
-    360
-  ) % 360;
-
-  const color = rgbFromHsl(
-    hue,
-    config.colors.saturation,
-    config.colors.lightness
-  );
-
-  const nearest = nearestOnSegment(point, neighbor);
-  const affected = influenceAt(nearest.x, nearest.y) > 0.001;
-
-  const length = Math.hypot(
-    neighbor.x - point.x,
-    neighbor.y - point.y
-  );
-
-  const samples = affected
-    ? Math.min(
-        32,
-        Math.max(
-          8,
-          Math.ceil(
-            length / Math.max(10, config.mouse.radius / 12)
-          )
-        )
-      )
-    : 1;
-
-  let a = bendPoint(point.x, point.y);
-
-  for (let i = 1; i <= samples; i++) {
-    const t = i / samples;
-
-    const b = bendPoint(
-      point.x + (neighbor.x - point.x) * t,
-      point.y + (neighbor.y - point.y) * t
-    );
-
-    appendSegment(
-      a,
-      b,
-      color,
-      length * (i - 1) / samples,
-      length * t,
-      point.z + (neighbor.z - point.z) * (i - 1) / samples,
-      point.z + (neighbor.z - point.z) * t,
-      point.phase
-    );
-
-    a = b;
-  }
-}
-
-function simulateStep(dt) {
-  time += dt;
-  trailClock += dt;
-  updatePoints(dt);
-
-  for (const point of points) {
-    drawConnection(point);
-  }
-}
-
-function frame(timestamp) {
-  const realDt = previous === null
-    ? 0
-    : Math.min((timestamp - previous) / 1000, 0.05);
-
-  previous = timestamp;
-
-  if (contextLost) {
-    requestAnimationFrame(frame);
-    return;
-  }
-
-  const smoothing =
-    1 - Math.exp(-config.mouse.smoothing * realDt);
-
-  mouse.x += (mouse.targetX - mouse.x) * smoothing;
-  mouse.y += (mouse.targetY - mouse.y) * smoothing;
-
-  mouse.influence +=
-    ((mouse.active ? 1 : 0) - mouse.influence) * smoothing;
-
-  const rawVx = realDt > 0
-    ? (mouse.x - mouse.previousX) / realDt
-    : 0;
-
-  const rawVy = realDt > 0
-    ? (mouse.y - mouse.previousY) / realDt
-    : 0;
-
-  const velocityResponse = 1 - Math.exp(-12 * realDt);
-
-  mouse.vx +=
-    (clamp(rawVx, -600, 600) - mouse.vx) * velocityResponse;
-
-  mouse.vy +=
-    (clamp(rawVy, -600, 600) - mouse.vy) * velocityResponse;
-
-  mouse.previousX = mouse.x;
-  mouse.previousY = mouse.y;
-
-  const still =
-    config.animation.paused ||
-    (
-      config.animation.respectReducedMotion &&
-      reducedMotion.matches
-    );
-
-  const dt = still ? 0 : realDt * config.animation.speed;
-  const before = trailClock;
-
-  accumulator += dt;
-
-  const stepDt = 1 / config.ribbons.stepsPerSecond;
-  let iterations = 0;
-
-  while (accumulator >= stepDt && iterations < 180) {
-    simulateStep(stepDt);
-    accumulator -= stepDt;
-    iterations++;
-  }
-
-  if (iterations === 180) {
-    accumulator = Math.min(accumulator, stepDt);
-  }
-
-  updateSparks(trailClock - before);
-  renderTrails();
-
-  requestAnimationFrame(frame);
-}
-
-function updatePointer(event) {
-  if (event.target.closest?.("[data-background-editor]")) {
-    deactivatePointer();
-    return false;
-  }
-
-  if (!mouse.active) {
-    mouse.x = event.clientX;
-    mouse.y = event.clientY;
-    mouse.previousX = event.clientX;
-    mouse.previousY = event.clientY;
-    mouse.vx = 0;
-    mouse.vy = 0;
-  }
-
-  mouse.targetX = event.clientX;
-  mouse.targetY = event.clientY;
-  mouse.active = true;
-
-  return true;
-}
-
-function deactivatePointer() {
-  mouse.active = false;
-  mouse.held = false;
-  mouse.vx = 0;
-  mouse.vy = 0;
-}
-
-addEventListener("pointermove", updatePointer);
-
-addEventListener("pointerdown", event => {
-  if (!updatePointer(event)) return;
-  if (event.pointerType === "mouse" && event.button !== 0) return;
-
-  mouse.held = true;
-
-  if (
-    event.pointerType !== "mouse" &&
-    config.mouse.doubleClickToReset
-  ) {
-    const now = performance.now();
-
-    if (
-      lastTap &&
-      now - lastTap.time < 350 &&
-      Math.hypot(
-        event.clientX - lastTap.x,
-        event.clientY - lastTap.y
-      ) < 35
-    ) {
-      reset();
-      lastTap = null;
-    } else {
-      lastTap = {
-        time: now,
-        x: event.clientX,
-        y: event.clientY
-      };
-    }
-  }
-});
-
-addEventListener("pointerup", event => {
-  mouse.held = false;
-
-  if (event.pointerType !== "mouse") {
-    mouse.active = false;
-  }
-});
-
-addEventListener("dblclick", event => {
-  if (
-    config.mouse.doubleClickToReset &&
-    !event.target.closest?.("[data-background-editor]")
-  ) {
-    reset();
-  }
-});
-
-addEventListener("pointercancel", deactivatePointer);
-addEventListener("blur", deactivatePointer);
-
-document.documentElement.addEventListener(
-  "pointerleave",
-  deactivatePointer
-);
-
-document.addEventListener("visibilitychange", () => {
-  previous = null;
-  accumulator = 0;
-  deactivatePointer();
-});
-
-addEventListener("resize", () => {
-  if (!contextLost) resize();
-});
-
-canvas.addEventListener("webglcontextlost", event => {
-  event.preventDefault();
-  contextLost = true;
-  previous = null;
-});
-
-// Rebuild all GPU resources after restoration.
-canvas.addEventListener("webglcontextrestored", () => {
-  location.reload();
-});
-
-resize();
-
-const previewSteps = 450;
-
-for (let i = 0; i < previewSteps; i++) {
-  simulateStep(1 / config.ribbons.stepsPerSecond);
-
-  if (i % 30 === 0) {
-    uploadTrails();
-  }
-}
-
-renderTrails();
-requestAnimationFrame(frame);
-
-if (config.panel.enabled) {
-  import("./settings-editor.js?v=features-1")
-    .then(({ createSettingsEditor }) => {
-      createSettingsEditor({
-        config,
-        onChange: refresh,
-        onReset: reset
+    function addSource(channel = Math.floor(Math.random() * 3)) {
+      if (!nodes.length) return;
+
+      // Bound the number of active sources even with a short interval.
+      if (sources.length >= 40) sources.shift();
+
+      sources.push({
+        node: Math.floor(Math.random() * nodes.length),
+        channel,
+        age: 0
       });
-    })
-    .catch(error => {
-      console.error("Editor could not load:", error);
+    }
+
+    function refresh() {
+      const key = JSON.stringify([
+        width,
+        height,
+        config.channels.spacing,
+        config.channels.branching,
+        config.channels.irregularity
+      ]);
+
+      if (key !== graphKey) buildGraph();
+    }
+
+    function resize() {
+      width = innerWidth;
+      height = innerHeight;
+
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+
+      buildGraph();
+    }
+
+    function mouseColorWeights() {
+      const phase = time * config.mouse.colorCycleSpeed;
+
+      const weights = [0, 1, 2].map(index =>
+        Math.pow(
+          0.5 + 0.5 * Math.cos(phase - index * Math.PI * 2 / 3),
+          3
+        )
+      );
+
+      const total = weights.reduce((sum, value) => sum + value, 0);
+
+      return weights.map(value => value / total);
+    }
+
+    function simulateStep(dt) {
+      const propagation = config.ink.propagationSpeed;
+      const decayFactor = Math.exp(-config.ink.decay * dt);
+
+      for (const node of nodes) {
+        for (let channel = 0; channel < 3; channel++) {
+          node.next[channel] = node.ink[channel] * decayFactor;
+        }
+      }
+
+      // Symmetric exchange preserves color mass before fading and sources.
+      // Degree normalization keeps highly connected nodes stable.
+      for (const [aIndex, bIndex] of edges) {
+        const a = nodes[aIndex];
+        const b = nodes[bIndex];
+
+        const degree = Math.max(
+          a.neighbors.length,
+          b.neighbors.length,
+          1
+        );
+
+        const exchange =
+          propagation * config.ink.diffusion * dt / degree;
+
+        for (let channel = 0; channel < 3; channel++) {
+          const transfer =
+            (a.ink[channel] - b.ink[channel]) * exchange;
+
+          a.next[channel] -= transfer;
+          b.next[channel] += transfer;
+        }
+      }
+
+      for (const source of sources) {
+        source.age += dt;
+
+        const remaining = clamp(
+          1 - source.age / config.ink.sourceLifetime,
+          0,
+          1
+        );
+
+        const node = nodes[source.node];
+        const strength = remaining * config.ink.intensity * 2;
+
+        node.next[source.channel] +=
+          (1 - node.next[source.channel]) *
+          (1 - Math.exp(-strength * dt));
+      }
+
+      sources = sources.filter(
+        source => source.age < config.ink.sourceLifetime
+      );
+
+      if (config.mouse.enabled && mouse.influence > 0.001) {
+        const weights = mouseColorWeights();
+
+        for (const node of nodes) {
+          const distance = Math.hypot(
+            node.screenX - mouse.x,
+            node.screenY - mouse.y
+          );
+
+          const proximity = clamp(
+            1 - distance / config.mouse.radius,
+            0,
+            1
+          );
+
+          const strength =
+            proximity * proximity *
+            mouse.influence *
+            config.mouse.strength;
+
+          if (strength <= 0) continue;
+
+          for (let channel = 0; channel < 3; channel++) {
+            node.next[channel] +=
+              (weights[channel] - node.next[channel]) *
+              (1 - Math.exp(-strength * dt));
+          }
+        }
+      }
+
+      for (const node of nodes) {
+        for (let channel = 0; channel < 3; channel++) {
+          node.ink[channel] = clamp(node.next[channel], 0, 1);
+        }
+      }
+    }
+
+    function simulate(dt) {
+      if (dt <= 0) return;
+
+      sourceClock += dt;
+
+      if (config.ink.sourceInterval > 0) {
+        while (sourceClock >= config.ink.sourceInterval) {
+          sourceClock -= config.ink.sourceInterval;
+          addSource();
+        }
+      } else {
+        sourceClock = 0;
+      }
+
+      // Short substeps keep diffusion stable at high animation speeds.
+      const steps = Math.max(1, Math.ceil(dt / 0.025));
+      const stepDt = dt / steps;
+
+      for (let i = 0; i < steps; i++) simulateStep(stepDt);
+    }
+
+    function projectNetwork() {
+      const view = config.features.view3D;
+      const key = JSON.stringify(view);
+      if (key === projectionKey) return;
+      projectionKey = key;
+
+      const tilt = view.tilt * Math.PI / 180;
+      const sine = Math.sin(tilt);
+      const cosine = Math.cos(tilt);
+      const focal = Math.max(width, height) * 1.25;
+      const maxDepth = height * 0.5 * Math.abs(sine) + view.depth;
+      const cover = (view.perspective ? 1 + maxDepth / focal : 1) *
+        (1 + 2 * view.depth * Math.abs(sine) / height) / cosine;
+      for (const node of nodes) {
+        const x = node.x - width / 2;
+        const y = node.y - height / 2;
+        const z = view.depth * Math.sin(node.x / 170) * Math.cos(node.y / 140);
+        const distance = focal + y * sine + z * cosine;
+        const perspective = view.perspective ? focal / Math.max(focal * 0.35, distance) : 1;
+        node.scale = view.enabled ? perspective * cover * view.zoom : 1;
+        node.screenX = width / 2 + x * node.scale;
+        node.screenY = view.enabled
+          ? height / 2 + (y * cosine - z * sine) * node.scale
+          : node.y;
+      }
+    }
+
+    function updateStains(dt) {
+      const bleed = config.features.bleed;
+      const fade = bleed.enabled ? Math.exp(-dt / bleed.persistence) : 0;
+      for (const node of nodes) {
+        node.stain = bleed.enabled
+          ? Math.max(node.stain * fade, node.ink[0] + node.ink[1] + node.ink[2])
+          : 0;
+      }
+    }
+
+    function createRenderer() {
+      function compile(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          throw new Error(gl.getShaderInfoLog(shader));
+        }
+        return shader;
+      }
+
+      function batch(vertex, fragment, attributes) {
+        const program = gl.createProgram();
+        const vertexShader = compile(gl.VERTEX_SHADER, vertex);
+        const fragmentShader = compile(gl.FRAGMENT_SHADER, fragment);
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        gl.deleteShader(vertexShader);
+        gl.deleteShader(fragmentShader);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          throw new Error(gl.getProgramInfoLog(program));
+        }
+
+        const vao = gl.createVertexArray();
+        const buffer = gl.createBuffer();
+        const uniforms = new Map();
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        for (let index = 0; index < attributes; index++) {
+          gl.enableVertexAttribArray(index);
+          gl.vertexAttribPointer(index, 4, gl.FLOAT, false, attributes * 16, index * 16);
+          gl.vertexAttribDivisor(index, 1);
+        }
+        let capacity = 0;
+        return {
+          use(data) {
+            gl.useProgram(program);
+            gl.bindVertexArray(vao);
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            if (capacity !== data.byteLength) {
+              capacity = data.byteLength;
+              gl.bufferData(gl.ARRAY_BUFFER, capacity, gl.DYNAMIC_DRAW);
+            }
+            gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
+          },
+          location(name) {
+            if (!uniforms.has(name)) uniforms.set(name, gl.getUniformLocation(program, name));
+            return uniforms.get(name);
+          }
+        };
+      }
+
+      const header = `#version 300 es
+        precision highp float;`;
+      const corner = `
+        const vec2 corners[6] = vec2[6](vec2(0,-1), vec2(1,-1), vec2(0,1),
+          vec2(0,1), vec2(1,-1), vec2(1,1));`;
+      const palette = `
+        uniform vec3 colorA, colorB, colorC;
+        vec3 pigment(vec3 ink) {
+          float total = ink.x + ink.y + ink.z;
+          return (ink.x*colorA + ink.y*colorB + ink.z*colorC) / max(total, 0.0001);
+        }`;
+
+      const channels = batch(header + corner + `
+        layout(location=0) in vec4 endpoints;
+        layout(location=1) in vec4 inkA;
+        layout(location=2) in vec4 inkB;
+        layout(location=3) in vec4 geometry;
+        layout(location=4) in vec4 pulsePath;
+        uniform vec2 resolution;
+        uniform float extent;
+        uniform vec2 curve;
+        uniform int segments;
+        out vec3 ink;
+        out vec2 position;
+        out vec2 alongAcross;
+        out float stain, width, pulseDistance;
+        flat out float edgeLength, seed, direction;
+        void main() {
+          vec2 corner = corners[gl_VertexID % 6];
+          float t = (float(gl_VertexID / 6) + corner.x) / float(segments);
+          vec2 delta = endpoints.zw - endpoints.xy;
+          edgeLength = max(length(delta), 0.01);
+          vec2 normal = vec2(-delta.y, delta.x) / edgeLength;
+          seed = geometry.z;
+          float bend = curve.x * edgeLength * mix(0.5, seed*2.0-1.0, curve.y);
+          vec2 tangent = normalize(delta + normal*bend*4.0*(1.0-2.0*t) + vec2(0.00001));
+          float offset = extent * corner.y;
+          position = mix(endpoints.xy, endpoints.zw, t) + normal*bend*4.0*t*(1.0-t)
+            + vec2(-tangent.y, tangent.x)*offset;
+          gl_Position = vec4(position / resolution * vec2(2,-2) + vec2(-1,1), 0, 1);
+          alongAcross = vec2(t, offset);
+          ink = mix(inkA.rgb, inkB.rgb, t);
+          stain = mix(inkA.a, inkB.a, t);
+          pulseDistance = mix(pulsePath.x, pulsePath.y, t);
+          width = mix(geometry.x, geometry.y, t);
+          direction = dot(inkA.rgb-inkB.rgb, vec3(1)) >= 0.0 ? 1.0 : -1.0;
+        }`, header + palette + `
+        uniform vec3 channelColor;
+        uniform float opacity, intensity, glow, time;
+        uniform vec3 pulses, particles, bleed, bloom, shock, iridescence, interference;
+        uniform vec3 waves[4];
+        in vec3 ink;
+        in vec2 position, alongAcross;
+        in float stain, width, pulseDistance;
+        flat in float edgeLength, seed, direction;
+        out vec4 outputColor;
+
+        vec3 hueShift(vec3 color, float angle) {
+          vec3 axis = vec3(0.57735027);
+          return max(vec3(0), color*cos(angle) + cross(axis,color)*sin(angle)
+            + axis*dot(axis,color)*(1.0-cos(angle)));
+        }
+
+        void main() {
+          float across = abs(alongAcross.y);
+          float core = 1.0 - smoothstep(width*0.5-0.4, width*0.5+0.55, across);
+          float total = clamp(dot(ink, vec3(1))*intensity, 0.0, 1.0);
+          vec3 color = pigment(ink);
+          float activeColors = ink.x + ink.y + ink.z - max(ink.x,max(ink.y,ink.z));
+          float distanceOnEdge = alongAcross.x*edgeLength;
+
+          if (iridescence.y > 0.0) {
+            float angle = sin(time*iridescence.z*6.283 + position.y*0.028 + position.x*0.018);
+            color = mix(color,hueShift(color,angle*iridescence.x),iridescence.y);
+          }
+
+          float pulse = 0.0;
+          if (pulses.z > 0.0) {
+            float spacing = mix(420.0, 75.0, pulses.z);
+            float phase = fract((pulseDistance - time*pulses.x)/spacing);
+            pulse = (1.0-smoothstep(0.0, min(0.48,pulses.y/spacing), abs(phase-0.5))) * total;
+          }
+
+          float ring = 0.0;
+          for (int i=0; i<4; i++) {
+            if (waves[i].z < 0.0) continue;
+            float radius = (time-waves[i].z)*shock.x;
+            float gap = abs(length(position-waves[i].xy)-radius);
+            ring += (1.0-smoothstep(0.0,shock.y,gap))*exp(-radius*0.0015);
+          }
+
+          float speck = 0.0;
+          if (particles.x > 0.0 && total > 0.03) {
+            float phase = fract(alongAcross.x*particles.x -
+              time*particles.z*particles.x*direction/edgeLength + seed);
+            vec2 local = vec2((phase-0.5)*edgeLength/particles.x, across);
+            speck = (1.0-smoothstep(particles.y*0.35,particles.y+0.5,length(local)))*total;
+          }
+
+          float band = 1.0;
+          if (interference.z > 0.0 && activeColors > interference.x) {
+            float pattern = sin(distanceOnEdge*6.283/interference.y +
+              (ink.r-ink.b)*11.0 - time*1.2);
+            band += pattern*interference.z*smoothstep(interference.x,interference.x+0.15,activeColors);
+          }
+
+          float coreInk = core*clamp(total*band,0.0,1.0);
+          float soft = glow > 0.0 ? exp(-pow(max(across/glow*2.4,0.00001),2.0))*total*0.36 : 0.0;
+          float halo = bloom.y > 0.0
+            ? exp(-pow(max(across/bloom.z*2.0,0.00001),2.0))*max(total-bloom.x,0.0)*bloom.y : 0.0;
+          float wash = bleed.y > 0.0
+            ? exp(-pow(max(across/bleed.x*2.0,0.00001),2.0))*stain*bleed.y : 0.0;
+          vec3 washColor = mix(colorA,color,total);
+          float highlight = core*(pulse + ring*shock.z*0.65);
+          vec3 rgb = channelColor*core*opacity*(1.0-coreInk)
+            + color*(coreInk+soft+halo) + washColor*wash
+            + mix(color,vec3(1),0.55)*(highlight+speck);
+          float alpha = clamp(core*opacity + coreInk+soft+halo+wash+highlight+speck,0.0,1.0);
+          outputColor = vec4(rgb,alpha);
+        }`, 5);
+
+      const points = batch(header + corner + `
+        layout(location=0) in vec4 point;
+        layout(location=1) in vec4 ink;
+        uniform vec2 resolution;
+        out vec2 local;
+        flat out vec4 pigmentStrength;
+        flat out float radius;
+        void main() {
+          vec2 corner = corners[gl_VertexID];
+          local = vec2(corner.x*2.0-1.0,corner.y);
+          vec2 position = point.xy + local*point.z;
+          radius = point.z;
+          gl_Position = vec4(position / resolution * vec2(2,-2) + vec2(-1,1),0,1);
+          pigmentStrength = ink;
+        }`, header + palette + `
+        in vec2 local;
+        flat in vec4 pigmentStrength;
+        flat in float radius;
+        out vec4 outputColor;
+        void main() {
+          float d = length(local);
+          float alpha = pigmentStrength.a * (1.0 - smoothstep(
+            radius > 8.0 ? 0.0 : 0.55, 1.0, d));
+          outputColor = vec4(pigment(pigmentStrength.rgb)*alpha,alpha);
+        }`, 2);
+
+      const rgb = color => color.map(value => value / 255);
+      function common(drawBatch) {
+        gl.uniform2f(drawBatch.location("resolution"), width, height);
+        for (const name of ["colorA", "colorB", "colorC"]) {
+          gl.uniform3fv(drawBatch.location(name), rgb(config.appearance[name]));
+        }
+      }
+
+      function draw() {
+        const { channels: style, ink, appearance, features } = config;
+        const { curves, pulses, particles, bleed, bloom, shockwaves, iridescence, interference, sparks } = features;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.clearColor(...rgb(appearance.backgroundColor), 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+        const halo = config.mouse.enabled && config.mouse.showHalo ? mouse.influence : 0;
+        const mouseWeights = mouseColorWeights();
+        nodeData.set([mouse.x, mouse.y, config.mouse.radius, 0, ...mouseWeights, halo*0.05]);
+        for (let index = 0; index < nodes.length; index++) {
+          const node = nodes[index];
+          const [red, green, blue] = node.ink;
+          const total = red + green + blue;
+          const alpha = clamp(total * ink.intensity, 0, 1);
+          const overlap = total - Math.max(red, green, blue);
+          const phase = (time + index*0.61803399) % 1.4;
+          const spark = sparks.enabled && node.neighbors.length >= 3 && overlap > sparks.threshold
+            ? Math.max(0, 1 - phase/sparks.duration)*sparks.brightness : 0;
+          const radius = (style.width*0.8 + alpha)*Math.sqrt(node.scale) + spark*3;
+          nodeData.set([node.screenX, node.screenY, radius, 0, red, green, blue,
+            clamp(alpha*0.7 + spark, 0, 1)], (index+1)*8);
+        }
+        points.use(nodeData.subarray(0, 8));
+        common(points);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 1);
+
+        let maxWidth = style.width;
+        for (let index = 0; index < edges.length; index++) {
+          const [from, to, seed] = edges[index];
+          const a = nodes[from];
+          const b = nodes[to];
+          const aWidth = style.width * Math.sqrt(a.scale);
+          const bWidth = style.width * Math.sqrt(b.scale);
+          maxWidth = Math.max(maxWidth,aWidth,bWidth);
+          edgeData.set([a.screenX,a.screenY,b.screenX,b.screenY,...a.ink,a.stain,
+            ...b.ink,b.stain,aWidth,bWidth,seed,0,
+            a.pulseDistance,b.pulseDistance,0,0], index*20);
+        }
+
+        channels.use(edgeData);
+        common(channels);
+        const set = (name, ...values) => {
+          const location = channels.location(name);
+          if (values.length === 1) gl.uniform1f(location, values[0]);
+          if (values.length === 2) gl.uniform2f(location, ...values);
+          if (values.length === 3) gl.uniform3f(location, ...values);
+        };
+        const segments = curves.enabled && curves.curvature > 0 ? 8 : 1;
+        gl.uniform1i(channels.location("segments"), segments);
+        set("extent", Math.max(maxWidth/2+1, ink.glow, bloom.enabled ? bloom.radius : 0,
+          bleed.enabled ? bleed.spread : 0, particles.enabled ? particles.size+1 : 0));
+        set("curve", curves.enabled ? curves.curvature : 0, curves.variation);
+        set("opacity",style.opacity);
+        set("intensity",ink.intensity);
+        set("glow",ink.glow);
+        set("time",time);
+        set("pulses",pulses.speed,pulses.length,pulses.enabled ? pulses.density : 0);
+        set("particles",particles.enabled ? particles.count : 0,particles.size,particles.speed);
+        set("bleed",bleed.spread,bleed.enabled ? bleed.opacity : 0,bleed.persistence);
+        set("bloom",bloom.threshold,bloom.enabled ? bloom.strength : 0,bloom.radius);
+        set("shock",shockwaves.speed,shockwaves.width,shockwaves.enabled ? shockwaves.strength : 0);
+        set("iridescence",iridescence.hueRange*Math.PI/180,iridescence.enabled ? iridescence.strength : 0,iridescence.speed);
+        set("interference",interference.threshold,interference.spacing,interference.enabled ? interference.contrast : 0);
+        gl.uniform3fv(channels.location("channelColor"),rgb(appearance.channelColor));
+        const waveData = new Float32Array(12);
+        for (let index = 0; index < 4; index++) {
+          waveData.set(waves[index] ?? [0,0,-1],index*3);
+        }
+        gl.uniform3fv(channels.location("waves[0]"),waveData);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, segments*6, edges.length);
+
+        points.use(nodeData.subarray(8));
+        common(points);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, nodes.length);
+      }
+
+      return { draw };
+    }
+
+    function frame(timestamp) {
+      const realDt = previous === null
+        ? 0
+        : Math.min((timestamp - previous) / 1000, 0.05);
+
+      previous = timestamp;
+
+      const still =
+        config.animation.paused ||
+        (
+          config.animation.respectReducedMotion &&
+          reducedMotion.matches
+        );
+
+      const dt = still ? 0 : realDt * config.animation.speed;
+      time += dt;
+
+      const smoothing =
+        1 - Math.exp(-config.mouse.smoothing * realDt);
+
+      mouse.x += (mouse.targetX - mouse.x) * smoothing;
+      mouse.y += (mouse.targetY - mouse.y) * smoothing;
+
+      mouse.influence +=
+        ((mouse.active ? 1 : 0) - mouse.influence) * smoothing;
+
+      projectNetwork();
+      simulate(dt);
+      updateStains(dt);
+      while (waves.length && (time - waves[0][2]) * config.features.shockwaves.speed >
+        Math.hypot(width, height) + config.features.shockwaves.width) waves.shift();
+
+      if (!gl.isContextLost()) renderer.draw();
+      requestAnimationFrame(frame);
+    }
+
+    function updatePointer(event) {
+      if (event.target.closest?.("[data-background-editor]")) {
+        mouse.active = false;
+        return;
+      }
+
+      if (!mouse.active) {
+        mouse.x = event.clientX;
+        mouse.y = event.clientY;
+      }
+
+      mouse.targetX = event.clientX;
+      mouse.targetY = event.clientY;
+      mouse.active = true;
+    }
+
+    addEventListener("pointermove", updatePointer);
+    addEventListener("pointerdown", event => {
+      updatePointer(event);
+      if (event.button === 0 && mouse.active && config.features.shockwaves.enabled &&
+        !config.animation.paused && !(config.animation.respectReducedMotion && reducedMotion.matches)) {
+        if (waves.length === 4) waves.shift();
+        waves.push([event.clientX, event.clientY, time]);
+      }
     });
-}
-</script>
+
+    addEventListener("pointerup", event => {
+      if (event.pointerType !== "mouse") mouse.active = false;
+    });
+
+    addEventListener("pointercancel", () => mouse.active = false);
+    addEventListener("blur", () => mouse.active = false);
+
+    document.documentElement.addEventListener(
+      "pointerleave",
+      () => mouse.active = false
+    );
+
+    document.addEventListener("visibilitychange", () => {
+      previous = null;
+      mouse.active = false;
+    });
+
+    addEventListener("resize", resize);
+
+    canvas.addEventListener("webglcontextlost", event => {
+      event.preventDefault();
+      status.textContent = "Restoring the WebGL renderer…";
+      status.hidden = false;
+    });
+
+    canvas.addEventListener("webglcontextrestored", () => {
+      renderer = createRenderer();
+      status.hidden = true;
+    });
+
+    renderer = createRenderer();
+    resize();
+    requestAnimationFrame(frame);
+
+    if (config.panel.enabled) {
+      import("./settings-editor.js?webgl=1")
+        .then(({ createSettingsEditor }) => {
+          createSettingsEditor({
+            config,
+            onChange: path => {
+              refresh();
+              if (!config.features.shockwaves.enabled || path === "preset") waves.length = 0;
+            },
+            onReset: buildGraph
+          });
+        })
+        .catch(error => console.error("Editor could not load:", error));
+    }
+  </script>
 </body>
 </html>
