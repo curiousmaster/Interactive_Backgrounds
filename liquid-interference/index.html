@@ -7,7 +7,8 @@
 <title>Liquid Interference — WebGL2</title>
 
 <style>
-html, body {
+html,
+body {
     margin: 0;
     width: 100%;
     height: 100%;
@@ -32,6 +33,7 @@ html, body {
     color: #ddd;
     font: 15px system-ui, sans-serif;
     text-align: center;
+    white-space: pre-wrap;
 }
 </style>
 </head>
@@ -39,9 +41,7 @@ html, body {
 <body>
 
 <canvas id="background" aria-hidden="true"></canvas>
-<div id="webgl-error" role="alert">
-    This background requires WebGL2.
-</div>
+<div id="webgl-error" role="alert"></div>
 
 <script type="module">
 "use strict";
@@ -198,6 +198,12 @@ window.getBackgroundConfig = () =>
 // ============================================================
 
 const canvas = document.getElementById("background");
+const errorElement = document.getElementById("webgl-error");
+
+function showError(message) {
+    errorElement.textContent = message;
+    errorElement.style.display = "grid";
+}
 
 const gl = canvas.getContext("webgl2", {
     alpha: false,
@@ -209,7 +215,7 @@ const gl = canvas.getContext("webgl2", {
 });
 
 if (!gl) {
-    document.getElementById("webgl-error").style.display = "grid";
+    showError("This background requires WebGL2.");
     throw new Error("WebGL2 is unavailable");
 }
 
@@ -218,6 +224,7 @@ const clamp = (value, min, max) =>
 
 const MAX_SOURCES = 16;
 const MAX_RIPPLES = 16;
+const TAU = Math.PI * 2;
 
 const extensions = {
     float: gl.getExtension("EXT_color_buffer_float"),
@@ -228,12 +235,13 @@ let width = 1;
 let height = 1;
 let dpr = 1;
 
-let time = 0;
+let waveTime = 0;
+let realTime = 0;
 let movementTime = 0;
+
 let previousTime = null;
 let previousFrame = 0;
 
-let running = true;
 let meshDirty = true;
 let targetsDirty = true;
 
@@ -245,6 +253,11 @@ let sceneTarget = null;
 let bloomA = null;
 let bloomB = null;
 
+// Geometry coverage is calculated from the camera frustum.
+// This is deliberately separate from the interference domain.
+let surfaceExtentX = 1;
+let surfaceExtentY = 1;
+
 const pointer = {
     x: 0,
     y: 0,
@@ -254,7 +267,7 @@ const pointer = {
     active: false,
     initialized: false,
     down: false,
-    lastRipple: 0
+    lastRipple: -100
 };
 
 // ============================================================
@@ -322,15 +335,25 @@ function uniformLocation(p, name) {
 }
 
 function u1(p, name, value) {
-    gl.uniform1f(uniformLocation(p, name), value);
+    gl.uniform1f(
+        uniformLocation(p, name),
+        value
+    );
 }
 
 function ui(p, name, value) {
-    gl.uniform1i(uniformLocation(p, name), value);
+    gl.uniform1i(
+        uniformLocation(p, name),
+        value
+    );
 }
 
 function u2(p, name, x, y) {
-    gl.uniform2f(uniformLocation(p, name), x, y);
+    gl.uniform2f(
+        uniformLocation(p, name),
+        x,
+        y
+    );
 }
 
 function u3(p, name, values) {
@@ -351,10 +374,11 @@ function matrix(p, name, value) {
 }
 
 // ============================================================
-// SHARED WAVE SHADER
+// SHARED INTERFERENCE SHADER
 //
-// All shared integer uniforms explicitly use highp.
-// This prevents vertex/fragment precision mismatches.
+// All shared uniforms have explicit precision.
+// The same wave function is used for 2D shading,
+// 3D displacement, and 3D surface shading.
 // ============================================================
 
 const waveGLSL = `
@@ -396,7 +420,9 @@ vec2 vortexTransform(vec2 p) {
     float strength = uVortex.w;
 
     for (int i = 0; i < 8; i++) {
-        if (i >= count) break;
+        if (i >= count) {
+            break;
+        }
 
         float fi = float(i);
         float phase = fi * 2.399963;
@@ -448,7 +474,9 @@ float interference(vec2 originalP) {
     float result = 0.0;
 
     for (int i = 0; i < MAX_SOURCES; i++) {
-        if (i >= uSourceCount) break;
+        if (i >= uSourceCount) {
+            break;
+        }
 
         vec4 source = uSources[i];
 
@@ -473,7 +501,11 @@ float interference(vec2 originalP) {
             uMouseStrength *
             exp(
                 -d * d /
-                (2.0 * uMouseRadius * uMouseRadius)
+                (
+                    2.0 *
+                    uMouseRadius *
+                    uMouseRadius
+                )
             );
 
         result += mouseAmount *
@@ -510,7 +542,9 @@ float interference(vec2 originalP) {
         float gain = amplitude;
 
         for (int j = 0; j < 6; j++) {
-            if (j >= layers) break;
+            if (j >= layers) {
+                break;
+            }
 
             float fj = float(j) + 1.0;
             vec2 q = p * scale;
@@ -527,8 +561,9 @@ float interference(vec2 originalP) {
 
             harmonic += complexity * 0.5 *
                 sin(
-                    length(q - uResolution * 0.5) *
-                    k * 0.7 + fj
+                    length(
+                        q - uResolution * 0.5
+                    ) * k * 0.7 + fj
                 );
 
             total += harmonic * gain;
@@ -551,7 +586,9 @@ float interference(vec2 originalP) {
         float damping = uRippleParams.w;
 
         for (int i = 0; i < MAX_RIPPLES; i++) {
-            if (i >= uRippleCount) break;
+            if (i >= uRippleCount) {
+                break;
+            }
 
             vec4 ripple = uRipples[i];
 
@@ -571,8 +608,12 @@ float interference(vec2 originalP) {
                 ) * 2.0
             );
 
-            float decay = exp(-age * damping);
-            float phase = (d - front) * 0.085;
+            float decay = exp(
+                -age * damping
+            );
+
+            float phase =
+                (d - front) * 0.085;
 
             result +=
                 sin(phase) *
@@ -588,9 +629,6 @@ float interference(vec2 originalP) {
 
 // ============================================================
 // FULLSCREEN VERTEX SHADER
-//
-// FIX: All varyings required by surfaceFragment are declared.
-// FIX: Matching highp float and int precision.
 // ============================================================
 
 const flatVertex = `#version 300 es
@@ -624,6 +662,10 @@ void main() {
 
 // ============================================================
 // 3D SURFACE VERTEX SHADER
+//
+// The geometry is centered around the interference field.
+// uSurfaceExtent determines how far it extends beyond
+// the visible camera frustum.
 // ============================================================
 
 const surfaceVertex = `#version 300 es
@@ -638,17 +680,26 @@ out float vHeight;
 
 ${waveGLSL}
 
-uniform mat4 uProjection;
-uniform mat4 uView;
+uniform highp mat4 uProjection;
+uniform highp mat4 uView;
 
-uniform float uElevation;
-uniform float uSmoothness;
+uniform highp float uElevation;
+uniform highp float uSmoothness;
+uniform highp vec2 uSurfaceExtent;
 
 void main() {
-    vUV = aPosition;
+    vec2 worldXY = (
+        aPosition - vec2(0.5)
+    ) * uSurfaceExtent;
 
-    vec2 p = aPosition * uResolution;
-    float wave = interference(p);
+    // Keep the wave field centered on the screen.
+    // Its coordinates are independent of mesh size.
+    vec2 fieldP = vec2(
+        worldXY.x + uResolution.x * 0.5,
+        uResolution.y * 0.5 - worldXY.y
+    );
+
+    float wave = interference(fieldP);
 
     float height =
         wave *
@@ -658,10 +709,11 @@ void main() {
     vHeight = height;
 
     vWorld = vec3(
-        p.x - uResolution.x * 0.5,
-        uResolution.y * 0.5 - p.y,
+        worldXY,
         height
     );
+
+    vUV = aPosition;
 
     gl_Position =
         uProjection *
@@ -686,35 +738,40 @@ out vec4 fragColor;
 
 ${waveGLSL}
 
-uniform int uThreeD;
+uniform highp int uThreeD;
+uniform highp vec2 uSurfaceExtent;
 
-uniform vec3 uColorA;
-uniform vec3 uColorB;
-uniform vec3 uBackground;
-uniform vec3 uMouseColor;
+uniform highp vec3 uColorA;
+uniform highp vec3 uColorB;
+uniform highp vec3 uBackground;
+uniform highp vec3 uMouseColor;
 
-uniform float uBrightness;
-uniform float uContrast;
-uniform float uBandFrequency;
+uniform highp float uBrightness;
+uniform highp float uContrast;
+uniform highp float uBandFrequency;
 
-uniform vec4 uIridescence;
-uniform vec2 uIridescenceExtra;
+uniform highp vec4 uIridescence;
+uniform highp vec2 uIridescenceExtra;
 
-uniform vec4 uCaustics;
-uniform vec3 uCausticColor;
-uniform float uCausticScale;
+uniform highp vec4 uCaustics;
+uniform highp vec3 uCausticColor;
+uniform highp float uCausticScale;
 
-uniform vec4 uMaterial;
-uniform float uMetallic;
-uniform float uLightDirection;
+uniform highp vec4 uMaterial;
+uniform highp float uMetallic;
+uniform highp float uLightDirection;
 
-uniform vec4 uFilaments;
-uniform vec2 uFilamentExtra;
+uniform highp vec4 uFilaments;
+uniform highp vec2 uFilamentExtra;
 
-uniform vec3 uCameraPosition;
+uniform highp vec3 uCameraPosition;
 
 vec3 spectral(float t) {
-    vec3 phase = vec3(0.0, 0.33, 0.67);
+    vec3 phase = vec3(
+        0.0,
+        0.33,
+        0.67
+    );
 
     return 0.5 + 0.5 * cos(
         6.2831853 * (t + phase)
@@ -742,7 +799,16 @@ vec3 fieldNormal(vec2 p) {
 }
 
 void main() {
-    vec2 p = vUV * uResolution;
+    vec2 p;
+
+    if (uThreeD == 1) {
+        p = vec2(
+            vWorld.x + uResolution.x * 0.5,
+            uResolution.y * 0.5 - vWorld.y
+        );
+    } else {
+        p = vUV * uResolution;
+    }
 
     float field = interference(p);
 
@@ -756,7 +822,8 @@ void main() {
     ) * uBrightness;
 
     float palette = 0.5 + 0.5 * sin(
-        field * 1.4 + uTime * 0.15
+        field * 1.4 +
+        uTime * 0.15
     );
 
     vec3 color = mix(
@@ -777,7 +844,11 @@ void main() {
         normal = fieldNormal(p);
     }
 
-    vec3 viewDirection = vec3(0.0, 0.0, 1.0);
+    vec3 viewDirection = vec3(
+        0.0,
+        0.0,
+        1.0
+    );
 
     if (uThreeD == 1) {
         viewDirection = normalize(
@@ -810,13 +881,21 @@ void main() {
 
         float luminance = dot(
             rainbow,
-            vec3(0.2126, 0.7152, 0.0722)
+            vec3(
+                0.2126,
+                0.7152,
+                0.0722
+            )
         );
 
         rainbow = mix(
             vec3(luminance),
             rainbow,
-            clamp(uIridescenceExtra.x, 0.0, 1.0)
+            clamp(
+                uIridescenceExtra.x,
+                0.0,
+                1.0
+            )
         );
 
         color = mix(
@@ -831,20 +910,30 @@ void main() {
     // --------------------------------------------------------
 
     if (uMouse.z > 0.001) {
-        float d = length(p - uMouse.xy);
+        float d = length(
+            p - uMouse.xy
+        );
 
         float tint =
             uMouse.z *
             uMouseStrength *
             exp(
                 -d * d /
-                (2.0 * uMouseRadius * uMouseRadius)
+                (
+                    2.0 *
+                    uMouseRadius *
+                    uMouseRadius
+                )
             );
 
         color = mix(
             color,
             uMouseColor,
-            clamp(tint * 0.7, 0.0, 1.0)
+            clamp(
+                tint * 0.7,
+                0.0,
+                1.0
+            )
         );
     }
 
@@ -855,7 +944,10 @@ void main() {
     // --------------------------------------------------------
 
     if (uCaustics.x > 0.5) {
-        float e = 1.5 * uCausticScale;
+        float e = max(
+            0.1,
+            1.5 * uCausticScale
+        );
 
         float fx =
             interference(p + vec2(e, 0.0)) -
@@ -865,11 +957,14 @@ void main() {
             interference(p + vec2(0.0, e)) -
             interference(p - vec2(0.0, e));
 
-        float gradient = length(vec2(fx, fy));
+        float gradient = length(
+            vec2(fx, fy)
+        );
 
         float concentration = pow(
             clamp(
-                1.0 - gradient * uCaustics.w,
+                1.0 -
+                gradient * uCaustics.w,
                 0.0,
                 1.0
             ),
@@ -878,8 +973,10 @@ void main() {
 
         float lines = pow(
             0.5 + 0.5 * cos(
-                field * PI *
-                uBandFrequency * 2.0
+                field *
+                PI *
+                uBandFrequency *
+                2.0
             ),
             uCaustics.z
         );
@@ -920,7 +1017,7 @@ void main() {
         float shininess = mix(
             128.0,
             4.0,
-            uMaterial.y
+            clamp(uMaterial.y, 0.0, 1.0)
         );
 
         float specular = pow(
@@ -939,12 +1036,17 @@ void main() {
             5.0
         ) * uMaterial.w;
 
-        color *= 0.55 + diffuse * 0.65;
+        color *=
+            0.55 +
+            diffuse * 0.65;
 
         vec3 reflectionColor = mix(
             vec3(1.0),
-            max(color, vec3(0.05)),
-            uMetallic
+            max(
+                color,
+                vec3(0.05)
+            ),
+            clamp(uMetallic, 0.0, 1.0)
         );
 
         color +=
@@ -954,7 +1056,11 @@ void main() {
             (0.4 + uMaterial.w);
 
         color +=
-            mix(color, vec3(1.0), 0.5) *
+            mix(
+                color,
+                vec3(1.0),
+                0.5
+            ) *
             fresnel *
             0.35;
     }
@@ -965,12 +1071,21 @@ void main() {
 
     if (uFilaments.x > 0.5) {
         float contour = abs(
-            sin(field * PI * uFilaments.y)
+            sin(
+                field *
+                PI *
+                uFilaments.y
+            )
+        );
+
+        float thickness = max(
+            uFilaments.z,
+            0.001
         );
 
         float edge = 1.0 - smoothstep(
-            uFilaments.z,
-            uFilaments.z + 0.08,
+            thickness,
+            thickness + 0.08,
             contour
         );
 
@@ -983,7 +1098,10 @@ void main() {
         float flicker =
             1.0 +
             uFilamentExtra.y *
-            sin(uTime * 13.0 + p.x * 0.03);
+            sin(
+                uTime * 13.0 +
+                p.x * 0.03
+            );
 
         vec3 filamentColor = mix(
             uColorA,
@@ -1004,7 +1122,10 @@ void main() {
     }
 
     fragColor = vec4(
-        max(color, vec3(0.0)),
+        max(
+            color,
+            vec3(0.0)
+        ),
         1.0
     );
 }
@@ -1077,7 +1198,9 @@ void main() {
 
     for (int i = 1; i <= 4; i++) {
         float offset =
-            float(i) * uRadius * 0.25;
+            float(i) *
+            uRadius *
+            0.25;
 
         vec2 d =
             uTexel *
@@ -1091,15 +1214,22 @@ void main() {
                      0.016216;
 
         color +=
-            texture(uTexture, vUV + d).rgb *
-            weight;
+            texture(
+                uTexture,
+                vUV + d
+            ).rgb * weight;
 
         color +=
-            texture(uTexture, vUV - d).rgb *
-            weight;
+            texture(
+                uTexture,
+                vUV - d
+            ).rgb * weight;
     }
 
-    fragColor = vec4(color, 1.0);
+    fragColor = vec4(
+        color,
+        1.0
+    );
 }
 `;
 
@@ -1154,7 +1284,9 @@ void main() {
             vUV
         ).rgb;
 
-        color += bloom * uBloomParams.y;
+        color +=
+            bloom *
+            uBloomParams.y;
     }
 
     // --------------------------------------------------------
@@ -1163,8 +1295,11 @@ void main() {
 
     if (uAtmosphere.x > 0.5) {
         vec2 lightCenter = vec2(
-            0.5 + 0.22 * sin(uTime * 0.08),
-            0.5 + 0.22 * cos(uTime * 0.06)
+            0.5 +
+            0.22 * sin(uTime * 0.08),
+
+            0.5 +
+            0.22 * cos(uTime * 0.06)
         );
 
         vec2 direction =
@@ -1195,7 +1330,10 @@ void main() {
             ).rgb;
 
             float luminance = max(
-                max(sampleColor.r, sampleColor.g),
+                max(
+                    sampleColor.r,
+                    sampleColor.g
+                ),
                 sampleColor.b
             );
 
@@ -1221,7 +1359,10 @@ void main() {
 
         float haze = exp(
             -distanceToLight *
-            (2.0 + uAtmosphere.z * 3.0)
+            (
+                2.0 +
+                uAtmosphere.z * 3.0
+            )
         );
 
         color +=
@@ -1244,11 +1385,17 @@ void main() {
     }
 
     color = pow(
-        max(color, vec3(0.0)),
+        max(
+            color,
+            vec3(0.0)
+        ),
         vec3(1.0 / 2.2)
     );
 
-    fragColor = vec4(color, 1.0);
+    fragColor = vec4(
+        color,
+        1.0
+    );
 }
 `;
 
@@ -1256,32 +1403,39 @@ void main() {
 // CREATE PROGRAMS
 // ============================================================
 
-const programs = {
-    flat: createProgram(
-        flatVertex,
-        surfaceFragment
-    ),
+let programs;
 
-    surface: createProgram(
-        surfaceVertex,
-        surfaceFragment
-    ),
+try {
+    programs = {
+        flat: createProgram(
+            flatVertex,
+            surfaceFragment
+        ),
 
-    extract: createProgram(
-        flatVertex,
-        extractFragment
-    ),
+        surface: createProgram(
+            surfaceVertex,
+            surfaceFragment
+        ),
 
-    blur: createProgram(
-        flatVertex,
-        blurFragment
-    ),
+        extract: createProgram(
+            flatVertex,
+            extractFragment
+        ),
 
-    final: createProgram(
-        flatVertex,
-        finalFragment
-    )
-};
+        blur: createProgram(
+            flatVertex,
+            blurFragment
+        ),
+
+        final: createProgram(
+            flatVertex,
+            finalFragment
+        )
+    };
+} catch (error) {
+    showError(error.message);
+    throw error;
+}
 
 // ============================================================
 // FULLSCREEN GEOMETRY
@@ -1291,7 +1445,11 @@ const fullscreenVAO = gl.createVertexArray();
 const fullscreenBuffer = gl.createBuffer();
 
 gl.bindVertexArray(fullscreenVAO);
-gl.bindBuffer(gl.ARRAY_BUFFER, fullscreenBuffer);
+
+gl.bindBuffer(
+    gl.ARRAY_BUFFER,
+    fullscreenBuffer
+);
 
 gl.bufferData(
     gl.ARRAY_BUFFER,
@@ -1321,7 +1479,9 @@ gl.vertexAttribPointer(
 gl.bindVertexArray(null);
 
 function drawFullscreen() {
-    gl.bindVertexArray(fullscreenVAO);
+    gl.bindVertexArray(
+        fullscreenVAO
+    );
 
     gl.drawArrays(
         gl.TRIANGLES,
@@ -1337,7 +1497,9 @@ function drawFullscreen() {
 // ============================================================
 
 function destroyMesh() {
-    if (!mesh) return;
+    if (!mesh) {
+        return;
+    }
 
     gl.deleteBuffer(mesh.vertices);
     gl.deleteBuffer(mesh.indices);
@@ -1350,13 +1512,17 @@ function createMesh() {
     destroyMesh();
 
     const n = clamp(
-        Math.round(config.view.meshResolution),
+        Math.round(
+            config.view.meshResolution
+        ),
         24,
         320
     );
 
     const vertices = new Float32Array(
-        (n + 1) * (n + 1) * 2
+        (n + 1) *
+        (n + 1) *
+        2
     );
 
     const indices = new Uint32Array(
@@ -1376,7 +1542,9 @@ function createMesh() {
 
     for (let y = 0; y < n; y++) {
         for (let x = 0; x < n; x++) {
-            const a = y * (n + 1) + x;
+            const a =
+                y * (n + 1) + x;
+
             const b = a + 1;
             const c = a + n + 1;
             const d = c + 1;
@@ -1455,22 +1623,28 @@ function createTarget(w, h, hdr = false, depth = false) {
     );
 
     const useFloat =
-        hdr && Boolean(extensions.float);
+        hdr &&
+        Boolean(extensions.float);
 
     gl.texImage2D(
         gl.TEXTURE_2D,
         0,
-        useFloat ? gl.RGBA16F : gl.RGBA8,
+        useFloat
+            ? gl.RGBA16F
+            : gl.RGBA8,
         w,
         h,
         0,
         gl.RGBA,
-        useFloat ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE,
+        useFloat
+            ? gl.HALF_FLOAT
+            : gl.UNSIGNED_BYTE,
         null
     );
 
     const filter =
-        useFloat && !extensions.floatLinear
+        useFloat &&
+        !extensions.floatLinear
             ? gl.NEAREST
             : gl.LINEAR;
 
@@ -1549,7 +1723,8 @@ function createTarget(w, h, hdr = false, depth = false) {
 
     if (status !== gl.FRAMEBUFFER_COMPLETE) {
         throw new Error(
-            "Framebuffer incomplete: " + status
+            "Framebuffer incomplete: " +
+            status
         );
     }
 
@@ -1568,13 +1743,22 @@ function createTarget(w, h, hdr = false, depth = false) {
 }
 
 function destroyTarget(target) {
-    if (!target) return;
+    if (!target) {
+        return;
+    }
 
-    gl.deleteTexture(target.texture);
-    gl.deleteFramebuffer(target.framebuffer);
+    gl.deleteTexture(
+        target.texture
+    );
+
+    gl.deleteFramebuffer(
+        target.framebuffer
+    );
 
     if (target.depthBuffer) {
-        gl.deleteRenderbuffer(target.depthBuffer);
+        gl.deleteRenderbuffer(
+            target.depthBuffer
+        );
     }
 }
 
@@ -1591,12 +1775,16 @@ function rebuildTargets() {
 
     const w = Math.max(
         1,
-        Math.round(canvas.width * scale)
+        Math.round(
+            canvas.width * scale
+        )
     );
 
     const h = Math.max(
         1,
-        Math.round(canvas.height * scale)
+        Math.round(
+            canvas.height * scale
+        )
     );
 
     sceneTarget = createTarget(
@@ -1607,8 +1795,14 @@ function rebuildTargets() {
     );
 
     bloomA = createTarget(
-        Math.max(1, Math.floor(w / 2)),
-        Math.max(1, Math.floor(h / 2)),
+        Math.max(
+            1,
+            Math.floor(w / 2)
+        ),
+        Math.max(
+            1,
+            Math.floor(h / 2)
+        ),
         true
     );
 
@@ -1624,14 +1818,20 @@ function rebuildTargets() {
 function bindTarget(target) {
     gl.bindFramebuffer(
         gl.FRAMEBUFFER,
-        target ? target.framebuffer : null
+        target
+            ? target.framebuffer
+            : null
     );
 
     gl.viewport(
         0,
         0,
-        target ? target.w : canvas.width,
-        target ? target.h : canvas.height
+        target
+            ? target.w
+            : canvas.width,
+        target
+            ? target.h
+            : canvas.height
     );
 }
 
@@ -1651,14 +1851,23 @@ function bindTexture(texture, unit = 0) {
 // ============================================================
 
 function perspective(fov, aspect, near, far) {
-    const f = 1 / Math.tan(fov / 2);
+    const f =
+        1 / Math.tan(fov / 2);
+
     const m = new Float32Array(16);
 
     m[0] = f / aspect;
     m[5] = f;
-    m[10] = (far + near) / (near - far);
+
+    m[10] =
+        (far + near) /
+        (near - far);
+
     m[11] = -1;
-    m[14] = 2 * far * near / (near - far);
+
+    m[14] =
+        2 * far * near /
+        (near - far);
 
     return m;
 }
@@ -1673,6 +1882,7 @@ function orthographic(l, r, b, t, n, f) {
     m[12] = -(r + l) / (r - l);
     m[13] = -(t + b) / (t - b);
     m[14] = -(f + n) / (f - n);
+
     m[15] = 1;
 
     return m;
@@ -1680,8 +1890,12 @@ function orthographic(l, r, b, t, n, f) {
 
 function lookAt(eye, target, up) {
     const normalize = v => {
-        const length = Math.hypot(...v) || 1;
-        return v.map(x => x / length);
+        const length =
+            Math.hypot(...v) || 1;
+
+        return v.map(
+            x => x / length
+        );
     };
 
     const cross = (a, b) => [
@@ -1691,10 +1905,15 @@ function lookAt(eye, target, up) {
     ];
 
     const z = normalize(
-        eye.map((x, i) => x - target[i])
+        eye.map(
+            (x, i) => x - target[i]
+        )
     );
 
-    const x = normalize(cross(up, z));
+    const x = normalize(
+        cross(up, z)
+    );
+
     const y = cross(z, x);
 
     return new Float32Array([
@@ -1702,372 +1921,58 @@ function lookAt(eye, target, up) {
         x[1], y[1], z[1], 0,
         x[2], y[2], z[2], 0,
 
-        -x.reduce((s, v, i) =>
-            s + v * eye[i], 0),
+        -x.reduce(
+            (s, v, i) =>
+                s + v * eye[i],
+            0
+        ),
 
-        -y.reduce((s, v, i) =>
-            s + v * eye[i], 0),
+        -y.reduce(
+            (s, v, i) =>
+                s + v * eye[i],
+            0
+        ),
 
-        -z.reduce((s, v, i) =>
-            s + v * eye[i], 0),
+        -z.reduce(
+            (s, v, i) =>
+                s + v * eye[i],
+            0
+        ),
 
         1
     ]);
 }
 
 // ============================================================
-// WAVE SOURCES
+// CAMERA AND SURFACE COVERAGE
+//
+// The surface must cover the complete viewport.
+//
+// Perspective mode calculates the visible camera footprint
+// and expands the geometry well beyond it.
+//
+// Orthographic mode uses the camera's projected bounds.
+//
+// A generous margin accommodates displacement and tilt.
 // ============================================================
 
-function createSources() {
-    const count = clamp(
-        Math.floor(config.waves.sourceCount),
-        0,
-        MAX_SOURCES
-    );
-
-    sources = Array.from(
-        { length: count },
-        (_, i) => ({
-            phase: i * 2.3999632297,
-            speedX: 0.7 + (i % 3) * 0.17,
-            speedY: 0.6 + (i % 4) * 0.13,
-            wavePhase: i * 1.3
-        })
-    );
-}
-
-function sourcePositions() {
-    const spread = clamp(
-        config.waves.spread,
-        0,
-        1
-    );
-
-    return sources.map(s => [
-        width * (
-            0.5 +
-            spread * 0.5 *
-            Math.cos(
-                movementTime * s.speedX +
-                s.phase
-            )
-        ),
-
-        height * (
-            0.5 +
-            spread * 0.5 *
-            Math.sin(
-                movementTime * s.speedY +
-                s.phase
-            )
-        ),
-
-        s.wavePhase,
-        0
-    ]);
-}
-
-// ============================================================
-// UNIFORMS
-// ============================================================
-
-function setWaveUniforms(p) {
-    u2(p, "uResolution", width, height);
-    u1(p, "uTime", time);
-    u1(p, "uMovementTime", movementTime);
-
-    u1(
-        p,
-        "uWavelength",
-        config.waves.wavelength
-    );
-
-    u1(p, "uWaveSpeed", 1);
-
-    const positions = sourcePositions();
-
-    const sourceData = new Float32Array(
-        MAX_SOURCES * 4
-    );
-
-    positions.forEach((source, i) => {
-        sourceData.set(source, i * 4);
-    });
-
-    ui(
-        p,
-        "uSourceCount",
-        positions.length
-    );
-
-    gl.uniform4fv(
-        uniformLocation(p, "uSources[0]"),
-        sourceData
-    );
-
-    gl.uniform3f(
-        uniformLocation(p, "uMouse"),
-        pointer.x,
-        height - pointer.y,
-        pointer.influence
-    );
-
-    u1(
-        p,
-        "uMouseStrength",
-        config.mouse.enabled
-            ? config.mouse.strength
-            : 0
-    );
-
-    u1(
-        p,
-        "uMouseRadius",
-        config.mouse.radius
-    );
-
-    const vortex = config.features.vortex;
-
-    gl.uniform4f(
-        uniformLocation(p, "uVortex"),
-        +vortex.enabled,
-        vortex.count,
-        vortex.radius,
-        vortex.strength
-    );
-
-    u2(
-        p,
-        "uVortexExtra",
-        vortex.speed,
-        vortex.turbulence
-    );
-
-    const harmonics = config.features.harmonics;
-
-    gl.uniform4f(
-        uniformLocation(p, "uHarmonics"),
-        +harmonics.enabled,
-        harmonics.layers,
-        harmonics.frequency,
-        harmonics.amplitude
-    );
-
-    u2(
-        p,
-        "uHarmonicsExtra",
-        harmonics.phaseDrift,
-        harmonics.complexity
-    );
-
-    const rippleSettings = config.features.ripples;
-
-    gl.uniform4f(
-        uniformLocation(p, "uRippleParams"),
-        +rippleSettings.enabled,
-        rippleSettings.amplitude,
-        rippleSettings.speed,
-        rippleSettings.damping
-    );
-
-    const rippleData = new Float32Array(
-        MAX_RIPPLES * 4
-    );
-
-    const active = rippleSettings.enabled
-        ? ripples.slice(-MAX_RIPPLES)
-        : [];
-
-    active.forEach((item, i) => {
-        rippleData.set([
-            item.x,
-            height - item.y,
-            item.time,
-            item.width
-        ], i * 4);
-    });
-
-    ui(
-        p,
-        "uRippleCount",
-        active.length
-    );
-
-    gl.uniform4fv(
-        uniformLocation(p, "uRipples[0]"),
-        rippleData
-    );
-}
-
-function setSurfaceUniforms(p) {
-    setWaveUniforms(p);
-
-    const a = config.appearance;
-
-    u3(p, "uColorA", a.colorA);
-    u3(p, "uColorB", a.colorB);
-    u3(p, "uBackground", a.backgroundColor);
-    u3(p, "uMouseColor", config.mouse.color);
-
-    u1(p, "uBrightness", a.brightness);
-    u1(p, "uContrast", a.contrast);
-    u1(p, "uBandFrequency", a.bandFrequency);
-
-    ui(
-        p,
-        "uThreeD",
-        +config.view.threeD
-    );
-
-    const ir = config.features.iridescence;
-
-    gl.uniform4f(
-        uniformLocation(p, "uIridescence"),
-        +ir.enabled,
-        ir.spectrumWidth,
-        ir.dispersion,
-        ir.hueShift
-    );
-
-    u2(
-        p,
-        "uIridescenceExtra",
-        ir.saturation,
-        ir.speed
-    );
-
-    const c = config.features.caustics;
-
-    gl.uniform4f(
-        uniformLocation(p, "uCaustics"),
-        +c.enabled,
-        c.intensity,
-        c.sharpness,
-        c.distortion
-    );
-
-    u3(
-        p,
-        "uCausticColor",
-        c.color
-    );
-
-    u1(
-        p,
-        "uCausticScale",
-        c.scale
-    );
-
-    const m = config.features.material;
-
-    gl.uniform4f(
-        uniformLocation(p, "uMaterial"),
-        +m.enabled,
-        m.roughness,
-        m.reflectivity,
-        m.fresnel
-    );
-
-    u1(
-        p,
-        "uMetallic",
-        m.metallic
-    );
-
-    u1(
-        p,
-        "uLightDirection",
-        m.lightDirection
-    );
-
-    const f = config.features.filaments;
-
-    gl.uniform4f(
-        uniformLocation(p, "uFilaments"),
-        +f.enabled,
-        f.density,
-        f.thickness,
-        f.brightness
-    );
-
-    u2(
-        p,
-        "uFilamentExtra",
-        f.threshold,
-        f.flicker
-    );
-}
-
-// ============================================================
-// SURFACE RENDERING
-// ============================================================
-
-function renderSurface() {
-    bindTarget(sceneTarget);
-
-    const bg = config.appearance.backgroundColor;
-
-    gl.clearColor(
-        bg[0] / 255,
-        bg[1] / 255,
-        bg[2] / 255,
-        1
-    );
-
-    gl.clear(
-        gl.COLOR_BUFFER_BIT |
-        gl.DEPTH_BUFFER_BIT
-    );
-
-    // --------------------------------------------------------
-    // Fullscreen 2D background
-    // --------------------------------------------------------
-
-    gl.disable(gl.DEPTH_TEST);
-
-    const flat = programs.flat;
-
-    gl.useProgram(flat.program);
-    setSurfaceUniforms(flat);
-
-    // The backdrop always uses the flat field.
-    ui(flat, "uThreeD", 0);
-
-    gl.uniform3f(
-        uniformLocation(flat, "uCameraPosition"),
-        0,
-        0,
-        255
-    );
-
-    drawFullscreen();
-
-    if (!config.view.threeD) {
-        return;
-    }
-
-    // --------------------------------------------------------
-    // Displaced 3D surface
-    // --------------------------------------------------------
-
-    if (meshDirty || !mesh) {
-        createMesh();
-    }
-
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthFunc(gl.LEQUAL);
-    gl.disable(gl.CULL_FACE);
-
-    const p = programs.surface;
-
-    gl.useProgram(p.program);
-    setSurfaceUniforms(p);
-
+function calculateCamera() {
     const v = config.view;
 
-    const tilt = v.tilt * Math.PI / 180;
-    const rotation = v.rotation * Math.PI / 180;
+    const tilt = clamp(
+        v.tilt,
+        0,
+        75
+    ) * Math.PI / 180;
+
+    const rotation =
+        v.rotation *
+        Math.PI / 180;
+
+    const zoom = Math.max(
+        v.zoom,
+        0.5
+    );
 
     const diagonal = Math.hypot(
         width,
@@ -2075,8 +1980,7 @@ function renderSurface() {
     );
 
     const distance =
-        diagonal * 1.35 /
-        Math.max(v.zoom, 0.5);
+        diagonal * 1.35 / zoom;
 
     const eye = [
         Math.sin(rotation) *
@@ -2097,18 +2001,38 @@ function renderSurface() {
         [0, 1, 0]
     );
 
+    const aspect =
+        width / height;
+
     let projection;
+    let footprintX;
+    let footprintY;
 
     if (v.perspective) {
+        const fov = Math.PI / 3;
+
         projection = perspective(
-            Math.PI / 3,
-            width / height,
+            fov,
+            aspect,
             1,
-            diagonal * 12
+            diagonal * 20
         );
+
+        const halfHeight =
+            distance *
+            Math.tan(fov / 2);
+
+        const halfWidth =
+            halfHeight * aspect;
+
+        footprintX =
+            halfWidth * 2;
+
+        footprintY =
+            halfHeight * 2;
     } else {
         const halfW =
-            width * 0.8 / v.zoom;
+            width * 0.8 / zoom;
 
         const halfH =
             halfW * height / width;
@@ -2119,31 +2043,623 @@ function renderSurface() {
             -halfH,
             halfH,
             1,
-            diagonal * 12
+            diagonal * 20
         );
+
+        footprintX =
+            halfW * 2;
+
+        footprintY =
+            halfH * 2;
     }
 
-    matrix(p, "uView", view);
-    matrix(p, "uProjection", projection);
+    // Increased coverage for oblique camera angles.
+    const tiltFactor =
+        1 / Math.max(
+            Math.cos(tilt),
+            0.2
+        );
+
+    // Expand to cover rotation and displaced geometry.
+    const coverage =
+        3.0 * tiltFactor;
+
+    surfaceExtentX = Math.max(
+        width * 3,
+        footprintX * coverage
+    );
+
+    surfaceExtentY = Math.max(
+        height * 3,
+        footprintY * coverage
+    );
+
+    return {
+        eye,
+        view,
+        projection
+    };
+}
+
+// ============================================================
+// WAVE SOURCES
+// ============================================================
+
+function createSources() {
+    const count = clamp(
+        Math.floor(
+            config.waves.sourceCount
+        ),
+        0,
+        MAX_SOURCES
+    );
+
+    sources = Array.from(
+        { length: count },
+        (_, i) => ({
+            phase: i * 2.3999632297,
+            speedX:
+                0.7 +
+                (i % 3) * 0.17,
+            speedY:
+                0.6 +
+                (i % 4) * 0.13,
+            wavePhase: i * 1.3
+        })
+    );
+}
+
+function sourcePositions() {
+    const spread = clamp(
+        config.waves.spread,
+        0,
+        1
+    );
+
+    return sources.map(s => [
+        width * (
+            0.5 +
+            spread * 0.5 *
+            Math.cos(
+                movementTime *
+                s.speedX +
+                s.phase
+            )
+        ),
+
+        height * (
+            0.5 +
+            spread * 0.5 *
+            Math.sin(
+                movementTime *
+                s.speedY +
+                s.phase
+            )
+        ),
+
+        s.wavePhase,
+        0
+    ]);
+}
+
+// ============================================================
+// SHADER UNIFORMS
+// ============================================================
+
+function setWaveUniforms(p) {
+    u2(
+        p,
+        "uResolution",
+        width,
+        height
+    );
+
+    u1(
+        p,
+        "uTime",
+        waveTime
+    );
+
+    u1(
+        p,
+        "uMovementTime",
+        movementTime
+    );
+
+    u1(
+        p,
+        "uWavelength",
+        config.waves.wavelength
+    );
+
+    u1(
+        p,
+        "uWaveSpeed",
+        1
+    );
+
+    const positions =
+        sourcePositions();
+
+    const sourceData =
+        new Float32Array(
+            MAX_SOURCES * 4
+        );
+
+    positions.forEach(
+        (source, i) => {
+            sourceData.set(
+                source,
+                i * 4
+            );
+        }
+    );
+
+    ui(
+        p,
+        "uSourceCount",
+        positions.length
+    );
+
+    gl.uniform4fv(
+        uniformLocation(
+            p,
+            "uSources[0]"
+        ),
+        sourceData
+    );
+
+    gl.uniform3f(
+        uniformLocation(
+            p,
+            "uMouse"
+        ),
+        pointer.x,
+        height - pointer.y,
+        pointer.influence
+    );
+
+    u1(
+        p,
+        "uMouseStrength",
+        config.mouse.enabled
+            ? config.mouse.strength
+            : 0
+    );
+
+    u1(
+        p,
+        "uMouseRadius",
+        config.mouse.radius
+    );
+
+    // --------------------------------------------------------
+    // Vortex
+    // --------------------------------------------------------
+
+    const vortex =
+        config.features.vortex;
+
+    gl.uniform4f(
+        uniformLocation(
+            p,
+            "uVortex"
+        ),
+        +vortex.enabled,
+        vortex.count,
+        vortex.radius,
+        vortex.strength
+    );
+
+    u2(
+        p,
+        "uVortexExtra",
+        vortex.speed,
+        vortex.turbulence
+    );
+
+    // --------------------------------------------------------
+    // Harmonics
+    // --------------------------------------------------------
+
+    const harmonics =
+        config.features.harmonics;
+
+    gl.uniform4f(
+        uniformLocation(
+            p,
+            "uHarmonics"
+        ),
+        +harmonics.enabled,
+        harmonics.layers,
+        harmonics.frequency,
+        harmonics.amplitude
+    );
+
+    u2(
+        p,
+        "uHarmonicsExtra",
+        harmonics.phaseDrift,
+        harmonics.complexity
+    );
+
+    // --------------------------------------------------------
+    // Ripples
+    // --------------------------------------------------------
+
+    const rippleSettings =
+        config.features.ripples;
+
+    gl.uniform4f(
+        uniformLocation(
+            p,
+            "uRippleParams"
+        ),
+        +rippleSettings.enabled,
+        rippleSettings.amplitude,
+        rippleSettings.speed,
+        rippleSettings.damping
+    );
+
+    const rippleData =
+        new Float32Array(
+            MAX_RIPPLES * 4
+        );
+
+    const active =
+        rippleSettings.enabled
+            ? ripples.slice(
+                -MAX_RIPPLES
+            )
+            : [];
+
+    active.forEach(
+        (item, i) => {
+            rippleData.set(
+                [
+                    item.x,
+                    height - item.y,
+                    item.time,
+                    item.width
+                ],
+                i * 4
+            );
+        }
+    );
+
+    ui(
+        p,
+        "uRippleCount",
+        active.length
+    );
+
+    gl.uniform4fv(
+        uniformLocation(
+            p,
+            "uRipples[0]"
+        ),
+        rippleData
+    );
+}
+
+function setSurfaceUniforms(p) {
+    setWaveUniforms(p);
+
+    const a = config.appearance;
+
+    u3(
+        p,
+        "uColorA",
+        a.colorA
+    );
+
+    u3(
+        p,
+        "uColorB",
+        a.colorB
+    );
+
+    u3(
+        p,
+        "uBackground",
+        a.backgroundColor
+    );
+
+    u3(
+        p,
+        "uMouseColor",
+        config.mouse.color
+    );
+
+    u1(
+        p,
+        "uBrightness",
+        a.brightness
+    );
+
+    u1(
+        p,
+        "uContrast",
+        a.contrast
+    );
+
+    u1(
+        p,
+        "uBandFrequency",
+        a.bandFrequency
+    );
+
+    ui(
+        p,
+        "uThreeD",
+        +config.view.threeD
+    );
+
+    u2(
+        p,
+        "uSurfaceExtent",
+        surfaceExtentX,
+        surfaceExtentY
+    );
+
+    // --------------------------------------------------------
+    // Iridescence
+    // --------------------------------------------------------
+
+    const ir =
+        config.features.iridescence;
+
+    gl.uniform4f(
+        uniformLocation(
+            p,
+            "uIridescence"
+        ),
+        +ir.enabled,
+        ir.spectrumWidth,
+        ir.dispersion,
+        ir.hueShift
+    );
+
+    u2(
+        p,
+        "uIridescenceExtra",
+        ir.saturation,
+        ir.speed
+    );
+
+    // --------------------------------------------------------
+    // Caustics
+    // --------------------------------------------------------
+
+    const c =
+        config.features.caustics;
+
+    gl.uniform4f(
+        uniformLocation(
+            p,
+            "uCaustics"
+        ),
+        +c.enabled,
+        c.intensity,
+        c.sharpness,
+        c.distortion
+    );
+
+    u3(
+        p,
+        "uCausticColor",
+        c.color
+    );
+
+    u1(
+        p,
+        "uCausticScale",
+        c.scale
+    );
+
+    // --------------------------------------------------------
+    // Material
+    // --------------------------------------------------------
+
+    const m =
+        config.features.material;
+
+    gl.uniform4f(
+        uniformLocation(
+            p,
+            "uMaterial"
+        ),
+        +m.enabled,
+        m.roughness,
+        m.reflectivity,
+        m.fresnel
+    );
+
+    u1(
+        p,
+        "uMetallic",
+        m.metallic
+    );
+
+    u1(
+        p,
+        "uLightDirection",
+        m.lightDirection
+    );
+
+    // --------------------------------------------------------
+    // Filaments
+    // --------------------------------------------------------
+
+    const f =
+        config.features.filaments;
+
+    gl.uniform4f(
+        uniformLocation(
+            p,
+            "uFilaments"
+        ),
+        +f.enabled,
+        f.density,
+        f.thickness,
+        f.brightness
+    );
+
+    u2(
+        p,
+        "uFilamentExtra",
+        f.threshold,
+        f.flicker
+    );
+}
+
+// ============================================================
+// SURFACE RENDERING
+//
+// IMPORTANT:
+// 2D and 3D are mutually exclusive rendering paths.
+//
+// 3D does not render the 2D field underneath.
+// ============================================================
+
+function renderSurface() {
+    bindTarget(sceneTarget);
+
+    const bg =
+        config.appearance.backgroundColor;
+
+    gl.clearColor(
+        bg[0] / 255,
+        bg[1] / 255,
+        bg[2] / 255,
+        1
+    );
+
+    gl.clear(
+        gl.COLOR_BUFFER_BIT |
+        gl.DEPTH_BUFFER_BIT
+    );
+
+    // --------------------------------------------------------
+    // 2D MODE
+    // --------------------------------------------------------
+
+    if (!config.view.threeD) {
+        gl.disable(
+            gl.DEPTH_TEST
+        );
+
+        const p =
+            programs.flat;
+
+        gl.useProgram(
+            p.program
+        );
+
+        setSurfaceUniforms(p);
+
+        ui(
+            p,
+            "uThreeD",
+            0
+        );
+
+        gl.uniform3f(
+            uniformLocation(
+                p,
+                "uCameraPosition"
+            ),
+            0,
+            0,
+            255
+        );
+
+        drawFullscreen();
+        return;
+    }
+
+    // --------------------------------------------------------
+    // 3D MODE
+    // --------------------------------------------------------
+
+    if (meshDirty || !mesh) {
+        createMesh();
+    }
+
+    const camera =
+        calculateCamera();
+
+    gl.enable(
+        gl.DEPTH_TEST
+    );
+
+    gl.depthFunc(
+        gl.LEQUAL
+    );
+
+    gl.disable(
+        gl.CULL_FACE
+    );
+
+    const p =
+        programs.surface;
+
+    gl.useProgram(
+        p.program
+    );
+
+    setSurfaceUniforms(p);
+
+    ui(
+        p,
+        "uThreeD",
+        1
+    );
+
+    matrix(
+        p,
+        "uView",
+        camera.view
+    );
+
+    matrix(
+        p,
+        "uProjection",
+        camera.projection
+    );
 
     u1(
         p,
         "uElevation",
-        v.elevation
+        config.view.elevation
     );
 
     u1(
         p,
         "uSmoothness",
-        v.smoothness
+        config.view.smoothness
+    );
+
+    u2(
+        p,
+        "uSurfaceExtent",
+        surfaceExtentX,
+        surfaceExtentY
     );
 
     gl.uniform3fv(
-        uniformLocation(p, "uCameraPosition"),
-        new Float32Array(eye)
+        uniformLocation(
+            p,
+            "uCameraPosition"
+        ),
+        new Float32Array(
+            camera.eye
+        )
     );
 
-    gl.bindVertexArray(mesh.vao);
+    gl.bindVertexArray(
+        mesh.vao
+    );
 
     gl.drawElements(
         gl.TRIANGLES,
@@ -2153,7 +2669,10 @@ function renderSurface() {
     );
 
     gl.bindVertexArray(null);
-    gl.disable(gl.DEPTH_TEST);
+
+    gl.disable(
+        gl.DEPTH_TEST
+    );
 }
 
 // ============================================================
@@ -2161,29 +2680,42 @@ function renderSurface() {
 // ============================================================
 
 function renderBloom() {
-    const b = config.features.bloom;
-    const legacy = config.glow;
+    const b =
+        config.features.bloom;
 
-    if (!b.enabled && !legacy.enabled) {
+    const legacy =
+        config.glow;
+
+    if (
+        !b.enabled &&
+        !legacy.enabled
+    ) {
         return;
     }
 
     // --------------------------------------------------------
-    // Extract bright areas
+    // Bright-pass extraction
     // --------------------------------------------------------
 
     bindTarget(bloomA);
 
-    let p = programs.extract;
+    let p =
+        programs.extract;
 
-    gl.useProgram(p.program);
+    gl.useProgram(
+        p.program
+    );
 
     bindTexture(
         sceneTarget.texture,
         0
     );
 
-    ui(p, "uTexture", 0);
+    ui(
+        p,
+        "uTexture",
+        0
+    );
 
     u1(
         p,
@@ -2210,14 +2742,21 @@ function renderBloom() {
     bindTarget(bloomB);
 
     p = programs.blur;
-    gl.useProgram(p.program);
+
+    gl.useProgram(
+        p.program
+    );
 
     bindTexture(
         bloomA.texture,
         0
     );
 
-    ui(p, "uTexture", 0);
+    ui(
+        p,
+        "uTexture",
+        0
+    );
 
     u2(
         p,
@@ -2270,11 +2809,17 @@ function renderBloom() {
 
 function renderFinal() {
     bindTarget(null);
-    gl.disable(gl.DEPTH_TEST);
 
-    const p = programs.final;
+    gl.disable(
+        gl.DEPTH_TEST
+    );
 
-    gl.useProgram(p.program);
+    const p =
+        programs.final;
+
+    gl.useProgram(
+        p.program
+    );
 
     bindTexture(
         sceneTarget.texture,
@@ -2286,8 +2831,17 @@ function renderFinal() {
         1
     );
 
-    ui(p, "uScene", 0);
-    ui(p, "uBloom", 1);
+    ui(
+        p,
+        "uScene",
+        0
+    );
+
+    ui(
+        p,
+        "uBloom",
+        1
+    );
 
     u2(
         p,
@@ -2296,32 +2850,57 @@ function renderFinal() {
         canvas.height
     );
 
-    u1(p, "uTime", time);
+    u1(
+        p,
+        "uTime",
+        realTime
+    );
 
-    const b = config.features.bloom;
-    const legacy = config.glow;
+    const b =
+        config.features.bloom;
+
+    const legacy =
+        config.glow;
 
     const bloomEnabled =
-        b.enabled || legacy.enabled;
+        b.enabled ||
+        legacy.enabled;
 
     const intensity =
-        (b.enabled ? b.intensity : 0) +
-        (legacy.enabled
-            ? legacy.intensity * 0.5
-            : 0);
+        (
+            b.enabled
+                ? b.intensity
+                : 0
+        ) +
+        (
+            legacy.enabled
+                ? legacy.intensity * 0.5
+                : 0
+        );
 
     gl.uniform4f(
-        uniformLocation(p, "uBloomParams"),
+        uniformLocation(
+            p,
+            "uBloomParams"
+        ),
         +bloomEnabled,
         intensity,
         0,
         0
     );
 
-    const a = config.features.atmosphere;
+    // --------------------------------------------------------
+    // Atmosphere
+    // --------------------------------------------------------
+
+    const a =
+        config.features.atmosphere;
 
     gl.uniform4f(
-        uniformLocation(p, "uAtmosphere"),
+        uniformLocation(
+            p,
+            "uAtmosphere"
+        ),
         +a.enabled,
         a.scattering,
         a.density,
@@ -2340,11 +2919,19 @@ function renderFinal() {
         a.attenuation
     );
 
+    // --------------------------------------------------------
+    // Exposure and tone mapping
+    // --------------------------------------------------------
+
     u1(
         p,
         "uExposure",
         config.rendering.exposure *
-        (b.enabled ? b.exposure : 1)
+        (
+            b.enabled
+                ? b.exposure
+                : 1
+        )
     );
 
     ui(
@@ -2388,12 +2975,16 @@ function resize() {
 
     canvas.width = Math.max(
         1,
-        Math.round(width * dpr)
+        Math.round(
+            width * dpr
+        )
     );
 
     canvas.height = Math.max(
         1,
-        Math.round(height * dpr)
+        Math.round(
+            height * dpr
+        )
     );
 
     targetsDirty = true;
@@ -2401,6 +2992,9 @@ function resize() {
 
 // ============================================================
 // POINTER INTERACTION
+//
+// Pointer movement affects the interference field.
+// It never rotates or translates the camera.
 // ============================================================
 
 function isEditorTarget(event) {
@@ -2415,14 +3009,17 @@ function isEditorTarget(event) {
 }
 
 function addRipple(x, y) {
-    const r = config.features.ripples;
+    const r =
+        config.features.ripples;
 
-    if (!r.enabled) return;
+    if (!r.enabled) {
+        return;
+    }
 
     ripples.push({
         x,
         y,
-        time,
+        time: waveTime,
         width: Math.max(
             12,
             r.radius * 0.12
@@ -2430,7 +3027,9 @@ function addRipple(x, y) {
     });
 
     const max = clamp(
-        Math.round(r.maxCount),
+        Math.round(
+            r.maxCount
+        ),
         1,
         MAX_RIPPLES
     );
@@ -2449,26 +3048,35 @@ function updatePointer(event) {
         return;
     }
 
-    pointer.targetX = event.clientX;
-    pointer.targetY = event.clientY;
+    pointer.targetX =
+        event.clientX;
+
+    pointer.targetY =
+        event.clientY;
+
     pointer.active = true;
 
     if (!pointer.initialized) {
-        pointer.x = pointer.targetX;
-        pointer.y = pointer.targetY;
+        pointer.x =
+            pointer.targetX;
+
+        pointer.y =
+            pointer.targetY;
+
         pointer.initialized = true;
     }
 
     if (
         pointer.down &&
-        time - pointer.lastRipple > 0.09
+        realTime - pointer.lastRipple > 0.09
     ) {
         addRipple(
             event.clientX,
             event.clientY
         );
 
-        pointer.lastRipple = time;
+        pointer.lastRipple =
+            realTime;
     }
 }
 
@@ -2493,7 +3101,8 @@ window.addEventListener(
             event.clientY
         );
 
-        pointer.lastRipple = time;
+        pointer.lastRipple =
+            realTime;
     }
 );
 
@@ -2545,11 +3154,12 @@ document.addEventListener(
 // ============================================================
 
 function animate(timestamp) {
-    if (!running) return;
+    requestAnimationFrame(
+        animate
+    );
 
-    requestAnimationFrame(animate);
-
-    const limit = config.rendering.fpsLimit;
+    const limit =
+        config.rendering.fpsLimit;
 
     const interval =
         limit > 0
@@ -2558,7 +3168,8 @@ function animate(timestamp) {
 
     if (
         previousFrame &&
-        timestamp - previousFrame < interval - 0.5
+        timestamp - previousFrame <
+            interval - 0.5
     ) {
         return;
     }
@@ -2567,32 +3178,45 @@ function animate(timestamp) {
         previousTime === null
             ? 0
             : Math.min(
-                (timestamp - previousTime) / 1000,
+                (
+                    timestamp -
+                    previousTime
+                ) / 1000,
                 0.05
             );
 
     previousTime = timestamp;
     previousFrame = timestamp;
 
-    time += dt * config.waves.speed;
+    realTime += dt;
+
+    waveTime +=
+        dt *
+        config.waves.speed;
 
     movementTime +=
-        dt * config.waves.movementSpeed;
+        dt *
+        config.waves.movementSpeed;
 
-    const smoothing = 1 - Math.exp(
-        -Math.max(
-            config.mouse.smoothing,
-            0.1
-        ) * dt
-    );
+    const smoothing =
+        1 - Math.exp(
+            -Math.max(
+                config.mouse.smoothing,
+                0.1
+            ) * dt
+        );
 
     pointer.x +=
-        (pointer.targetX - pointer.x) *
-        smoothing;
+        (
+            pointer.targetX -
+            pointer.x
+        ) * smoothing;
 
     pointer.y +=
-        (pointer.targetY - pointer.y) *
-        smoothing;
+        (
+            pointer.targetY -
+            pointer.y
+        ) * smoothing;
 
     const targetInfluence =
         pointer.active &&
@@ -2601,17 +3225,24 @@ function animate(timestamp) {
             : 0;
 
     pointer.influence +=
-        (targetInfluence - pointer.influence) *
-        smoothing;
+        (
+            targetInfluence -
+            pointer.influence
+        ) * smoothing;
 
-    const r = config.features.ripples;
+    const r =
+        config.features.ripples;
 
     const lifetime =
-        8 / Math.max(r.damping, 0.1);
+        8 / Math.max(
+            r.damping,
+            0.1
+        );
 
     ripples = ripples.filter(
         item =>
-            time - item.time < lifetime
+            waveTime - item.time <
+            lifetime
     );
 
     render();
@@ -2622,26 +3253,40 @@ function animate(timestamp) {
 // ============================================================
 
 function onConfigChange(path) {
-    if (path === "waves.sourceCount") {
+    if (
+        path ===
+        "waves.sourceCount"
+    ) {
         createSources();
     }
 
-    if (path === "view.meshResolution") {
+    if (
+        path ===
+        "view.meshResolution"
+    ) {
         meshDirty = true;
     }
 
     if (
-        path === "rendering.resolution" ||
-        path === "rendering.pixelRatio"
+        path ===
+        "rendering.resolution" ||
+        path ===
+        "rendering.pixelRatio"
     ) {
         resize();
     }
 
-    if (path === "appearance.smoothing") {
+    if (
+        path ===
+        "appearance.smoothing"
+    ) {
         targetsDirty = true;
     }
 
-    if (path === "features.ripples.maxCount") {
+    if (
+        path ===
+        "features.ripples.maxCount"
+    ) {
         ripples = ripples.slice(
             -Math.max(
                 1,
@@ -2651,7 +3296,8 @@ function onConfigChange(path) {
     }
 
     if (
-        path === "panel.enabled" &&
+        path ===
+        "panel.enabled" &&
         !config.panel.enabled
     ) {
         pointer.active = false;
@@ -2659,7 +3305,7 @@ function onConfigChange(path) {
 }
 
 // ============================================================
-// START
+// INITIALIZATION
 // ============================================================
 
 window.addEventListener(
@@ -2670,7 +3316,9 @@ window.addEventListener(
 resize();
 createSources();
 
-requestAnimationFrame(animate);
+requestAnimationFrame(
+    animate
+);
 
 // ============================================================
 // SETTINGS EDITOR
@@ -2678,12 +3326,15 @@ requestAnimationFrame(animate);
 
 if (config.panel.enabled) {
     import("./settings-editor.js")
-        .then(({ mountEditor }) => {
-            mountEditor({
-                config,
-                onChange: onConfigChange
-            });
-        })
+        .then(
+            ({ mountEditor }) => {
+                mountEditor({
+                    config,
+                    onChange:
+                        onConfigChange
+                });
+            }
+        )
         .catch(error => {
             console.error(
                 "Could not load settings editor:",
