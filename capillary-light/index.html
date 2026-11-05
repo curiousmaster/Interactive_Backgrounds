@@ -15,6 +15,13 @@
       background: #080d17;
     }
 
+    #renderer-status {
+      position: fixed;
+      inset: auto 1rem 0;
+      color: white;
+      font: 14px system-ui, sans-serif;
+    }
+
     #background {
       position: fixed;
       inset: 0;
@@ -27,6 +34,8 @@
 
 <body>
   <canvas id="background" aria-hidden="true"></canvas>
+
+  <p id="renderer-status" role="status" hidden></p>
 
   <script type="module">
     const config = {
@@ -71,6 +80,19 @@
         respectReducedMotion: true
       },
 
+      features: {
+        view3D: { enabled: false, perspective: true, depth: 95, tilt: 22, zoom: 1 },
+        curves: { enabled: false, curvature: 0.35, variation: 0.5 },
+        sparks: { enabled: false, threshold: 0.2, brightness: 1.4, duration: 0.22 },
+        pulses: { enabled: false, speed: 85, length: 19, density: 0.4 },
+        particles: { enabled: false, count: 2, size: 1.4, speed: 55 },
+        bleed: { enabled: false, spread: 20, persistence: 2.5, opacity: 0.18 },
+        bloom: { enabled: false, threshold: 0.25, strength: 0.6, radius: 17 },
+        shockwaves: { enabled: false, speed: 330, width: 22, strength: 1 },
+        iridescence: { enabled: false, hueRange: 85, strength: 0.45, speed: 0.35 },
+        interference: { enabled: false, threshold: 0.15, spacing: 8, contrast: 0.5 }
+      },
+
       panel: {
         enabled: true
       }
@@ -80,7 +102,13 @@
       JSON.parse(JSON.stringify(config));
 
     const canvas = document.querySelector("#background");
-    const ctx = canvas.getContext("2d");
+    const gl = canvas.getContext("webgl2", { alpha: false, antialias: false });
+    const status = document.querySelector("#renderer-status");
+    if (!gl) {
+      status.textContent = "Capillary Light requires WebGL2.";
+      status.hidden = false;
+      throw new Error("WebGL2 is unavailable.");
+    }
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
     let width = 1;
@@ -103,8 +131,11 @@
     };
 
     const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-    const rgba = (color, alpha = 1) =>
-      `rgba(${color.join(",")},${clamp(alpha, 0, 1)})`;
+    const waves = [];
+    let renderer;
+    let projectionKey = "";
+    let edgeData;
+    let nodeData;
 
     function buildGraph() {
       nodes = [];
@@ -113,16 +144,21 @@
       sourceClock = 0;
 
       const spacing = config.channels.spacing;
-      const columns = Math.max(2, Math.ceil(width / spacing) + 1);
-      const rows = Math.max(2, Math.ceil(height / spacing) + 1);
+      const columns = Math.max(2, Math.ceil(width / spacing) + 3);
+      const rows = Math.max(2, Math.ceil(height / spacing) + 3);
 
       for (let row = 0; row < rows; row++) {
         for (let column = 0; column < columns; column++) {
           const jitter = spacing * config.channels.irregularity * 0.65;
 
           nodes.push({
-            x: column * spacing + (Math.random() - 0.5) * jitter,
-            y: row * spacing + (Math.random() - 0.5) * jitter,
+            x: (column - 1) * spacing + (Math.random() - 0.5) * jitter,
+            y: (row - 1) * spacing + (Math.random() - 0.5) * jitter,
+            screenX: 0,
+            screenY: 0,
+            scale: 1,
+            stain: 0,
+            pulseDistance: -1,
             neighbors: [],
             ink: [0, 0, 0],
             next: [0, 0, 0]
@@ -133,7 +169,7 @@
       function connect(a, b) {
         nodes[a].neighbors.push(b);
         nodes[b].neighbors.push(a);
-        edges.push([a, b]);
+        edges.push([a, b, Math.random()]);
       }
 
       // Every row joins the one above, keeping the network connected.
@@ -168,6 +204,22 @@
         config.channels.irregularity
       ]);
 
+      // Give junctions a common pulse phase across all connected branches.
+      const queue = [Math.floor(columns / 2)];
+      nodes[queue[0]].pulseDistance = 0;
+      for (let index = 0; index < queue.length; index++) {
+        const node = nodes[queue[index]];
+        for (const neighbor of node.neighbors) {
+          if (nodes[neighbor].pulseDistance >= 0) continue;
+          nodes[neighbor].pulseDistance = node.pulseDistance + spacing;
+          queue.push(neighbor);
+        }
+      }
+
+      edgeData = new Float32Array(edges.length * 20);
+      nodeData = new Float32Array((nodes.length + 1) * 8);
+      projectionKey = "";
+      waves.length = 0;
       for (let i = 0; i < 3; i++) addSource(i);
     }
 
@@ -203,7 +255,6 @@
       const dpr = Math.min(devicePixelRatio || 1, 2);
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       buildGraph();
     }
@@ -283,8 +334,8 @@
 
         for (const node of nodes) {
           const distance = Math.hypot(
-            node.x - mouse.x,
-            node.y - mouse.y
+            node.screenX - mouse.x,
+            node.screenY - mouse.y
           );
 
           const proximity = clamp(
@@ -336,149 +387,331 @@
       for (let i = 0; i < steps; i++) simulateStep(stepDt);
     }
 
-    function colorAt(node) {
-      const palette = [
-        config.appearance.colorA,
-        config.appearance.colorB,
-        config.appearance.colorC
-      ];
+    function projectNetwork() {
+      const view = config.features.view3D;
+      const key = JSON.stringify(view);
+      if (key === projectionKey) return;
+      projectionKey = key;
 
-      const total = node.ink.reduce((sum, value) => sum + value, 0);
+      const tilt = view.tilt * Math.PI / 180;
+      const sine = Math.sin(tilt);
+      const cosine = Math.cos(tilt);
+      const focal = Math.max(width, height) * 1.25;
+      const maxDepth = height * 0.5 * Math.abs(sine) + view.depth;
+      const cover = (view.perspective ? 1 + maxDepth / focal : 1) *
+        (1 + 2 * view.depth * Math.abs(sine) / height) / cosine;
+      for (const node of nodes) {
+        const x = node.x - width / 2;
+        const y = node.y - height / 2;
+        const z = view.depth * Math.sin(node.x / 170) * Math.cos(node.y / 140);
+        const distance = focal + y * sine + z * cosine;
+        const perspective = view.perspective ? focal / Math.max(focal * 0.35, distance) : 1;
+        node.scale = view.enabled ? perspective * cover * view.zoom : 1;
+        node.screenX = width / 2 + x * node.scale;
+        node.screenY = view.enabled
+          ? height / 2 + (y * cosine - z * sine) * node.scale
+          : node.y;
+      }
+    }
 
-      if (total < 0.0001) {
+    function updateStains(dt) {
+      const bleed = config.features.bleed;
+      const fade = bleed.enabled ? Math.exp(-dt / bleed.persistence) : 0;
+      for (const node of nodes) {
+        node.stain = bleed.enabled
+          ? Math.max(node.stain * fade, node.ink[0] + node.ink[1] + node.ink[2])
+          : 0;
+      }
+    }
+
+    function createRenderer() {
+      function compile(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          throw new Error(gl.getShaderInfoLog(shader));
+        }
+        return shader;
+      }
+
+      function batch(vertex, fragment, attributes) {
+        const program = gl.createProgram();
+        const vertexShader = compile(gl.VERTEX_SHADER, vertex);
+        const fragmentShader = compile(gl.FRAGMENT_SHADER, fragment);
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        gl.deleteShader(vertexShader);
+        gl.deleteShader(fragmentShader);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          throw new Error(gl.getProgramInfoLog(program));
+        }
+
+        const vao = gl.createVertexArray();
+        const buffer = gl.createBuffer();
+        const uniforms = new Map();
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        for (let index = 0; index < attributes; index++) {
+          gl.enableVertexAttribArray(index);
+          gl.vertexAttribPointer(index, 4, gl.FLOAT, false, attributes * 16, index * 16);
+          gl.vertexAttribDivisor(index, 1);
+        }
+        let capacity = 0;
         return {
-          color: config.appearance.channelColor,
-          alpha: 0
+          use(data) {
+            gl.useProgram(program);
+            gl.bindVertexArray(vao);
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            if (capacity !== data.byteLength) {
+              capacity = data.byteLength;
+              gl.bufferData(gl.ARRAY_BUFFER, capacity, gl.DYNAMIC_DRAW);
+            }
+            gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
+          },
+          location(name) {
+            if (!uniforms.has(name)) uniforms.set(name, gl.getUniformLocation(program, name));
+            return uniforms.get(name);
+          }
         };
       }
 
-      const color = [0, 1, 2].map(component =>
-        Math.round(
-          palette.reduce(
-            (sum, entry, index) =>
-              sum + entry[component] * node.ink[index],
-            0
-          ) / total
-        )
-      );
+      const header = `#version 300 es
+        precision highp float;`;
+      const corner = `
+        const vec2 corners[6] = vec2[6](vec2(0,-1), vec2(1,-1), vec2(0,1),
+          vec2(0,1), vec2(1,-1), vec2(1,1));`;
+      const palette = `
+        uniform vec3 colorA, colorB, colorC;
+        vec3 pigment(vec3 ink) {
+          float total = ink.x + ink.y + ink.z;
+          return (ink.x*colorA + ink.y*colorB + ink.z*colorC) / max(total, 0.0001);
+        }`;
 
-      return {
-        color,
-        alpha: clamp(total * config.ink.intensity, 0, 1)
-      };
-    }
+      const channels = batch(header + corner + `
+        layout(location=0) in vec4 endpoints;
+        layout(location=1) in vec4 inkA;
+        layout(location=2) in vec4 inkB;
+        layout(location=3) in vec4 geometry;
+        layout(location=4) in vec4 pulsePath;
+        uniform vec2 resolution;
+        uniform float extent;
+        uniform vec2 curve;
+        uniform int segments;
+        out vec3 ink;
+        out vec2 position;
+        out vec2 alongAcross;
+        out float stain, width, pulseDistance;
+        flat out float edgeLength, seed, direction;
+        void main() {
+          vec2 corner = corners[gl_VertexID % 6];
+          float t = (float(gl_VertexID / 6) + corner.x) / float(segments);
+          vec2 delta = endpoints.zw - endpoints.xy;
+          edgeLength = max(length(delta), 0.01);
+          vec2 normal = vec2(-delta.y, delta.x) / edgeLength;
+          seed = geometry.z;
+          float bend = curve.x * edgeLength * mix(0.5, seed*2.0-1.0, curve.y);
+          vec2 tangent = normalize(delta + normal*bend*4.0*(1.0-2.0*t) + vec2(0.00001));
+          float offset = extent * corner.y;
+          position = mix(endpoints.xy, endpoints.zw, t) + normal*bend*4.0*t*(1.0-t)
+            + vec2(-tangent.y, tangent.x)*offset;
+          gl_Position = vec4(position / resolution * vec2(2,-2) + vec2(-1,1), 0, 1);
+          alongAcross = vec2(t, offset);
+          ink = mix(inkA.rgb, inkB.rgb, t);
+          stain = mix(inkA.a, inkB.a, t);
+          pulseDistance = mix(pulsePath.x, pulsePath.y, t);
+          width = mix(geometry.x, geometry.y, t);
+          direction = dot(inkA.rgb-inkB.rgb, vec3(1)) >= 0.0 ? 1.0 : -1.0;
+        }`, header + palette + `
+        uniform vec3 channelColor;
+        uniform float opacity, intensity, glow, time;
+        uniform vec3 pulses, particles, bleed, bloom, shock, iridescence, interference;
+        uniform vec3 waves[4];
+        in vec3 ink;
+        in vec2 position, alongAcross;
+        in float stain, width, pulseDistance;
+        flat in float edgeLength, seed, direction;
+        out vec4 outputColor;
 
-    function drawNetwork() {
-      ctx.lineCap = "round";
-      ctx.lineWidth = config.channels.width;
-      ctx.shadowBlur = 0;
+        vec3 hueShift(vec3 color, float angle) {
+          vec3 axis = vec3(0.57735027);
+          return max(vec3(0), color*cos(angle) + cross(axis,color)*sin(angle)
+            + axis*dot(axis,color)*(1.0-cos(angle)));
+        }
 
-      ctx.strokeStyle = rgba(
-        config.appearance.channelColor,
-        config.channels.opacity
-      );
+        void main() {
+          float across = abs(alongAcross.y);
+          float core = 1.0 - smoothstep(width*0.5-0.4, width*0.5+0.55, across);
+          float total = clamp(dot(ink, vec3(1))*intensity, 0.0, 1.0);
+          vec3 color = pigment(ink);
+          float activeColors = ink.x + ink.y + ink.z - max(ink.x,max(ink.y,ink.z));
+          float distanceOnEdge = alongAcross.x*edgeLength;
 
-      ctx.beginPath();
+          if (iridescence.y > 0.0) {
+            float angle = sin(time*iridescence.z*6.283 + position.y*0.028 + position.x*0.018);
+            color = mix(color,hueShift(color,angle*iridescence.x),iridescence.y);
+          }
 
-      for (const [aIndex, bIndex] of edges) {
-        const a = nodes[aIndex];
-        const b = nodes[bIndex];
+          float pulse = 0.0;
+          if (pulses.z > 0.0) {
+            float spacing = mix(420.0, 75.0, pulses.z);
+            float phase = fract((pulseDistance - time*pulses.x)/spacing);
+            pulse = (1.0-smoothstep(0.0, min(0.48,pulses.y/spacing), abs(phase-0.5))) * total;
+          }
 
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
+          float ring = 0.0;
+          for (int i=0; i<4; i++) {
+            if (waves[i].z < 0.0) continue;
+            float radius = (time-waves[i].z)*shock.x;
+            float gap = abs(length(position-waves[i].xy)-radius);
+            ring += (1.0-smoothstep(0.0,shock.y,gap))*exp(-radius*0.0015);
+          }
+
+          float speck = 0.0;
+          if (particles.x > 0.0 && total > 0.03) {
+            float phase = fract(alongAcross.x*particles.x -
+              time*particles.z*particles.x*direction/edgeLength + seed);
+            vec2 local = vec2((phase-0.5)*edgeLength/particles.x, across);
+            speck = (1.0-smoothstep(particles.y*0.35,particles.y+0.5,length(local)))*total;
+          }
+
+          float band = 1.0;
+          if (interference.z > 0.0 && activeColors > interference.x) {
+            float pattern = sin(distanceOnEdge*6.283/interference.y +
+              (ink.r-ink.b)*11.0 - time*1.2);
+            band += pattern*interference.z*smoothstep(interference.x,interference.x+0.15,activeColors);
+          }
+
+          float coreInk = core*clamp(total*band,0.0,1.0);
+          float soft = glow > 0.0 ? exp(-pow(max(across/glow*2.4,0.00001),2.0))*total*0.36 : 0.0;
+          float halo = bloom.y > 0.0
+            ? exp(-pow(max(across/bloom.z*2.0,0.00001),2.0))*max(total-bloom.x,0.0)*bloom.y : 0.0;
+          float wash = bleed.y > 0.0
+            ? exp(-pow(max(across/bleed.x*2.0,0.00001),2.0))*stain*bleed.y : 0.0;
+          vec3 washColor = mix(colorA,color,total);
+          float highlight = core*(pulse + ring*shock.z*0.65);
+          vec3 rgb = channelColor*core*opacity*(1.0-coreInk)
+            + color*(coreInk+soft+halo) + washColor*wash
+            + mix(color,vec3(1),0.55)*(highlight+speck);
+          float alpha = clamp(core*opacity + coreInk+soft+halo+wash+highlight+speck,0.0,1.0);
+          outputColor = vec4(rgb,alpha);
+        }`, 5);
+
+      const points = batch(header + corner + `
+        layout(location=0) in vec4 point;
+        layout(location=1) in vec4 ink;
+        uniform vec2 resolution;
+        out vec2 local;
+        flat out vec4 pigmentStrength;
+        flat out float radius;
+        void main() {
+          vec2 corner = corners[gl_VertexID];
+          local = vec2(corner.x*2.0-1.0,corner.y);
+          vec2 position = point.xy + local*point.z;
+          radius = point.z;
+          gl_Position = vec4(position / resolution * vec2(2,-2) + vec2(-1,1),0,1);
+          pigmentStrength = ink;
+        }`, header + palette + `
+        in vec2 local;
+        flat in vec4 pigmentStrength;
+        flat in float radius;
+        out vec4 outputColor;
+        void main() {
+          float d = length(local);
+          float alpha = pigmentStrength.a * (1.0 - smoothstep(
+            radius > 8.0 ? 0.0 : 0.55, 1.0, d));
+          outputColor = vec4(pigment(pigmentStrength.rgb)*alpha,alpha);
+        }`, 2);
+
+      const rgb = color => color.map(value => value / 255);
+      function common(drawBatch) {
+        gl.uniform2f(drawBatch.location("resolution"), width, height);
+        for (const name of ["colorA", "colorB", "colorC"]) {
+          gl.uniform3fv(drawBatch.location(name), rgb(config.appearance[name]));
+        }
       }
 
-      ctx.stroke();
+      function draw() {
+        const { channels: style, ink, appearance, features } = config;
+        const { curves, pulses, particles, bleed, bloom, shockwaves, iridescence, interference, sparks } = features;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.clearColor(...rgb(appearance.backgroundColor), 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
-      const colors = nodes.map(colorAt);
+        const halo = config.mouse.enabled && config.mouse.showHalo ? mouse.influence : 0;
+        const mouseWeights = mouseColorWeights();
+        nodeData.set([mouse.x, mouse.y, config.mouse.radius, 0, ...mouseWeights, halo*0.05]);
+        for (let index = 0; index < nodes.length; index++) {
+          const node = nodes[index];
+          const [red, green, blue] = node.ink;
+          const total = red + green + blue;
+          const alpha = clamp(total * ink.intensity, 0, 1);
+          const overlap = total - Math.max(red, green, blue);
+          const phase = (time + index*0.61803399) % 1.4;
+          const spark = sparks.enabled && node.neighbors.length >= 3 && overlap > sparks.threshold
+            ? Math.max(0, 1 - phase/sparks.duration)*sparks.brightness : 0;
+          const radius = (style.width*0.8 + alpha)*Math.sqrt(node.scale) + spark*3;
+          nodeData.set([node.screenX, node.screenY, radius, 0, red, green, blue,
+            clamp(alpha*0.7 + spark, 0, 1)], (index+1)*8);
+        }
+        points.use(nodeData.subarray(0, 8));
+        common(points);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 1);
 
-      for (const [aIndex, bIndex] of edges) {
-        const a = nodes[aIndex];
-        const b = nodes[bIndex];
-        const ca = colors[aIndex];
-        const cb = colors[bIndex];
+        let maxWidth = style.width;
+        for (let index = 0; index < edges.length; index++) {
+          const [from, to, seed] = edges[index];
+          const a = nodes[from];
+          const b = nodes[to];
+          const aWidth = style.width * Math.sqrt(a.scale);
+          const bWidth = style.width * Math.sqrt(b.scale);
+          maxWidth = Math.max(maxWidth,aWidth,bWidth);
+          edgeData.set([a.screenX,a.screenY,b.screenX,b.screenY,...a.ink,a.stain,
+            ...b.ink,b.stain,aWidth,bWidth,seed,0,
+            a.pulseDistance,b.pulseDistance,0,0], index*20);
+        }
 
-        if (Math.max(ca.alpha, cb.alpha) < 0.01) continue;
+        channels.use(edgeData);
+        common(channels);
+        const set = (name, ...values) => {
+          const location = channels.location(name);
+          if (values.length === 1) gl.uniform1f(location, values[0]);
+          if (values.length === 2) gl.uniform2f(location, ...values);
+          if (values.length === 3) gl.uniform3f(location, ...values);
+        };
+        const segments = curves.enabled && curves.curvature > 0 ? 8 : 1;
+        gl.uniform1i(channels.location("segments"), segments);
+        set("extent", Math.max(maxWidth/2+1, ink.glow, bloom.enabled ? bloom.radius : 0,
+          bleed.enabled ? bleed.spread : 0, particles.enabled ? particles.size+1 : 0));
+        set("curve", curves.enabled ? curves.curvature : 0, curves.variation);
+        set("opacity",style.opacity);
+        set("intensity",ink.intensity);
+        set("glow",ink.glow);
+        set("time",time);
+        set("pulses",pulses.speed,pulses.length,pulses.enabled ? pulses.density : 0);
+        set("particles",particles.enabled ? particles.count : 0,particles.size,particles.speed);
+        set("bleed",bleed.spread,bleed.enabled ? bleed.opacity : 0,bleed.persistence);
+        set("bloom",bloom.threshold,bloom.enabled ? bloom.strength : 0,bloom.radius);
+        set("shock",shockwaves.speed,shockwaves.width,shockwaves.enabled ? shockwaves.strength : 0);
+        set("iridescence",iridescence.hueRange*Math.PI/180,iridescence.enabled ? iridescence.strength : 0,iridescence.speed);
+        set("interference",interference.threshold,interference.spacing,interference.enabled ? interference.contrast : 0);
+        gl.uniform3fv(channels.location("channelColor"),rgb(appearance.channelColor));
+        const waveData = new Float32Array(12);
+        for (let index = 0; index < 4; index++) {
+          waveData.set(waves[index] ?? [0,0,-1],index*3);
+        }
+        gl.uniform3fv(channels.location("waves[0]"),waveData);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, segments*6, edges.length);
 
-        const gradient = ctx.createLinearGradient(
-          a.x, a.y, b.x, b.y
-        );
-
-        gradient.addColorStop(0, rgba(ca.color, ca.alpha));
-        gradient.addColorStop(1, rgba(cb.color, cb.alpha));
-
-        ctx.strokeStyle = gradient;
-        ctx.shadowColor = rgba(
-          ca.alpha > cb.alpha ? ca.color : cb.color,
-          Math.max(ca.alpha, cb.alpha) * 0.7
-        );
-
-        ctx.shadowBlur = config.ink.glow;
-
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.stroke();
+        points.use(nodeData.subarray(8));
+        common(points);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, nodes.length);
       }
 
-      ctx.shadowBlur = 0;
-
-      for (let index = 0; index < nodes.length; index++) {
-        const node = nodes[index];
-        const { color, alpha } = colors[index];
-
-        if (alpha < 0.04) continue;
-
-        ctx.fillStyle = rgba(color, alpha * 0.7);
-        ctx.beginPath();
-        ctx.arc(
-          node.x,
-          node.y,
-          config.channels.width * 0.8 + alpha,
-          0,
-          Math.PI * 2
-        );
-        ctx.fill();
-      }
-    }
-
-    function drawHalo() {
-      if (
-        !config.mouse.enabled ||
-        !config.mouse.showHalo ||
-        mouse.influence < 0.001
-      ) return;
-
-      const weights = mouseColorWeights();
-      const palette = [
-        config.appearance.colorA,
-        config.appearance.colorB,
-        config.appearance.colorC
-      ];
-
-      const color = [0, 1, 2].map(component =>
-        Math.round(
-          palette.reduce(
-            (sum, entry, index) =>
-              sum + entry[component] * weights[index],
-            0
-          )
-        )
-      );
-
-      const gradient = ctx.createRadialGradient(
-        mouse.x, mouse.y, 0,
-        mouse.x, mouse.y, config.mouse.radius
-      );
-
-      gradient.addColorStop(
-        0,
-        rgba(color, mouse.influence * 0.05)
-      );
-      gradient.addColorStop(1, rgba(color, 0));
-
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, width, height);
+      return { draw };
     }
 
     function frame(timestamp) {
@@ -507,14 +740,13 @@
       mouse.influence +=
         ((mouse.active ? 1 : 0) - mouse.influence) * smoothing;
 
+      projectNetwork();
       simulate(dt);
+      updateStains(dt);
+      while (waves.length && (time - waves[0][2]) * config.features.shockwaves.speed >
+        Math.hypot(width, height) + config.features.shockwaves.width) waves.shift();
 
-      ctx.fillStyle = rgba(config.appearance.backgroundColor);
-      ctx.fillRect(0, 0, width, height);
-
-      drawHalo();
-      drawNetwork();
-
+      if (!gl.isContextLost()) renderer.draw();
       requestAnimationFrame(frame);
     }
 
@@ -535,7 +767,14 @@
     }
 
     addEventListener("pointermove", updatePointer);
-    addEventListener("pointerdown", updatePointer);
+    addEventListener("pointerdown", event => {
+      updatePointer(event);
+      if (event.button === 0 && mouse.active && config.features.shockwaves.enabled &&
+        !config.animation.paused && !(config.animation.respectReducedMotion && reducedMotion.matches)) {
+        if (waves.length === 4) waves.shift();
+        waves.push([event.clientX, event.clientY, time]);
+      }
+    });
 
     addEventListener("pointerup", event => {
       if (event.pointerType !== "mouse") mouse.active = false;
@@ -556,15 +795,30 @@
 
     addEventListener("resize", resize);
 
+    canvas.addEventListener("webglcontextlost", event => {
+      event.preventDefault();
+      status.textContent = "Restoring the WebGL renderer…";
+      status.hidden = false;
+    });
+
+    canvas.addEventListener("webglcontextrestored", () => {
+      renderer = createRenderer();
+      status.hidden = true;
+    });
+
+    renderer = createRenderer();
     resize();
     requestAnimationFrame(frame);
 
     if (config.panel.enabled) {
-      import("./settings-editor.js")
+      import("./settings-editor.js?webgl=1")
         .then(({ createSettingsEditor }) => {
           createSettingsEditor({
             config,
-            onChange: refresh,
+            onChange: path => {
+              refresh();
+              if (!config.features.shockwaves.enabled || path === "preset") waves.length = 0;
+            },
             onReset: buildGraph
           });
         })

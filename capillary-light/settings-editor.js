@@ -3,6 +3,121 @@ export function createSettingsEditor({
   onChange = () => {},
   onReset = () => {}
 }) {
+  const original = JSON.parse(JSON.stringify(config));
+  const templates = {
+    original: {},
+    deepFlow: {
+      features: {
+        view3D: { enabled: true },
+        curves: { enabled: true },
+        pulses: { enabled: true },
+        particles: { enabled: true }
+      }
+    },
+    inkBloom: {
+      appearance: { colorA: [51, 223, 198], colorB: [149, 105, 255], colorC: [255, 142, 128] },
+      features: {
+        bleed: { enabled: true },
+        bloom: { enabled: true },
+        iridescence: { enabled: true },
+        curves: { enabled: true }
+      }
+    }
+  };
+
+  const featureSpecs = {
+    view3D: ["3D View", {
+      perspective: ["Projection", "Perspective makes distant channels look smaller."],
+      depth: ["Depth range", "Height of the waves in the channel surface.", 0, 220, 1],
+      tilt: ["Tilt", "Angle of the network surface in degrees.", -55, 55, 1],
+      zoom: ["Zoom", "Magnification relative to the view that fills the screen.", 1, 1.8, 0.01]
+    }],
+    curves: ["Curved capillaries", {
+      curvature: ["Curvature", "How far channels bend away from a straight line.", 0, 0.6, 0.01],
+      variation: ["Variation", "How much the direction and amount of bend vary by channel.", 0, 1, 0.01]
+    }],
+    sparks: ["Junction sparks", {
+      threshold: ["Threshold", "Secondary ink needed for sparks at a junction.", 0, 0.7, 0.01],
+      brightness: ["Brightness", "Intensity and size of the flash.", 0, 3, 0.05],
+      duration: ["Duration", "Time for each flash to fade, in seconds.", 0.05, 1, 0.01]
+    }],
+    pulses: ["Traveling pulses", {
+      speed: ["Speed", "How quickly bright packets travel through the network.", 0, 350, 1],
+      length: ["Length", "Width of the bright pulse in pixels.", 3, 55, 1],
+      density: ["Density", "How closely successive pulses follow one another.", 0.05, 1, 0.01]
+    }],
+    particles: ["Flow particles", {
+      count: ["Count", "Droplets per active channel.", 1, 8, 1],
+      size: ["Size", "Droplet radius in pixels.", 0.5, 6, 0.1],
+      speed: ["Speed", "Droplet speed in pixels per second.", 0, 200, 1]
+    }],
+    bleed: ["Capillary bleed", {
+      spread: ["Spread", "How far residual ink extends from the channel.", 2, 60, 1],
+      persistence: ["Persistence", "How slowly residual ink fades, in seconds.", 0.2, 12, 0.1],
+      opacity: ["Opacity", "Visibility of the residual stain.", 0, 0.65, 0.01]
+    }],
+    bloom: ["Bloom", {
+      threshold: ["Threshold", "Minimum ink brightness before bloom appears.", 0, 1, 0.01],
+      strength: ["Strength", "Brightness of the soft halo.", 0, 2, 0.01],
+      radius: ["Radius", "How far the halo extends from the channel.", 2, 55, 1]
+    }],
+    shockwaves: ["Pointer shockwaves", {
+      speed: ["Speed", "Expansion speed in pixels per second.", 30, 850, 1],
+      width: ["Width", "Thickness of the illuminated ring.", 2, 85, 1],
+      strength: ["Strength", "How brightly the ring lights channels after a click or tap.", 0, 2, 0.01]
+    }],
+    iridescence: ["Iridescent ink", {
+      hueRange: ["Hue range", "Maximum shift of the ink hue in degrees.", 0, 180, 1],
+      strength: ["Strength", "How strongly the shifted hue mixes into the ink.", 0, 1, 0.01],
+      speed: ["Speed", "How often the shimmer cycles per second.", 0, 2, 0.01]
+    }],
+    interference: ["Ink interference", {
+      threshold: ["Threshold", "Secondary ink needed to reveal bands.", 0, 0.7, 0.01],
+      spacing: ["Band spacing", "Distance between bands along a channel.", 2, 35, 0.5],
+      contrast: ["Contrast", "Difference in brightness between bands.", 0, 1, 0.01]
+    }]
+  };
+
+  const help = {
+    channels: {
+      spacing: "Distance between network junctions. Smaller values increase channel count.",
+      branching: "Chance of a horizontal link between neighboring junctions.",
+      irregularity: "How far junctions move off the underlying grid.",
+      width: "Width of each channel in pixels.",
+      opacity: "Visibility of the channel before ink enters it."
+    },
+    ink: {
+      propagationSpeed: "How quickly ink spreads to connected junctions.",
+      diffusion: "How strongly neighboring junctions exchange ink.",
+      sourceLifetime: "How long a source continues to emit ink.",
+      sourceInterval: "Seconds between new sources. Zero disables new automatic sources.",
+      decay: "How quickly ink fades.",
+      intensity: "Brightness of ink and strength of automatic sources.",
+      glow: "Width of the base glow around active channels."
+    },
+    mouse: {
+      enabled: "Allow the pointer to inject ink.",
+      radius: "Distance in pixels over which the pointer affects channels.",
+      strength: "How quickly pointer-driven color mixes into the network.",
+      smoothing: "How quickly the interaction follows pointer movement.",
+      colorCycleSpeed: "Speed of the pointer’s color cycle.",
+      showHalo: "Show a faint highlight around the interaction area."
+    },
+    appearance: {
+      backgroundColor: "Base color behind the network.",
+      channelColor: "Color of an empty channel.",
+      colorA: "Color of the first ink pigment.",
+      colorB: "Color of the second ink pigment.",
+      colorC: "Color of the third ink pigment."
+    },
+    animation: {
+      speed: "Multiplier for the simulation and animated effects.",
+      paused: "Freeze the ink simulation and animated effects.",
+      respectReducedMotion: "Freeze animation when the system requests reduced motion."
+    },
+    panel: { enabled: "Show the settings editor. Copy your config before turning it off." }
+  };
+
   const limits = {
     "channels.spacing": [25, 100, 1],
     "channels.branching": [0, 1, 0.01],
@@ -118,20 +233,6 @@ export function createSettingsEditor({
       margin: 0 0 20px;
     }
 
-    .capillary-panel fieldset {
-      min-width: 0;
-      margin: 0 0 12px;
-      padding: 15px 0 8px;
-      border: 0;
-      border-top: 1px solid #ffffff18;
-    }
-
-    .capillary-panel legend {
-      padding-right: 7px;
-      color: #acd8df;
-      font-weight: 600;
-    }
-
     .capillary-control {
       margin-bottom: 13px;
     }
@@ -216,6 +317,39 @@ export function createSettingsEditor({
 
   document.head.append(style);
 
+  style.textContent += `
+    .capillary-filter {
+      display: grid;
+      gap: 5px;
+      margin: 12px 0;
+    }
+
+    .capillary-filter input, .capillary-editor select {
+      width: 100%;
+      padding: 7px;
+      border: 1px solid #ffffff30;
+      border-radius: 5px;
+      background: #142431;
+      color: inherit;
+      font: inherit;
+    }
+
+    .capillary-controls details {
+      border: 1px solid #ffffff20;
+      border-radius: 7px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+    }
+
+    .capillary-controls summary { cursor: pointer; font-weight: 600; }
+    .capillary-feature { padding: 3px 0 8px; border-bottom: 1px solid #ffffff18; }
+    .capillary-help { margin: 4px 0; color: #a5b6c3; font-size: 11px; }
+    .capillary-editor [hidden] { display: none !important; }
+    @media (prefers-reduced-motion: reduce) {
+      .capillary-panel { transition: none; }
+    }
+  `;
+
   const root = document.createElement("div");
   root.className = "capillary-editor";
   root.dataset.backgroundEditor = "";
@@ -245,7 +379,21 @@ export function createSettingsEditor({
         Copy your configuration before disabling the editor.
       </p>
 
+      <label class="capillary-filter">
+        Search settings
+        <input class="capillary-search" type="search" placeholder="Try bloom or zoom">
+      </label>
+      <label class="capillary-filter">
+        Template settings
+        <select class="capillary-template">
+          <option value="">Custom</option>
+          <option value="original">Original</option>
+          <option value="deepFlow">Deep Flow</option>
+          <option value="inkBloom">Ink Bloom</option>
+        </select>
+      </label>
       <div class="capillary-controls"></div>
+      <p class="capillary-empty" role="status" hidden>No matching settings.</p>
 
       <div class="capillary-actions">
         <button class="capillary-show" type="button">Show code</button>
@@ -289,9 +437,17 @@ export function createSettingsEditor({
     return `const config = ${JSON.stringify(config, null, 2)};`;
   }
 
-  function changed() {
+  const search = root.querySelector(".capillary-search");
+  const template = root.querySelector(".capillary-template");
+  const empty = root.querySelector(".capillary-empty");
+  const sections = [];
+  let isSearching = false;
+
+  function changed(path) {
     code.value = exportCode();
-    onChange();
+    if (path !== "preset") template.value = "";
+    filter();
+    onChange(path);
 
     if (!config.panel.enabled) {
       setOpen(false);
@@ -326,152 +482,260 @@ export function createSettingsEditor({
     ).join("");
   }
 
-  for (const [groupName, group] of Object.entries(config)) {
-    const fieldset = element("fieldset");
-    const legend = element("legend");
+  function makeControl(group, key, path, labelText, helpText, bounds) {
+    const value = group[key];
+    const container = element("div", "capillary-control");
+    const heading = element("div", "capillary-control-title");
+    const label = element("label");
+    const id = `capillary-${path.replaceAll(".", "-")}`;
 
-    legend.textContent = title(groupName);
-    fieldset.append(legend);
+    label.textContent = labelText;
+    label.htmlFor = id;
+    heading.append(label);
+    container.append(heading);
 
-    for (const [key, value] of Object.entries(group)) {
-      const path = `${groupName}.${key}`;
-      const container = element("div", "capillary-control");
-      const heading = element("div", "capillary-control-title");
-      const label = element("label");
-      const id = `capillary-${groupName}-${key}`;
+    if (path === "features.view3D.perspective") {
+      const select = element("select");
+      select.id = id;
+      for (const [name, value] of [["Orthographic", "false"], ["Perspective", "true"]]) {
+        select.add(new Option(name, value));
+      }
+      select.value = String(value);
+      select.addEventListener("change", () => {
+        group[key] = select.value === "true";
+        changed(path);
+      });
+      container.append(select);
+    } else if (typeof value === "boolean") {
+      const input = element("input");
 
-      label.textContent = title(key);
-      label.htmlFor = id;
+      input.id = id;
+      input.type = "checkbox";
+      input.checked = value;
 
-      heading.append(label);
-      container.append(heading);
+      input.addEventListener("change", () => {
+        group[key] = input.checked;
+        changed(path);
+      });
 
-      if (typeof value === "boolean") {
+      heading.append(input);
+    } else if (Array.isArray(value)) {
+      const row = element("div", "capillary-colors");
+      const picker = element("input");
+
+      picker.id = id;
+      picker.type = "color";
+      picker.value = toHex(value);
+      row.append(picker);
+
+      const channels = value.map((channel, index) => {
         const input = element("input");
 
-        input.id = id;
-        input.type = "checkbox";
-        input.checked = value;
+        input.type = "number";
+        input.min = 0;
+        input.max = 255;
+        input.step = 1;
+        input.value = channel;
+
+        input.setAttribute(
+          "aria-label",
+          `${title(key)} ${["red", "green", "blue"][index]}`
+        );
+
+        input.addEventListener("input", () => {
+          if (input.value === "") return;
+
+          const parsed = Number(input.value);
+          if (!Number.isFinite(parsed)) return;
+
+          group[key][index] = Math.max(
+            0,
+            Math.min(255, Math.round(parsed))
+          );
+
+          picker.value = toHex(group[key]);
+          changed(path);
+        });
 
         input.addEventListener("change", () => {
-          group[key] = input.checked;
-          changed();
+          input.value = group[key][index];
         });
 
-        heading.append(input);
-      } else if (Array.isArray(value)) {
-        const row = element("div", "capillary-colors");
-        const picker = element("input");
+        row.append(input);
+        return input;
+      });
 
-        picker.id = id;
-        picker.type = "color";
-        picker.value = toHex(value);
-        row.append(picker);
+      picker.addEventListener("input", () => {
+        group[key] = [1, 3, 5].map(offset =>
+          parseInt(picker.value.slice(offset, offset + 2), 16)
+        );
 
-        const channels = value.map((channel, index) => {
-          const input = element("input");
-
-          input.type = "number";
-          input.min = 0;
-          input.max = 255;
-          input.step = 1;
-          input.value = channel;
-
-          input.setAttribute(
-            "aria-label",
-            `${title(key)} ${["red", "green", "blue"][index]}`
-          );
-
-          input.addEventListener("input", () => {
-            if (input.value === "") return;
-
-            const parsed = Number(input.value);
-            if (!Number.isFinite(parsed)) return;
-
-            group[key][index] = Math.max(
-              0,
-              Math.min(255, Math.round(parsed))
-            );
-
-            picker.value = toHex(group[key]);
-            changed();
-          });
-
-          input.addEventListener("change", () => {
-            input.value = group[key][index];
-          });
-
-          row.append(input);
-          return input;
+        channels.forEach((input, index) => {
+          input.value = group[key][index];
         });
 
-        picker.addEventListener("input", () => {
-          group[key] = [1, 3, 5].map(offset =>
-            parseInt(picker.value.slice(offset, offset + 2), 16)
-          );
+        changed(path);
+      });
 
-          channels.forEach((input, index) => {
-            input.value = group[key][index];
-          });
+      container.append(row);
+    } else if (typeof value === "number") {
+      const [min, max, step] = bounds ?? limits[path];
+      const number = element("input");
+      const range = element("input");
 
-          changed();
-        });
+      number.id = id;
+      number.type = "number";
+      range.type = "range";
+      range.setAttribute("aria-label", labelText);
 
-        container.append(row);
-      } else if (typeof value === "number") {
-        const [min, max, step] = limits[path] || [0, 100, 1];
-        const number = element("input");
-        const range = element("input");
+      function normalize(raw) {
+        const clamped = Math.max(min, Math.min(max, raw));
+        const stepped =
+          min + Math.round((clamped - min) / step) * step;
 
-        number.id = id;
-        number.type = "number";
-        range.type = "range";
-        range.setAttribute("aria-label", title(key));
-
-        function normalize(raw) {
-          const clamped = Math.max(min, Math.min(max, raw));
-          const stepped =
-            min + Math.round((clamped - min) / step) * step;
-
-          return Number(
-            Math.max(min, Math.min(max, stepped)).toFixed(6)
-          );
-        }
-
-        for (const input of [number, range]) {
-          input.min = min;
-          input.max = max;
-          input.step = step;
-          input.value = value;
-
-          input.addEventListener("input", () => {
-            if (input.value === "") return;
-
-            const parsed = Number(input.value);
-            if (!Number.isFinite(parsed)) return;
-
-            group[key] = normalize(parsed);
-
-            if (input === number) range.value = group[key];
-            else number.value = group[key];
-
-            changed();
-          });
-
-          input.addEventListener("change", () => {
-            input.value = group[key];
-          });
-        }
-
-        heading.append(number);
-        container.append(range);
+        return Number(
+          Math.max(min, Math.min(max, stepped)).toFixed(6)
+        );
       }
 
-      fieldset.append(container);
+      for (const input of [number, range]) {
+        input.min = min;
+        input.max = max;
+        input.step = step;
+        input.value = value;
+
+        input.addEventListener("input", () => {
+          if (input.value === "") return;
+
+          const parsed = Number(input.value);
+          if (!Number.isFinite(parsed)) return;
+
+          group[key] = normalize(parsed);
+
+          if (input === number) range.value = group[key];
+          else number.value = group[key];
+
+          changed(path);
+        });
+
+        input.addEventListener("change", () => {
+          input.value = group[key];
+        });
+      }
+
+      heading.append(number);
+      container.append(range);
     }
 
-    controls.append(fieldset);
+    if (helpText) {
+      const help = element("p", "capillary-help");
+      help.id = `${id}-help`;
+      help.textContent = helpText;
+      container.append(help);
+      for (const input of container.querySelectorAll("input, select")) {
+        input.setAttribute("aria-describedby", help.id);
+      }
+    }
+    return { element: container, terms: `${labelText} ${helpText ?? ""}`.toLowerCase() };
   }
+
+  function buildControls(openSections = new Map()) {
+    controls.replaceChildren();
+    sections.length = 0;
+    for (const [key, group] of Object.entries(config)) {
+      const details = element("details");
+      const summary = element("summary");
+      summary.textContent = title(key);
+      details.open = openSections.get(key) ?? key === "channels";
+      details.append(summary);
+
+      const section = { key, details, items: [], wasOpen: details.open };
+      sections.push(section);
+      controls.append(details);
+
+      if (key === "features") {
+        for (const [featureKey, feature] of Object.entries(group)) {
+          const [name, definitions] = featureSpecs[featureKey];
+          const item = element("div", "capillary-feature");
+          const toggle = makeControl(feature, "enabled", `features.${featureKey}.enabled`, name);
+          const settings = Object.entries(definitions).map(([key, [label, help, ...bounds]]) =>
+            makeControl(feature, key, `features.${featureKey}.${key}`, label, help, bounds));
+          item.append(toggle.element, ...settings.map(setting => setting.element));
+          details.append(item);
+          section.items.push({ element: item, toggle, settings, feature });
+        }
+      } else {
+        for (const keyName of Object.keys(group)) {
+          const control = makeControl(group, keyName, `${key}.${keyName}`, title(keyName), help[key]?.[keyName]);
+          section.items.push(control);
+          details.append(control.element);
+        }
+      }
+    }
+    filter();
+  }
+
+  function filter() {
+    const query = search.value.trim().toLowerCase();
+    const words = query.split(/\s+/);
+    const matches = text => words.every(word => text.includes(word));
+    let anyVisible = false;
+    for (const section of sections) {
+      const { key, details, items } = section;
+      let hasMatch = false;
+      for (const item of items) {
+        if (item.feature) {
+          const name = `features ${item.toggle.terms}`;
+          const groupMatch = matches(name);
+          const settingsMatch = item.settings.map(setting => matches(`${name} ${setting.terms}`));
+          item.element.hidden = !groupMatch && !settingsMatch.some(Boolean);
+          item.settings.forEach((setting, index) => {
+            setting.element.hidden = !item.feature.enabled || (!groupMatch && !settingsMatch[index]);
+          });
+        } else {
+          item.element.hidden = !matches(`${key} ${item.terms}`);
+        }
+        hasMatch ||= !item.element.hidden;
+      }
+
+      if (query) {
+        if (!isSearching) section.wasOpen = details.open;
+        details.open = hasMatch;
+      } else if (isSearching) {
+        details.open = section.wasOpen;
+      }
+      details.hidden = !hasMatch;
+      anyVisible ||= hasMatch;
+    }
+    isSearching = Boolean(query);
+    empty.hidden = anyVisible;
+  }
+
+  function merge(target, patch) {
+    for (const [key, value] of Object.entries(patch)) {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        merge(target[key], value);
+      } else {
+        target[key] = Array.isArray(value) ? [...value] : value;
+      }
+    }
+  }
+
+  search.addEventListener("input", filter);
+  template.value = "original";
+  template.addEventListener("change", () => {
+    if (!template.value) return;
+    merge(config, original);
+    merge(config, templates[template.value]);
+    const openSections = new Map(sections.map(section => [
+      section.key, isSearching ? section.wasOpen : section.details.open
+    ]));
+    isSearching = false;
+    buildControls(openSections);
+    changed("preset");
+    status.textContent = `${template.selectedOptions[0].textContent} template applied.`;
+  });
+  buildControls();
 
   toggle.addEventListener("click", () => setOpen(true));
   close.addEventListener("click", () => setOpen(false));
