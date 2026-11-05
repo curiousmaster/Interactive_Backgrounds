@@ -214,7 +214,7 @@ export const backgrounds = [
     },
     {
         name: "Pacman",
-        folder: "packman",
+        folder: "pacman",
         description:
             "Pac-Man munches glowing pellets as ghosts close in through a neon maze. " +
             "Drop a power pellet into a cleared corridor and watch the chase reverse.",
