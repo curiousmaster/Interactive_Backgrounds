@@ -84,14 +84,48 @@
       }
     };
 
+    const featureDefaults = {
+        duneDepth: { enabled: false, projection: "Perspective", tilt: 28, spacing: 0.7, zoom: 1 },
+        avalanches: { enabled: false, slope: 0.65, density: 0.75, speed: 85 },
+        plumes: { enabled: false, strength: 110, size: 125, wake: 1.7 },
+        glints: { enabled: false, density: 0.35, intensity: 1.6, angle: -35 },
+        strata: { enabled: false, spacing: 8, thickness: 1.1, exposure: 0.75,
+          colorA: [78, 158, 172], colorB: [223, 145, 82] },
+        caustics: { enabled: false, scale: 115, speed: 0.38, contrast: 0.55 },
+        deposition: { enabled: false, brightness: 0.85, spread: 6, decay: 2.3 },
+        sorting: { enabled: false, fineRatio: 0.68, contrast: 1.4, spread: 0.8 },
+        shadows: { enabled: false, angle: -42, strength: 0.75, softness: 0.45 },
+        bloom: { enabled: false, threshold: 0.46, radius: 5, intensity: 0.85 }
+      };
+    config.features ??= {};
+    for (const [key, defaults] of Object.entries(featureDefaults)) {
+      config.features[key] = { ...defaults, ...config.features[key] };
+    }
+    const effects = config.features;
+
     window.getBackgroundConfig = () =>
       JSON.parse(JSON.stringify(config));
 
     const canvas = document.querySelector("#background");
-    const ctx = canvas.getContext("2d");
+    const gl = canvas.getContext("webgl2", { alpha: false, antialias: false });
+    if (!gl) {
+      const notice = document.createElement("p");
+      notice.textContent = "Luminous Sediment requires WebGL2.";
+      notice.style.cssText = "position:fixed;inset:1rem auto auto 1rem;color:white;font:16px system-ui";
+      document.body.append(notice);
+      throw new Error(notice.textContent);
+    }
 
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-    const sprites = [];
+    const bedBins = 192;
+    const maxLayers = 10;
+    const bedState = new Float32Array(bedBins * maxLayers * 4);
+    const wakes = [];
+    const wakeLimit = 16;
+    let wakeTime = 0;
+    let dpr = 1;
+    let depthScale = 0;
+    let depthTilt = 0;
 
     let width = 1;
     let height = 1;
@@ -110,15 +144,6 @@
 
     const random = (min, max) => min + Math.random() * (max - min);
     const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-
-    const rgba = (color, alpha = 1) =>
-      `rgba(${color.join(",")},${clamp(alpha, 0, 1)})`;
-
-    function mix(a, b, amount) {
-      return a.map((value, index) =>
-        Math.round(value + (b[index] - value) * amount)
-      );
-    }
 
     function duneY(x, layer) {
       const layers = Math.round(config.dunes.layers);
@@ -147,7 +172,8 @@
         size: Math.random(),
         tint: Math.random(),
         phase: random(0, Math.PI * 2),
-        airborne: false
+        airborne: false,
+        sliding: false
       };
     }
 
@@ -165,82 +191,61 @@
 
     function reset() {
       grains = [];
+      bedState.fill(0);
+      wakes.length = 0;
+      wakeTime = 0;
       syncGrains();
     }
 
-    // Cached glow sprites avoid thousands of shadow-blur operations.
-    function buildSprites() {
-      sprites.length = 0;
-
-      for (let index = 0; index < 16; index++) {
-        const tint = index / 15;
-
-        const base = mix(
-          config.appearance.colorA,
-          config.appearance.colorB,
-          tint
-        );
-
-        const color = mix(
-          base,
-          config.appearance.highlightColor,
-          0.18
-        );
-
-        const sprite = document.createElement("canvas");
-        sprite.width = 64;
-        sprite.height = 64;
-
-        const spriteCtx = sprite.getContext("2d");
-        const gradient = spriteCtx.createRadialGradient(
-          32, 32, 0,
-          32, 32, 32
-        );
-
-        gradient.addColorStop(0, rgba(color, 0.75));
-        gradient.addColorStop(0.2, rgba(color, 0.3));
-        gradient.addColorStop(1, rgba(color, 0));
-
-        spriteCtx.fillStyle = gradient;
-        spriteCtx.fillRect(0, 0, 64, 64);
-
-        sprites.push({ image: sprite, color });
-      }
-    }
-
-    let paletteKey = "";
+    let previousLayers = config.dunes.layers;
 
     function refresh() {
       syncGrains();
-
-      const key = JSON.stringify([
-        config.appearance.colorA,
-        config.appearance.colorB,
-        config.appearance.highlightColor
-      ]);
-
-      if (key !== paletteKey) {
-        paletteKey = key;
-        buildSprites();
+      if (previousLayers !== config.dunes.layers) bedState.fill(0);
+      previousLayers = config.dunes.layers;
+      if (!effects.plumes.enabled) wakes.length = 0;
+      if (!effects.avalanches.enabled) {
+        for (const grain of grains) grain.sliding = false;
       }
     }
 
     function resize() {
       const oldWidth = width;
       const oldHeight = height;
-
-      width = innerWidth;
-      height = innerHeight;
-
-      const dpr = Math.min(devicePixelRatio || 1, 2);
+      width = Math.max(innerWidth, 1);
+      height = Math.max(innerHeight, 1);
+      dpr = Math.min(devicePixelRatio || 1, 2);
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
       for (const grain of grains) {
         grain.x *= width / oldWidth;
         grain.y *= height / oldHeight;
       }
+      wakes.length = 0;
+    }
+
+    function duneSlope(x, layer) {
+      return (duneY(x + 1, layer) - duneY(x - 1, layer)) * 0.5;
+    }
+
+    function addBedEvent(grain, channel, amount) {
+      const bin = Math.min(bedBins - 1, Math.floor(grain.x / width * bedBins));
+      const index = (grain.layer * bedBins + bin) * 4;
+      bedState[index + channel] = clamp(bedState[index + channel] + amount, 0, 1);
+    }
+
+    function layerDepth(layer) {
+      return 1 - (layer + 0.5) / Math.round(config.dunes.layers);
+    }
+
+    function grainScale(depth) {
+      const perspective = effects.duneDepth.projection === "Perspective" ? depthScale : 0;
+      return (1 + perspective * 0.46) / (1 + depth * perspective * 0.46) *
+        (effects.duneDepth.enabled ? effects.duneDepth.zoom : 1);
+    }
+
+    function wrapX(x) {
+      return ((x % width) + width) % width;
     }
 
     function updateGrain(grain, dt) {
@@ -250,8 +255,12 @@
         duneY(grain.x, grain.layer) +
         grain.bedOffset * config.dunes.thickness;
 
-      const dx = grain.x - mouse.x;
-      const dy = grain.y - mouse.y;
+      const depth = layerDepth(grain.layer);
+      const scale = grainScale(depth);
+      const bedLift = Math.max(0, targetY - grain.y) * depthScale * 0.25;
+      const dx = (grain.x - width * 0.5) * scale + width * 0.5 - mouse.x;
+      const dy = (grain.y - height * 0.5 - height * depthTilt * depth - bedLift) *
+        scale + height * 0.5 - mouse.y;
       const distance = Math.hypot(dx, dy);
 
       const proximity = clamp(
@@ -264,6 +273,20 @@
         ? proximity * proximity * mouse.influence
         : 0;
 
+      if (grain.sliding) {
+        const slope = duneSlope(grain.x, grain.layer);
+        grain.vx = config.features.avalanches.speed * clamp(slope, -1.8, 1.8);
+        grain.x = wrapX(grain.x + grain.vx * dt);
+        grain.y = duneY(grain.x, grain.layer) + grain.bedOffset * config.dunes.thickness;
+        if (effects.strata.enabled) addBedEvent(grain, 0, dt * 1.8);
+        if (Math.abs(slope) < effects.avalanches.slope * 0.38 || influence > 0.03) {
+          grain.sliding = false;
+          grain.vx = 0;
+          if (effects.deposition.enabled) addBedEvent(grain, 1, 0.36);
+        }
+        return;
+      }
+
       if (!grain.airborne) {
         grain.y +=
           (targetY - grain.y) *
@@ -273,10 +296,19 @@
           Math.random() <
           1 - Math.exp(-config.physics.erosion * dt);
 
+        const slope = effects.avalanches.enabled ? duneSlope(grain.x, grain.layer) : 0;
+        const front = effects.avalanches.enabled
+          ? 0.5 + 0.5 * Math.sin(time * 1.9 - grain.x * 0.032 + grain.layer * 2.1) : 0;
+        const slide = effects.avalanches.enabled && Math.abs(slope) > effects.avalanches.slope &&
+          front > 0.82 && Math.random() < 1 - Math.exp(-effects.avalanches.density * dt);
+
         if (influence > 0.03 || erodes) {
+          if (effects.strata.enabled) addBedEvent(grain, 0, 0.32);
           grain.airborne = true;
           grain.vy = -config.physics.erosionLift * random(0.5, 1.2);
           grain.vx = random(-1, 1) * config.physics.current;
+        } else if (slide) {
+          grain.sliding = true;
         }
       }
 
@@ -293,7 +325,28 @@
         grain.vy -=
           config.mouse.liftStrength * influence * dt;
 
-        grain.vy += config.physics.gravity * dt;
+        const sorting = effects.sorting;
+        const fine = grain.size < sorting.fineRatio;
+        const settling = sorting.enabled ? Math.exp((fine ? -0.55 : 0.5) * sorting.contrast) : 1;
+        grain.vy += config.physics.gravity * settling * dt;
+
+        if (effects.plumes.enabled) {
+          const { strength, size, wake } = effects.plumes;
+          const spin = Math.sin(grain.x / size + time * 0.42 + grain.layer) *
+            Math.cos(grain.y / size - time * 0.28);
+          grain.vx += spin * strength * dt * 0.32;
+          grain.vy -= Math.abs(spin) * strength * dt * 0.11;
+
+          for (const eddy of wakes) {
+            const ex = dx + mouse.x - eddy.x;
+            const ey = dy + mouse.y - eddy.y;
+            const radius = size * eddy.scale;
+            const reach = Math.max(0, 1 - (ex * ex + ey * ey) / (radius * radius));
+            const force = reach * (1 - (time - eddy.time) / wake) * strength * dt / radius;
+            grain.vx -= ey * eddy.spin * force;
+            grain.vy += ex * eddy.spin * force;
+          }
+        }
 
         const current =
           Math.sin(time * 0.35 + grain.phase) *
@@ -306,14 +359,13 @@
         grain.vy = clamp(
           grain.vy,
           -300,
-          config.physics.settlingSpeed
+          config.physics.settlingSpeed * settling
         );
 
         grain.x += grain.vx * dt;
         grain.y += grain.vy * dt;
 
-        if (grain.x < 0) grain.x += width;
-        if (grain.x > width) grain.x -= width;
+        grain.x = wrapX(grain.x);
 
         const bedY =
           duneY(grain.x, grain.layer) +
@@ -328,6 +380,8 @@
           grain.vx = 0;
           grain.vy = 0;
           grain.airborne = false;
+          if (effects.strata.enabled) addBedEvent(grain, 0, -0.19);
+          if (effects.deposition.enabled) addBedEvent(grain, 1, 0.28);
         }
 
         // Keep lifted grains within a generous offscreen margin.
@@ -338,112 +392,487 @@
       }
     }
 
-    function drawContours() {
-      if (!config.dunes.showContours) return;
-
-      ctx.lineWidth = 0.7;
-
-      const layers = Math.round(config.dunes.layers);
-
-      for (let layer = 0; layer < layers; layer++) {
-        const color = mix(
-          config.appearance.colorA,
-          config.appearance.colorB,
-          layers <= 1 ? 0.5 : layer / (layers - 1)
-        );
-
-        ctx.strokeStyle = rgba(
-          color,
-          config.dunes.contourOpacity
-        );
-
-        ctx.beginPath();
-
-        for (let x = 0; x <= width + 8; x += 8) {
-          const y = duneY(x, layer);
-
-          if (x === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+    function updateBedAndWakes(dt) {
+      if (effects.strata.enabled || effects.deposition.enabled) {
+        const cover = Math.exp(-dt * 0.21);
+        const fade = Math.exp(-dt / effects.deposition.decay);
+        for (let i = 0; i < bedState.length; i += 4) {
+          bedState[i] *= cover;
+          bedState[i + 1] *= fade;
         }
+      }
 
-        ctx.stroke();
+      if (!effects.plumes.enabled) return;
+      while (wakes.length && time - wakes[0].time >= effects.plumes.wake) wakes.shift();
+      const vx = mouse.targetX - mouse.x;
+      const vy = mouse.targetY - mouse.y;
+      const motion = Math.hypot(vx, vy);
+      if (config.mouse.enabled && mouse.active && motion > 1 && time - wakeTime >= 0.07) {
+        wakeTime = time;
+        if (wakes.length === wakeLimit) wakes.shift();
+        wakes.push({
+          x: mouse.x,
+          y: mouse.y,
+          time,
+          scale: 1.15 - 0.66 * clamp(motion / 70, 0, 1),
+          spin: vx >= 0 ? 1 : -1
+        });
       }
     }
 
-    function drawGrain(grain) {
-      const size =
-        config.grains.size *
-        (1 - config.grains.sizeVariation * (1 - grain.size));
+    const shaderHeader = `#version 300 es
+      precision highp float;
+      precision highp int;
+    `;
 
-      const layers = Math.round(config.dunes.layers);
+    const fullScreen = `
+      out vec2 uv;
+      void main() {
+        uv = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+        gl_Position = vec4(uv * 2.0 - 1.0, 0, 1);
+      }
+    `;
 
-      const tint = clamp(
-        (grain.layer / Math.max(1, layers - 1)) * 0.7 +
-        grain.tint * 0.3,
-        0,
-        1
-      );
+    const sharedShader = `
+      uniform vec2 uSize;
+      uniform float uTime;
+      uniform vec4 uDunes; // height, wavelength, clock speed, thickness
+      uniform int uLayers;
+      uniform vec4 uDepth; // perspective, tilt offset, zoom, lift
+      uniform vec3 uA, uB, uHighlight;
+      uniform vec3 uCaustics; // scale, speed, contrast
+      float depthOf(float layer) {
+        return 1.0 - (layer + 0.5) / float(uLayers);
+      }
+      float scaleOf(float depth) {
+        return (1.0 + uDepth.x * 0.46) / (1.0 + depth * uDepth.x * 0.46) * uDepth.z;
+      }
+      float bed(float x, float layer) {
+        float wave = x / uDunes.y * 6.2831853;
+        float clock = uTime * uDunes.z;
+        float base = uSize.y * (0.3 + (layer + 0.5) / float(uLayers) * 0.6);
+        return base + uDunes.x * (sin(wave + layer * 1.6 + clock)
+          + 0.45 * sin(wave * 0.47 - layer * 0.9 - clock * 0.6));
+      }
+      float caustic(vec2 p, float depth) {
+        vec2 q = p / uCaustics.x + vec2(depth * 2.3, -depth);
+        float t = uTime * uCaustics.y;
+        float a = sin(2.3 * q.x + sin(q.y * 2.8 - t) + t);
+        float b = sin(2.4 * q.y + sin(q.x * 2.1 + t) - t * 0.72);
+        return pow(max(0.0, 1.0 - abs(a + b) * 0.8), 7.0) * uCaustics.z;
+      }
+    `;
 
-      const sprite = sprites[Math.round(tint * 15)];
+    const bedFragment = `
+      in vec2 uv;
+      out vec4 color;
+      uniform vec3 uBackground, uStrataA, uStrataB;
+      uniform vec4 uMouse, uStrata;
+      uniform vec3 uShadows;
+      uniform vec2 uDeposit;
+      uniform float uContour, uRelief;
+      uniform sampler2D uBedState;
+      ${sharedShader}
 
-      const shimmer =
-        0.85 + Math.sin(time * 0.7 + grain.phase) * 0.15;
+      float gaussian(float x) { return exp(-x * x); }
 
-      const opacity =
-        config.grains.opacity *
-        shimmer *
-        (grain.airborne ? 0.8 : 1);
-
-      if (config.grains.glow > 0) {
-        const glowRadius = size + config.grains.glow;
-
-        ctx.globalAlpha = opacity * 0.45;
-
-        ctx.drawImage(
-          sprite.image,
-          grain.x - glowRadius,
-          grain.y - glowRadius,
-          glowRadius * 2,
-          glowRadius * 2
-        );
+      vec2 stateAt(float x, int layer) {
+        float bin = fract(x / uSize.x) * float(${bedBins}) - 0.5;
+        int i = int(floor(bin));
+        vec2 left = texelFetch(uBedState, ivec2((i + ${bedBins}) % ${bedBins}, layer), 0).rg;
+        vec2 right = texelFetch(uBedState, ivec2((i + 1) % ${bedBins}, layer), 0).rg;
+        return mix(left, right, fract(bin));
       }
 
-      ctx.globalAlpha = opacity;
-      ctx.fillStyle = rgba(sprite.color);
-      ctx.beginPath();
-      ctx.arc(grain.x, grain.y, size, 0, Math.PI * 2);
-      ctx.fill();
+      void main() {
+        vec2 screen = vec2(uv.x, 1.0 - uv.y) * uSize;
+        vec3 rgb = uBackground;
+        rgb += uHighlight * uMouse.w * max(0.0, 1.0 - distance(screen, uMouse.xy) / uMouse.z);
+        for (int i = 0; i < uLayers; i++) {
+          float layer = float(i);
+          float depth = depthOf(layer);
+          float scale = scaleOf(depth);
+          vec2 p = (screen - uSize * 0.5) / scale + uSize * 0.5;
+          p.y += uSize.y * uDepth.y * depth;
+          float y = bed(p.x, layer);
+          float delta = p.y - y;
+          float span = max(3.0, uDunes.w * 0.65);
+          if (abs(delta) > span * 2.4 + uDeposit.y * 3.0) continue;
+          float slope = (bed(p.x + 1.0, layer) - bed(p.x - 1.0, layer)) * 0.5;
+          float d = abs(delta) / sqrt(1.0 + slope * slope);
+          float band = gaussian(delta / span);
+          float tone = uLayers <= 1 ? 0.5 : layer / float(uLayers - 1);
+          vec3 tint = mix(uA, uB, tone);
+
+          if (uRelief > 0.0) {
+            float rim = gaussian((delta + span * 0.36) / max(1.0, span * 0.23));
+            rgb += tint * (band * 0.035 + rim * 0.045) * (1.0 - depth * 0.55);
+          }
+
+          if (uShadows.y > 0.0) {
+            float shadowAmount = 0.0;
+            float direction = sign(uShadows.x);
+            float rise = max(0.08, abs(tan(uShadows.x)));
+            for (int step = 1; step <= 5; step++) {
+              float reach = float(step) * uDunes.y * 0.037;
+              float blocker = y - bed(p.x - direction * reach, layer) - rise * reach;
+              shadowAmount = max(shadowAmount, smoothstep(0.0, 2.0 + uShadows.z * 25.0, blocker));
+            }
+            rgb = mix(rgb, rgb * 0.48, shadowAmount * band * uShadows.y);
+            rgb += tint * band * uShadows.y * (1.0 - shadowAmount) * 0.13 *
+              max(0.0, 0.65 - slope * direction * 0.28);
+          }
+
+          rgb += tint * uContour * (1.0 - smoothstep(0.11, 0.85, d * scale));
+          rgb += tint * band * caustic(p, depth) * 0.53;
+
+          if (uStrata.w > 0.0 || uDeposit.x > 0.0) {
+            vec2 state = stateAt(p.x, i);
+            if (uStrata.w > 0.0) {
+              float shifted = delta + sin(p.x * 0.015 + layer) * 2.0;
+              float seam = abs(mod(shifted + uStrata.x * 0.5, uStrata.x) - uStrata.x * 0.5);
+              float line = 1.0 - smoothstep(uStrata.y * 0.45, uStrata.y + 0.7, seam);
+              float ore = 0.5 + 0.5 * sin(floor(shifted / uStrata.x + 0.5) * 2.4 + layer);
+              rgb += mix(uStrataA, uStrataB, ore) * line * band *
+                (0.035 + state.x * 0.8) * uStrata.z;
+            }
+            if (uDeposit.x > 0.0) {
+              float spread = uDeposit.y;
+              float land = state.y * 0.5 + 0.25 *
+                (stateAt(p.x - spread, i).y + stateAt(p.x + spread, i).y);
+              rgb += mix(tint, uHighlight, 0.55) * land * uDeposit.x *
+                gaussian(delta / spread);
+            }
+          }
+        }
+        color = vec4(rgb, 1);
+      }
+    `;
+
+    const grainVertex = `
+      layout(location=0) in vec4 aGrain; // position, layer, relative size
+      layout(location=1) in vec4 aMotion; // horizontal speed, vertical speed, tint, phase
+      layout(location=2) in vec2 aState; // airborne, sliding
+      uniform vec4 uGrains; // radius, variation, opacity, glow
+      uniform vec3 uSorting; // enabled, fine fraction, spread
+      uniform vec3 uGlints; // density, intensity, angle
+      uniform float uPlumes;
+      ${sharedShader}
+      out vec2 local;
+      out vec3 tint;
+      out vec4 shape; // core radius, halo radius, opacity, glint
+
+      const vec2 corners[4] = vec2[4](vec2(-1,-1),vec2(1,-1),vec2(-1,1),vec2(1,1));
+      void main() {
+        vec2 p = aGrain.xy;
+        float layer = aGrain.z;
+        float depth = depthOf(layer);
+        float scale = scaleOf(depth);
+        float lift = aState.x * max(0.0, bed(p.x, layer) - p.y) * uDepth.w * 0.25;
+        vec2 center = (p - uSize * 0.5 - vec2(0, uSize.y * uDepth.y * depth + lift))
+          * scale + uSize * 0.5;
+        float radius = uGrains.x * (1.0 - uGrains.y * (1.0 - aGrain.w));
+        float fine = 1.0 - step(uSorting.y, aGrain.w);
+        float sortSpread = uSorting.x * uSorting.z;
+        radius *= 1.0 + sortSpread * mix(0.38, -0.5, fine);
+        float glow = radius + uGrains.w + fine * sortSpread * aState.x * 3.0;
+        float extent = glow + 1.0;
+        float speed = length(aMotion.xy);
+        vec2 axis = speed > 0.01 ? aMotion.xy / speed : vec2(1,0);
+        float stretch = 1.0 + min(speed * 0.018, 2.5) * max(aState.y, aState.x * uPlumes);
+        local = corners[gl_VertexID] * extent;
+        vec2 offset = (axis * local.x * stretch + vec2(-axis.y, axis.x) * local.y) * scale;
+        vec2 screen = (center + offset) / uSize;
+        gl_Position = vec4(screen.x * 2.0 - 1.0, 1.0 - screen.y * 2.0, 0, 1);
+
+        float tone = clamp(layer / float(max(1, uLayers - 1)) * 0.7 + aMotion.z * 0.3, 0.0, 1.0);
+        tone = floor(tone * 15.0 + 0.5) / 15.0;
+        tint = mix(mix(uA, uB, tone), uHighlight, 0.18);
+        tint *= 1.0 + caustic(p, depth) * (0.45 + aState.x * 0.55);
+        float shimmer = 0.85 + sin(uTime * 0.7 + aMotion.w) * 0.15;
+        float opacity = uGrains.z * shimmer * (1.0 - 0.2 * aState.x);
+        opacity *= 1.0 - fine * sortSpread * aState.x * 0.43;
+        float normalAngle = aMotion.w + uTime * (0.42 + aMotion.z * 0.9);
+        float flash = pow(max(0.0, cos(normalAngle - uGlints.z)), 38.0);
+        float glint = aMotion.z < uGlints.x ? flash * uGlints.y : 0.0;
+        shape = vec4(radius, glow, opacity, glint);
+      }
+    `;
+
+    const grainFragment = `
+      in vec2 local;
+      in vec3 tint;
+      in vec4 shape;
+      uniform vec3 uHighlight;
+      out vec4 color;
+      void main() {
+        float r = length(local);
+        float aa = max(fwidth(r) * 0.55, 0.1);
+        float core = 1.0 - smoothstep(max(0.0, shape.x - aa), shape.x + aa, r);
+        float g = r / max(shape.y, 0.01);
+        float halo = shape.y > shape.x + 0.01
+          ? mix(0.3 * (1.0 - clamp((g - 0.2) / 0.8, 0.0, 1.0)),
+                0.75 - 2.25 * g, step(g, 0.2)) * 0.45 : 0.0;
+        color = vec4(tint * (core + halo) * shape.z + uHighlight * core * shape.w, 0.0);
+      }
+    `;
+
+    const blurFragment = `
+      in vec2 uv;
+      out vec4 color;
+      uniform sampler2D uInput;
+      uniform vec2 uDirection;
+      uniform float uThreshold;
+      vec3 tap(vec2 p) {
+        vec3 rgb = texture(uInput, p).rgb;
+        float peak = max(max(rgb.r, rgb.g), rgb.b);
+        return rgb * smoothstep(uThreshold, uThreshold + 0.17, peak);
+      }
+      void main() {
+        vec3 sum = tap(uv) * 0.227027;
+        sum += (tap(uv + uDirection * 1.384615) + tap(uv - uDirection * 1.384615)) * 0.316216;
+        sum += (tap(uv + uDirection * 3.230769) + tap(uv - uDirection * 3.230769)) * 0.070270;
+        color = vec4(sum, 1);
+      }
+    `;
+
+    const compositeFragment = `
+      in vec2 uv;
+      out vec4 color;
+      uniform sampler2D uScene, uBlur;
+      uniform float uIntensity;
+      void main() {
+        color = vec4(texture(uScene, uv).rgb + texture(uBlur, uv).rgb * uIntensity, 1);
+      }
+    `;
+
+    function makeProgram(vertex, fragment) {
+      const compile = (type, source) => {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, shaderHeader + source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          throw new Error(gl.getShaderInfoLog(shader));
+        }
+        return shader;
+      };
+
+      const vert = compile(gl.VERTEX_SHADER, vertex);
+      const frag = compile(gl.FRAGMENT_SHADER, fragment);
+      const program = gl.createProgram();
+      gl.attachShader(program, vert);
+      gl.attachShader(program, frag);
+      gl.linkProgram(program);
+      gl.deleteShader(vert);
+      gl.deleteShader(frag);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(program));
+      }
+
+      const uniforms = new Map();
+      return {
+        use: () => gl.useProgram(program),
+        set(name, ...values) {
+          if (!uniforms.has(name)) uniforms.set(name, gl.getUniformLocation(program, name));
+          gl[`uniform${values.length}f`](uniforms.get(name), ...values);
+        },
+        integer(name, value) {
+          if (!uniforms.has(name)) uniforms.set(name, gl.getUniformLocation(program, name));
+          gl.uniform1i(uniforms.get(name), value);
+        }
+      };
     }
 
-    function drawHalo() {
-      if (
-        !config.mouse.enabled ||
-        !config.mouse.showHalo ||
-        mouse.influence < 0.001
-      ) return;
-
-      const gradient = ctx.createRadialGradient(
-        mouse.x, mouse.y, 0,
-        mouse.x, mouse.y, config.mouse.radius
-      );
-
-      gradient.addColorStop(
-        0,
-        rgba(
-          config.appearance.highlightColor,
-          mouse.influence * 0.035
-        )
-      );
-
-      gradient.addColorStop(
-        1,
-        rgba(config.appearance.highlightColor, 0)
-      );
-
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, width, height);
+    function makeTexture(unit, filter) {
+      const texture = gl.createTexture();
+      bindTexture(unit, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return texture;
     }
 
+    function bindTexture(unit, texture) {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+    }
+
+    function createRenderer() {
+      const bed = makeProgram(fullScreen, bedFragment);
+      const grains = makeProgram(grainVertex, grainFragment);
+      const blur = makeProgram(fullScreen, blurFragment);
+      const composite = makeProgram(fullScreen, compositeFragment);
+      const empty = gl.createVertexArray();
+      const instances = gl.createVertexArray();
+      const buffer = gl.createBuffer();
+      gl.bindVertexArray(instances);
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.enableVertexAttribArray(0);
+      gl.enableVertexAttribArray(1);
+      gl.enableVertexAttribArray(2);
+      gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 40, 0);
+      gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 40, 16);
+      gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 40, 32);
+      gl.vertexAttribDivisor(0, 1);
+      gl.vertexAttribDivisor(1, 1);
+      gl.vertexAttribDivisor(2, 1);
+
+      const state = makeTexture(0, gl.NEAREST);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, bedBins, maxLayers, 0,
+        gl.RGBA, gl.FLOAT, bedState);
+      const hdr = Boolean(gl.getExtension("EXT_color_buffer_float"));
+      const targets = Array.from({ length: 3 }, () => ({
+        texture: makeTexture(1, gl.LINEAR),
+        framebuffer: gl.createFramebuffer()
+      }));
+      return { bed, grains, blur, composite, empty, instances, buffer, state, hdr,
+        targets, targetWidth: 0, targetHeight: 0, data: new Float32Array(0) };
+    }
+
+    let renderer = createRenderer();
+
+    function allocateTargets(w, h) {
+      if (renderer.targetWidth === w && renderer.targetHeight === h) return;
+      renderer.targetWidth = w;
+      renderer.targetHeight = h;
+      renderer.targets.forEach((target, index) => {
+        target.w = index ? Math.max(1, Math.ceil(w / 2)) : w;
+        target.h = index ? Math.max(1, Math.ceil(h / 2)) : h;
+        bindTexture(1, target.texture);
+        const format = renderer.hdr ? gl.RGBA16F : gl.RGBA8;
+        const type = renderer.hdr ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
+        gl.texImage2D(gl.TEXTURE_2D, 0, format, target.w, target.h, 0, gl.RGBA, type, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target.texture, 0);
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+          throw new Error("Could not allocate the sediment bloom buffer.");
+        }
+      });
+    }
+
+    function targetForDraw(target) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target?.framebuffer ?? null);
+      gl.viewport(0, 0, target?.w ?? canvas.width, target?.h ?? canvas.height);
+    }
+
+    function rgb(program, uniform, color) {
+      program.set(uniform, ...color.map(value => value / 255));
+    }
+
+    function setSceneUniforms(program) {
+      const { dunes, appearance } = config;
+      const { caustics, duneDepth } = effects;
+      program.use();
+      program.set("uSize", width, height);
+      program.set("uTime", time);
+      program.set("uDunes", dunes.height, dunes.wavelength, dunes.movement, dunes.thickness);
+      program.integer("uLayers", Math.round(dunes.layers));
+      program.set("uDepth", duneDepth.projection === "Perspective" ? depthScale : 0,
+        depthTilt, duneDepth.enabled ? duneDepth.zoom : 1, depthScale);
+      program.set("uCaustics", caustics.scale, caustics.speed, caustics.enabled ? caustics.contrast : 0);
+      rgb(program, "uA", appearance.colorA);
+      rgb(program, "uB", appearance.colorB);
+      rgb(program, "uHighlight", appearance.highlightColor);
+    }
+
+    function drawBed() {
+      const { bed, empty, state } = renderer;
+      const { strata, deposition, shadows } = effects;
+      setSceneUniforms(bed);
+      rgb(bed, "uBackground", config.appearance.backgroundColor);
+      rgb(bed, "uStrataA", strata.colorA);
+      rgb(bed, "uStrataB", strata.colorB);
+      bed.set("uContour", config.dunes.showContours ? config.dunes.contourOpacity : 0);
+      bed.set("uRelief", Number(effects.duneDepth.enabled));
+      bed.set("uMouse", mouse.x, mouse.y, config.mouse.radius,
+        config.mouse.enabled && config.mouse.showHalo ? mouse.influence * 0.035 : 0);
+      bed.set("uStrata", strata.spacing, strata.thickness, strata.exposure, Number(strata.enabled));
+      bed.set("uDeposit", deposition.enabled ? deposition.brightness : 0, deposition.spread);
+      bed.set("uShadows", shadows.angle * Math.PI / 180, shadows.enabled ? shadows.strength : 0,
+        shadows.softness);
+      bindTexture(0, state);
+      if (strata.enabled || deposition.enabled) {
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, bedBins, maxLayers, gl.RGBA, gl.FLOAT, bedState);
+      }
+      bed.integer("uBedState", 0);
+      gl.bindVertexArray(empty);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
+    function drawGrains() {
+      const { grains: program, instances, buffer } = renderer;
+      if (renderer.data.length < grains.length * 10) {
+        renderer.data = new Float32Array(grains.length * 10);
+      }
+      const data = renderer.data;
+      let i = 0;
+      for (const grain of grains) {
+        data[i++] = grain.x;
+        data[i++] = grain.y;
+        data[i++] = grain.layer;
+        data[i++] = grain.size;
+        data[i++] = grain.vx;
+        data[i++] = grain.vy;
+        data[i++] = grain.tint;
+        data[i++] = grain.phase;
+        data[i++] = Number(grain.airborne);
+        data[i++] = Number(grain.sliding);
+      }
+      gl.bindVertexArray(instances);
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+      setSceneUniforms(program);
+      const { sorting, glints, plumes } = effects;
+      program.set("uGrains", config.grains.size, config.grains.sizeVariation,
+        config.grains.opacity, config.grains.glow);
+      program.set("uSorting", Number(sorting.enabled), sorting.fineRatio, sorting.spread);
+      program.set("uGlints", glints.density, glints.enabled ? glints.intensity : 0,
+        glints.angle * Math.PI / 180);
+      program.set("uPlumes", Number(plumes.enabled));
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, grains.length);
+      gl.disable(gl.BLEND);
+    }
+
+    function drawBloom() {
+      const { blur, composite, empty, targets: [scene, horizontal, vertical] } = renderer;
+      const { radius, threshold, intensity } = effects.bloom;
+      gl.bindVertexArray(empty);
+      blur.use();
+      blur.integer("uInput", 1);
+      targetForDraw(horizontal);
+      bindTexture(1, scene.texture);
+      blur.set("uDirection", radius * dpr / scene.w, 0);
+      blur.set("uThreshold", threshold);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      targetForDraw(vertical);
+      bindTexture(1, horizontal.texture);
+      blur.set("uDirection", 0, radius * dpr / scene.h);
+      blur.set("uThreshold", -1);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      targetForDraw(null);
+      composite.use();
+      bindTexture(1, scene.texture);
+      bindTexture(2, vertical.texture);
+      composite.integer("uScene", 1);
+      composite.integer("uBlur", 2);
+      composite.set("uIntensity", intensity);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
+    function render() {
+      if (gl.isContextLost()) return;
+      const bloom = effects.bloom.enabled && effects.bloom.intensity > 0;
+      if (bloom) allocateTargets(canvas.width, canvas.height);
+      targetForDraw(bloom ? renderer.targets[0] : null);
+      drawBed();
+      drawGrains();
+      if (bloom) drawBloom();
+    }
     function frame(timestamp) {
       const realDt = previous === null
         ? 0
@@ -470,22 +899,13 @@
       mouse.influence +=
         ((mouse.active ? 1 : 0) - mouse.influence) * smoothing;
 
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = rgba(config.appearance.backgroundColor);
-      ctx.fillRect(0, 0, width, height);
-
-      drawHalo();
-      drawContours();
-
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-
-      for (const grain of grains) {
-        updateGrain(grain, dt);
-        drawGrain(grain);
+      depthScale = effects.duneDepth.enabled ? effects.duneDepth.spacing : 0;
+      depthTilt = depthScale * Math.sin(effects.duneDepth.tilt * Math.PI / 180) * 0.31;
+      if (dt > 0) {
+        updateBedAndWakes(dt);
+        for (const grain of grains) updateGrain(grain, dt);
       }
-
-      ctx.restore();
+      render();
 
       requestAnimationFrame(frame);
     }
@@ -527,6 +947,14 @@
     });
 
     addEventListener("resize", resize);
+
+    canvas.addEventListener("webglcontextlost", event => {
+      event.preventDefault();
+    });
+    canvas.addEventListener("webglcontextrestored", () => {
+      renderer = createRenderer();
+      previous = null;
+    });
 
     resize();
     refresh();

@@ -3,6 +3,65 @@ export function createSettingsEditor({
   onChange = () => {},
   onReset = () => {}
 }) {
+  const featureInfo = {
+    duneDepth: ["3D Dune Beds", "Project the dune layers and lift airborne grains above the beds."],
+    avalanches: ["Crest Avalanches", "Slide sheets of grains downhill from steep crests."],
+    plumes: ["Turbulent Plumes", "Curl suspended grains and leave eddies in the pointer's wake."],
+    glints: ["Mineral Glints", "Catch grazing light on individual mineral flecks."],
+    strata: ["Buried Strata", "Reveal mineral seams where the bed erodes."],
+    caustics: ["Underwater Caustics", "Sweep refracted light across dunes and suspended grains."],
+    deposition: ["Deposition Afterglow", "Leave fading light at grain landing sites."],
+    sorting: ["Grain-Size Sorting", "Keep fine dust aloft while coarse grains fall faster."],
+    shadows: ["Dune Shadows", "Shade troughs behind nearby crests."],
+    bloom: ["Selective Bloom", "Spread a soft halo around bright highlights."]
+  };
+
+  const original = structuredClone(config);
+  const presets = {
+    "Original": {},
+    "Deep Current": {
+      appearance: { backgroundColor: [4, 13, 27], colorA: [53, 166, 199], colorB: [93, 223, 183] },
+      features: {
+        duneDepth: { enabled: true },
+        caustics: { enabled: true, contrast: 0.75 },
+        plumes: { enabled: true, strength: 145 },
+        shadows: { enabled: true, strength: 0.5 }
+      }
+    },
+    "Copper Escarpment": {
+      appearance: { backgroundColor: [18, 10, 14], colorA: [227, 106, 55], colorB: [250, 191, 115] },
+      features: {
+        avalanches: { enabled: true, density: 1.1 },
+        strata: { enabled: true },
+        glints: { enabled: true },
+        shadows: { enabled: true }
+      }
+    },
+    "Bioluminescent Drift": {
+      appearance: { backgroundColor: [8, 8, 24], colorA: [87, 114, 231], colorB: [84, 217, 206] },
+      physics: { erosion: 0.1 },
+      features: {
+        plumes: { enabled: true },
+        sorting: { enabled: true },
+        deposition: { enabled: true, decay: 3.5 },
+        bloom: { enabled: true, intensity: 1.1 }
+      }
+    }
+  };
+
+  const featureLimits = {
+    duneDepth: { tilt: [0, 55, 1], spacing: [0.1, 1.4, 0.05], zoom: [1, 1.45, 0.01] },
+    avalanches: { slope: [0.1, 2.5, 0.05], density: [0, 3, 0.05], speed: [10, 220, 1] },
+    plumes: { strength: [0, 260, 1], size: [30, 300, 1], wake: [0.25, 4, 0.05] },
+    glints: { density: [0, 1, 0.01], intensity: [0, 4, 0.05], angle: [-180, 180, 1] },
+    strata: { spacing: [3, 28, 1], thickness: [0.25, 4, 0.05], exposure: [0, 1, 0.01] },
+    caustics: { scale: [25, 300, 1], speed: [0, 2, 0.01], contrast: [0, 1.5, 0.01] },
+    deposition: { brightness: [0, 2, 0.02], spread: [1, 28, 1], decay: [0.2, 8, 0.1] },
+    sorting: { fineRatio: [0, 1, 0.01], contrast: [0, 2.4, 0.05], spread: [0, 1.3, 0.05] },
+    shadows: { angle: [-80, 80, 1], strength: [0, 1, 0.01], softness: [0, 1, 0.01] },
+    bloom: { threshold: [0.1, 1.4, 0.01], radius: [1, 16, 0.25], intensity: [0, 2.5, 0.05] }
+  };
+
   const limits = {
     "grains.count": [100, 6000, 100],
     "grains.size": [0.3, 4, 0.1],
@@ -32,9 +91,93 @@ export function createSettingsEditor({
     "animation.speed": [0, 3, 0.05]
   };
 
+  const helpText = {
+    "grains.count": "Number of simulated grains.",
+    "grains.size": "Radius of a full-sized grain in CSS pixels.",
+    "grains.sizeVariation": "How much smaller individual grains can be.",
+    "grains.opacity": "Brightness of the grain cores and their halos.",
+    "grains.glow": "Extra radius of each grain halo.",
+    "dunes.layers": "Number of sediment beds.",
+    "dunes.height": "Vertical amplitude of the dune crests.",
+    "dunes.wavelength": "Horizontal distance between the main crests.",
+    "dunes.thickness": "Vertical spread of settled grains around each bed.",
+    "dunes.movement": "Drift speed of the bed profiles.",
+    "dunes.showContours": "Draw the centerline of each dune bed.",
+    "dunes.contourOpacity": "Strength of the dune centerlines.",
+    "physics.settlingSpeed": "Maximum falling speed of a suspended grain.",
+    "physics.gravity": "Downward acceleration while airborne.",
+    "physics.drag": "How quickly grains approach the local current.",
+    "physics.erosion": "Chance per second for settled grains to lift naturally.",
+    "physics.erosionLift": "Initial vertical speed of eroded grains.",
+    "physics.current": "Speed of horizontal drift in suspension.",
+    "mouse.enabled": "Let the pointer lift and scatter nearby grains.",
+    "mouse.radius": "Radius of the pointer's influence in CSS pixels.",
+    "mouse.liftStrength": "Upward force near the pointer.",
+    "mouse.scatterStrength": "Horizontal push away from the pointer.",
+    "mouse.smoothing": "How quickly the interaction follows the pointer.",
+    "mouse.showHalo": "Show a faint halo around the affected area.",
+    "appearance.backgroundColor": "Color behind the dune beds.",
+    "appearance.colorA": "Grain tint toward the back of the field.",
+    "appearance.colorB": "Grain tint toward the front of the field.",
+    "appearance.highlightColor": "Highlight tint for grains, glow, and the pointer.",
+    "animation.speed": "Time multiplier for dune movement and simulation.",
+    "animation.paused": "Freeze the simulation and animated lighting.",
+    "animation.respectReducedMotion": "Start still when the system requests reduced motion.",
+    "panel.enabled": "Show the editor on load when this config is pasted into the page.",
+    "duneDepth.projection": "Perspective shrinks distant beds. Orthographic keeps their scale uniform.",
+    "duneDepth.tilt": "Angle of the fixed view across the dune layers.",
+    "duneDepth.spacing": "Depth separation between layers.",
+    "duneDepth.zoom": "Magnification of the projected view.",
+    "avalanches.slope": "Minimum steepness needed to start a slide.",
+    "avalanches.density": "Frequency of releases on qualifying slopes.",
+    "avalanches.speed": "Downhill speed multiplier.",
+    "plumes.strength": "Rotation and drift force on airborne grains.",
+    "plumes.size": "Base radius of a pointer eddy.",
+    "plumes.wake": "How long a pointer eddy keeps stirring grains, in seconds.",
+    "glints.density": "Fraction of grains eligible to flash.",
+    "glints.intensity": "Peak brightness of the flashes.",
+    "glints.angle": "Light direction used to time the flashes.",
+    "strata.spacing": "Distance between the mineral seams.",
+    "strata.thickness": "Width of each exposed seam.",
+    "strata.exposure": "Strength of the mineral colors as the bed erodes.",
+    "strata.colorA": "First mineral seam color.",
+    "strata.colorB": "Second mineral seam color.",
+    "caustics.scale": "Width and spacing of the refracted light pattern.",
+    "caustics.speed": "Drift speed of the light pattern.",
+    "caustics.contrast": "Brightness of the caustic highlights.",
+    "deposition.brightness": "Peak intensity of accumulated landing traces.",
+    "deposition.spread": "Width of the landing glow around each bed.",
+    "deposition.decay": "Time constant of the glow fade, in seconds.",
+    "sorting.fineRatio": "Fraction of grains treated as fine dust.",
+    "sorting.contrast": "Difference in settling behavior between fines and coarse grains.",
+    "sorting.spread": "Visual size and softness difference between the two groups.",
+    "shadows.angle": "Signed light angle. The sign switches the side of illumination.",
+    "shadows.strength": "How much crest shadows darken the troughs.",
+    "shadows.softness": "How gradually shadows fade near their edges.",
+    "bloom.threshold": "Minimum highlight brightness that contributes to bloom.",
+    "bloom.radius": "Distance the highlight halo spreads.",
+    "bloom.intensity": "Brightness of the final bloom pass."
+  };
+
   const style = document.createElement("style");
 
   style.textContent = `
+    .sediment-editor [hidden] { display: none !important; }
+    .sediment-editor details { margin: 8px 0; border: 1px solid #ffffff24; border-radius: 8px; padding: 8px; }
+    .sediment-editor summary { cursor: pointer; font-weight: 650; }
+    .sediment-editor .sediment-search, .sediment-editor select {
+      width: 100%; padding: 7px; color: inherit; background: #182630;
+      border: 1px solid #ffffff36; border-radius: 6px; font: inherit;
+    }
+    .sediment-editor .sediment-feature { padding: 3px 6px; }
+    .sediment-help {
+      position: fixed; z-index: 10001; max-width: 220px; padding: 8px 10px;
+      border-radius: 6px; border: 1px solid #ffffff35; background: #182630;
+      color: #e5edf0; pointer-events: none; box-shadow: 0 5px 18px #0008;
+    }
+    @media (max-width: 640px) {
+      .sediment-help { bottom: 12px; left: 12px; top: auto !important; }
+    }
     .sediment-editor {
       position: fixed;
       inset: 0;
@@ -250,7 +393,15 @@ export function createSettingsEditor({
         Copy your configuration before disabling the editor.
       </p>
 
+      <input class="sediment-search" type="search" aria-label="Search settings" placeholder="Search settings">
+      <details open>
+        <summary>Template settings</summary>
+        <label>Apply a template
+          <select class="sediment-presets"></select>
+        </label>
+      </details>
       <div class="sediment-controls"></div>
+      <p class="sediment-empty" hidden>No settings match your search.</p>
 
       <div class="sediment-actions">
         <button class="sediment-show" type="button">Show code</button>
@@ -272,6 +423,7 @@ export function createSettingsEditor({
         aria-live="polite"
       ></div>
     </aside>
+    <div class="sediment-help" hidden></div>
   `;
 
   document.body.append(root);
@@ -283,6 +435,17 @@ export function createSettingsEditor({
   const code = root.querySelector(".sediment-code");
   const show = root.querySelector(".sediment-show");
   const status = root.querySelector(".sediment-status");
+  const search = root.querySelector(".sediment-search");
+  const presetSelect = root.querySelector(".sediment-presets");
+  const help = root.querySelector(".sediment-help");
+  const empty = root.querySelector(".sediment-empty");
+  const sections = [];
+  let presetApplying = false;
+  let searching = false;
+
+  presetSelect.add(new Option("Custom", ""));
+  for (const name of Object.keys(presets)) presetSelect.add(new Option(name, name));
+  presetSelect.value = "Original";
 
   function title(value) {
     return value
@@ -297,14 +460,11 @@ export function createSettingsEditor({
   function changed() {
     code.value = exportCode();
     onChange();
-
-    if (!config.panel.enabled) {
-      setOpen(false);
-      root.hidden = true;
-    }
+    if (!presetApplying) presetSelect.value = "";
   }
 
   function setOpen(open) {
+    help.hidden = true;
     toggle.hidden = false;
 
     if (!open && panel.contains(document.activeElement)) {
@@ -331,12 +491,23 @@ export function createSettingsEditor({
     ).join("");
   }
 
-  for (const [groupName, group] of Object.entries(config)) {
-    const fieldset = element("fieldset");
-    const legend = element("legend");
+  function makeSection(parent, label, open) {
+    const details = element("details");
+    const summary = element("summary");
+    summary.textContent = label;
+    details.append(summary);
+    details.open = open;
+    parent.append(details);
+    return details;
+  }
 
-    legend.textContent = title(groupName);
-    fieldset.append(legend);
+  function buildGroup(details, groupName, group, label, description = "") {
+    const body = element("div");
+    details.append(body);
+    const rows = [];
+    const feature = Boolean(description);
+    const section = { details, rows, feature, label, description, group, open: details.open };
+    sections.push(section);
 
     for (const [key, value] of Object.entries(group)) {
       const path = `${groupName}.${key}`;
@@ -344,11 +515,25 @@ export function createSettingsEditor({
       const heading = element("div", "sediment-control-title");
       const label = element("label");
       const id = `sediment-${groupName}-${key}`;
+      const hint = helpText[path] || description;
 
-      label.textContent = title(key);
+      label.textContent = feature && key === "enabled" ? "Enable effect" : title(key);
       label.htmlFor = id;
       heading.append(label);
       container.append(heading);
+      if (hint) {
+        const displayHelp = () => {
+          help.textContent = hint;
+          help.style.top = Math.min(container.getBoundingClientRect().top, innerHeight - 100) + "px";
+          help.style.right = panel.getBoundingClientRect().width + 10 + "px";
+          help.hidden = false;
+        };
+        container.title = hint;
+        container.addEventListener("pointerenter", displayHelp);
+        container.addEventListener("pointerleave", () => help.hidden = true);
+        container.addEventListener("focusin", displayHelp);
+        container.addEventListener("focusout", () => help.hidden = true);
+      }
 
       if (typeof value === "boolean") {
         const input = element("input");
@@ -360,9 +545,20 @@ export function createSettingsEditor({
         input.addEventListener("change", () => {
           group[key] = input.checked;
           changed();
+          if (feature) filterSettings();
         });
 
         heading.append(input);
+      } else if (typeof value === "string") {
+        const select = element("select");
+        select.id = id;
+        for (const option of ["Perspective", "Orthographic"]) select.add(new Option(option));
+        select.value = value;
+        select.addEventListener("change", () => {
+          group[key] = select.value;
+          changed();
+        });
+        container.append(select);
       } else if (Array.isArray(value)) {
         const row = element("div", "sediment-colors");
         const picker = element("input");
@@ -423,7 +619,7 @@ export function createSettingsEditor({
 
         container.append(row);
       } else if (typeof value === "number") {
-        const [min, max, step] = limits[path] || [0, 100, 1];
+        const [min, max, step] = limits[path] || featureLimits[groupName]?.[key] || [0, 100, 1];
         const number = element("input");
         const range = element("input");
 
@@ -471,11 +667,98 @@ export function createSettingsEditor({
         container.append(range);
       }
 
-      fieldset.append(container);
+      rows.push({ key, container, text: `${title(key)} ${key} ${hint}`.toLowerCase() });
+      body.append(container);
+    }
+  }
+
+  let featureSection;
+  function rebuild() {
+    const open = new Map(sections.map(section => [
+      section.label, searching ? section.open : section.details.open
+    ]));
+    const featuresOpen = featureSection && (searching ? featuresWereOpen : featureSection.open);
+    controls.replaceChildren();
+    sections.length = 0;
+
+    for (const [name, group] of Object.entries(config)) {
+      if (name === "features") continue;
+      const label = title(name);
+      buildGroup(makeSection(controls, label, open.get(label) ?? name === "grains"),
+        name, group, label);
     }
 
-    controls.append(fieldset);
+    featureSection = makeSection(controls, "Features", featuresOpen ?? true);
+    for (const [name, group] of Object.entries(config.features)) {
+      const [label, description] = featureInfo[name];
+      const details = makeSection(featureSection, label, open.get(label) ?? true);
+      details.classList.add("sediment-feature");
+      buildGroup(details, name, group, label, description);
+    }
+    filterSettings();
   }
+
+  let featuresWereOpen = true;
+  function filterSettings() {
+    const terms = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const active = terms.length > 0;
+    const matches = text => terms.every(term => text.includes(term));
+    if (active && !searching) featuresWereOpen = featureSection.open;
+    let any = false;
+    let anyFeature = false;
+
+    for (const section of sections) {
+      const { details, rows, feature, label, description, group } = section;
+      if (active && !searching) section.open = details.open;
+      const groupText = `${feature ? "features " : ""}${label} ${description}`.toLowerCase();
+      const groupMatches = matches(groupText);
+      const hit = groupMatches || rows.some(row => matches(`${groupText} ${row.text}`));
+      details.hidden = active && !hit;
+      if (active && hit) details.open = true;
+      if (!active && searching) details.open = section.open;
+      for (const row of rows) {
+        const available = !feature || group.enabled || row.key === "enabled";
+        const show = groupMatches || matches(`${groupText} ${row.text}`) ||
+          (feature && row.key === "enabled" && hit);
+        row.container.hidden = !available || (active && !show);
+      }
+      any ||= !details.hidden;
+      anyFeature ||= feature && !details.hidden;
+    }
+    featureSection.hidden = !anyFeature;
+    if (active && anyFeature) featureSection.open = true;
+    if (!active && searching) featureSection.open = featuresWereOpen;
+    searching = active;
+    help.hidden = true;
+    empty.hidden = any;
+  }
+
+  function merge(target, values) {
+    for (const [key, value] of Object.entries(values)) {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        merge(target[key], value);
+      } else {
+        target[key] = structuredClone(value);
+      }
+    }
+  }
+
+  presetSelect.addEventListener("change", () => {
+    const name = presetSelect.value;
+    if (!name) return;
+    const next = structuredClone(original);
+    merge(next, presets[name]);
+    presetApplying = true;
+    merge(config, next);
+    changed();
+    onReset();
+    rebuild();
+    presetApplying = false;
+    status.textContent = `Applied ${name}.`;
+  });
+
+  search.addEventListener("input", filterSettings);
+  rebuild();
 
   toggle.addEventListener("click", () => setOpen(true));
   close.addEventListener("click", () => setOpen(false));
