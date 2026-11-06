@@ -20,25 +20,92 @@
 <script src="./settings-editor.js"></script>
 <script>
 (async () => {
-  const config = {
-    chase: { pacmen: 1, ghosts: 4, speed: 3.5, refill: 13, power: 7 },
-    view: { mode: '2D', zoom: 1, panX: 0, panY: 0 },
-    camera: { zoom: 1, panX: 0, panY: 0, tilt: 32, rotation: 0, fov: 38 },
-    style: { background: '#040715', wall: '#253eff', brightness: 1, glass: .48 },
-    input: { drop: true, control: false, player: 1, idle: 5 },
-    features: {
-      corners: { enabled: true, strength: .6 },
-      surge: { enabled: true, strength: .45 },
-      sparks: { enabled: true, strength: .65 },
-      regrowth: { enabled: true, strength: .8 },
-      eyes: { enabled: true, strength: .12 },
-      pressure: { enabled: true, strength: .65 },
-      rings: { enabled: true, strength: .75 },
-      tunnel: { enabled: true, strength: .7 },
-      pools: { enabled: false, strength: .55 },
-      crt: { enabled: true, strength: .24 }
+const config = {
+  "chase": {
+    "pacmen": 1,
+    "ghosts": 8,
+    "speed": 3.5,
+    "refill": 19,
+    "power": 5
+  },
+  "view": {
+    "mode": "3D",
+    "zoom": 1,
+    "panX": 0,
+    "panY": 0
+  },
+  "camera": {
+    "zoom": 1.4,
+    "panX": 0,
+    "panY": 0,
+    "tilt": 39,
+    "rotation": 0,
+    "fov": 38
+  },
+  "style": {
+    "background": "#040715",
+    "wall": "#253eff",
+    "brightness": 1,
+    "glass": 0.54
+  },
+  "input": {
+    "drop": true,
+    "control": true,
+    "player": 1,
+    "idle": 5
+  },
+  "features": {
+    "corners": {
+      "enabled": false,
+      "strength": 0.9
+    },
+    "surge": {
+      "enabled": true,
+      "strength": 0.45
+    },
+    "sparks": {
+      "enabled": true,
+      "strength": 0.65
+    },
+    "regrowth": {
+      "enabled": true,
+      "strength": 0.8
+    },
+    "eyes": {
+      "enabled": true,
+      "strength": 0.12
+    },
+    "pressure": {
+      "enabled": true,
+      "strength": 0.65
+    },
+    "rings": {
+      "enabled": true,
+      "strength": 0.75
+    },
+    "tunnel": {
+      "enabled": true,
+      "strength": 0.7
+    },
+    "pools": {
+      "enabled": false,
+      "strength": 0.55
+    },
+    "crt": {
+      "enabled": true,
+      "strength": 0.24
     }
-  };
+  },
+  "maze": {
+    "layout": "Random",
+    "size": 35,
+    "wallHeight": 0.71,
+    "autoGenerate": false,
+    "generateEvery": 15,
+    "shifting": false,
+    "shiftEvery": 3.5
+  }
+};
   const presets = {
     'Arcade CRT': {},
     'Neon Glass': {
