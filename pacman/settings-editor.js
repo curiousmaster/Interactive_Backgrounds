@@ -196,7 +196,7 @@ window.MidnightMazeSettings = function ({ config, defaults, presets, onChange })
     control(style, config.style, key, name, 'Base color before the chase lighting is applied.', { type: 'color' });
   }
   range(style, config.style, 'brightness', 'Brightness', .15, 1.4, .01, 'Global brightness of walls, actors, and pellets.');
-  range(style, config.style, 'glass', 'Glass opacity', .08, .95, .01, 'Opacity of 3D maze walls.', () => config.view.mode === '3D');
+  range(style, config.style, 'glass', 'Glass opacity', 0, 1, .01, 'Opacity of 3D wall faces and outlines. Set zero to hide the walls.', () => config.view.mode === '3D');
 
   const input = section('Interaction');
   check(input, config.input, 'drop', 'Tap to drop power pellets', 'Tap a cleared, unoccupied corridor.');

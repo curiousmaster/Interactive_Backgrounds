@@ -513,10 +513,15 @@
       (1 - .85 * feature('surge') * Math.max(0, 1 - elapsed / .7));
     scene.background = new T.Color(config.style.background).multiplyScalar(.55 + dim * .45);
     wallMaterial.color.set(config.style.wall).multiplyScalar(dim * (is3D ? .66 : .37));
-    wallMaterial.transparent = is3D;
-    wallMaterial.depthWrite = !is3D;
-    wallMaterial.opacity = is3D ? config.style.glass : 1;
     edgeMaterial.color.set(config.style.wall).multiplyScalar(dim);
+    const wallOpacity = is3D ? config.style.glass : 1;
+    const translucent = wallOpacity < 1;
+    for (const material of [wallMaterial, edgeMaterial]) {
+      material.opacity = wallOpacity;
+      material.transparent = translucent;
+      material.depthWrite = !translucent;
+    }
+    walls.visible = wallOpacity > 0;
     walls.scale.y = is3D ? 1 : .08;
     dotMaterial.color.set(yellow).multiplyScalar(dim);
     powerMaterial.color.set('#ffbd53').multiplyScalar(dim);
