@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stacked animated backgrounds</title>
+
+  <script>
+    // Use folder values from backgrounds.js. Paths are relative to this file.
+    const config = {
+      top: {
+        folder: "pacman",
+        blendMode: "screen" // Black blends away. Use "normal" for transparent backgrounds.
+      },
+      bottom: {
+        folder: "floating-tesserae",
+        opacity: 0.78, // 0 = invisible, 1 = full opacity
+        blurPx: 3     // 0 = no blur
+      }
+    };
+  </script>
+
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+    }
+
+    .background-stack {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .layer {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+
+    #bottom-layer {
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    #top-layer {
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="background-stack">
+    <iframe id="bottom-layer" class="layer" title="Bottom animated background"
+            inert aria-hidden="true" tabindex="-1"></iframe>
+    <iframe id="top-layer" class="layer" title="Interactive animated background"></iframe>
+  </div>
+
+  <script>
+    function backgroundUrl(folder) {
+      return "./" + folder.split("/").map(encodeURIComponent).join("/") + "/index.html";
+    }
+
+    const bottomLayer = document.querySelector("#bottom-layer");
+    const topLayer = document.querySelector("#top-layer");
+
+    bottomLayer.style.opacity = config.bottom.opacity;
+    bottomLayer.style.filter = `blur(${config.bottom.blurPx}px)`;
+    topLayer.style.mixBlendMode = config.top.blendMode;
+
+    bottomLayer.src = backgroundUrl(config.bottom.folder);
+    topLayer.src = backgroundUrl(config.top.folder);
+  </script>
+</body>
+</html>
