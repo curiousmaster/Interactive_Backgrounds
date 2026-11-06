@@ -1,6 +1,6 @@
 'use strict';
 
-window.MidnightMazeSettings = function ({ config, defaults, presets, onChange }) {
+window.MidnightMazeSettings = function ({ config, defaults, presets, onChange, onGenerate }) {
   function merge(target, source) {
     for (const [key, value] of Object.entries(source)) {
       if (value && typeof value === 'object') merge(target[key], value);
@@ -97,12 +97,16 @@ window.MidnightMazeSettings = function ({ config, defaults, presets, onChange })
     const { panX, panY, zoom } = config.view;
     const camera = { ...config.camera };
     const input = { ...config.input };
+    const maze = { ...config.maze };
+    const { glass } = config.style;
     const { pacmen, ghosts } = config.chase;
     merge(config, defaults);
     merge(config, presets[preset.value]);
     Object.assign(config.view, { panX, panY, zoom });
     Object.assign(config.camera, camera);
     Object.assign(config.input, input);
+    Object.assign(config.maze, maze);
+    config.style.glass = glass;
     Object.assign(config.chase, { pacmen, ghosts });
     refresh();
   };
@@ -142,6 +146,7 @@ window.MidnightMazeSettings = function ({ config, defaults, presets, onChange })
     input.oninput = () => {
       target[key] = type === 'checkbox' ? input.checked :
         output ? input.valueAsNumber : input.value;
+      options.onInput?.();
       preset.value = 'Custom';
       refresh();
     };
@@ -196,7 +201,31 @@ window.MidnightMazeSettings = function ({ config, defaults, presets, onChange })
     control(style, config.style, key, name, 'Base color before the chase lighting is applied.', { type: 'color' });
   }
   range(style, config.style, 'brightness', 'Brightness', .15, 1.4, .01, 'Global brightness of walls, actors, and pellets.');
-  range(style, config.style, 'glass', 'Glass opacity', 0, 1, .01, 'Opacity of 3D wall faces and outlines. Set zero to hide the walls.', () => config.view.mode === '3D');
+  const maze = section('Maze');
+  control(maze, config.maze, 'layout', 'Starting layout', 'Choose the original board or a procedurally generated maze.', {
+    choices: ['Classic', 'Random'],
+    onInput() { if (config.maze.layout === 'Classic') config.maze.size = 21; }
+  });
+  control(maze, config.maze, 'size', 'Maze size', 'Board width in tiles. Height is six tiles fewer. Resizing switches to Random.', {
+    min: 15, max: 35, step: 2,
+    onInput() { config.maze.layout = 'Random'; }
+  });
+  const generate = element('button', 'Generate new maze', maze);
+  generate.onclick = () => {
+    const wasRandom = config.maze.layout === 'Random';
+    config.maze.layout = 'Random';
+    preset.value = 'Custom';
+    refresh();
+    if (wasRandom) onGenerate();
+  };
+  range(maze, config.style, 'glass', 'Wall opacity', 0, 1, .01, 'Fade the entire wall in 2D or 3D. Set zero to hide walls.');
+  range(maze, config.maze, 'wallHeight', 'Wall height', .1, 2.5, .01, 'Wall height in maze tiles.', () => config.view.mode === '3D');
+  check(maze, config.maze, 'autoGenerate', 'Automatically generate mazes', 'Replace the board at a regular interval.');
+  range(maze, config.maze, 'generateEvery', 'New maze interval', 10, 300, 1,
+    'Seconds between new random boards.', () => config.maze.autoGenerate);
+  check(maze, config.maze, 'shifting', 'Shifting walls', 'Periodically open one corridor and close another without splitting the maze.');
+  range(maze, config.maze, 'shiftEvery', 'Wall shift interval', 2, 60, .5,
+    'Seconds between attempts to shift walls.', () => config.maze.shifting);
 
   const input = section('Interaction');
   check(input, config.input, 'drop', 'Tap to drop power pellets', 'Tap a cleared, unoccupied corridor.');

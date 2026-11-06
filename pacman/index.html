@@ -55,6 +55,11 @@
       }
     }
   };
+  // Fill in Maze settings when using a config copied from an earlier version.
+  config.maze = {
+    layout: 'Classic', size: 21, wallHeight: .82, autoGenerate: false,
+    generateEvery: 90, shifting: false, shiftEvery: 8, ...config.maze
+  };
   const defaults = structuredClone(config);
   const canvas = document.querySelector('#maze');
   const status = document.querySelector('#status');
@@ -82,7 +87,7 @@
   const walls = new T.Group();
   const floor = new T.Group();
   scene.add(walls, floor);
-  const layout = [
+  const classic = [
     '#####################',
     '#.........#.........#',
     '#.###.###.#.###.###.#',
@@ -99,18 +104,51 @@
     '#.........#.........#',
     '#####################'
   ];
-  const width = layout[0].length;
-  const height = layout.length;
-  const tunnelRow = 7;
   const directions = [[1, 0], [0, 1], [-1, 0], [0, -1]];
-  const grid = layout.map(row => Array.from(row, () => null));
+  let layout, width, height, tunnelRow, grid, junctions, pacSpawns, ghostSpawns;
   const cells = [];
   const regular = [];
   const powers = new Map();
-  const wallMaterial = new T.MeshBasicMaterial();
-  const edgeMaterial = new T.LineBasicMaterial();
-  const wallBox = new T.BoxGeometry(1.01, .82, 1.01);
-  const wallEdges = new T.EdgesGeometry(wallBox);
+  const wallTiles = new Map();
+  const routes = new Map();
+  const wallBox = new T.BoxGeometry(.99, 1, .99);
+  const wallMaterial = new T.MeshBasicMaterial({ transparent: true, depthWrite: false });
+  const wallDepth = new T.MeshBasicMaterial({ transparent: true, colorWrite: false, depthWrite: true });
+  const rim = { value: new T.Color() };
+  wallMaterial.onBeforeCompile = shader => {
+    shader.uniforms.wallRim = rim;
+    shader.vertexShader = 'varying vec2 wallUV;\n' + shader.vertexShader.replace(
+      '#include <uv_vertex>', '#include <uv_vertex>\nwallUV = uv;');
+    shader.fragmentShader = 'varying vec2 wallUV;\nuniform vec3 wallRim;\n' +
+      shader.fragmentShader.replace('#include <color_fragment>', `
+        #include <color_fragment>
+        vec2 edge = min(wallUV, 1.0 - wallUV);
+        vec2 aa = max(fwidth(wallUV), vec2(0.001));
+        vec2 line = smoothstep(vec2(0.035) - aa, vec2(0.035) + aa, edge);
+        diffuseColor.rgb = mix(wallRim, diffuseColor.rgb, line.x * line.y);
+      `);
+  };
+  wallDepth.onBeforeCompile = wallMaterial.onBeforeCompile;
+  const maxMazeSize = 35;
+  const wallCapacity = maxMazeSize * (maxMazeSize - 6);
+  const wallFaces = new T.InstancedMesh(wallBox, wallMaterial, wallCapacity);
+  const wallMask = new T.InstancedMesh(wallBox, wallDepth, wallCapacity);
+  for (const mesh of [wallFaces, wallMask]) {
+    mesh.frustumCulled = false;
+    walls.add(mesh);
+  }
+  // Write the closest wall depth after the chase is drawn, then blend its color once.
+  // Face rims share that blend, so stacked walls and outlines cannot compound opacity.
+  wallMask.renderOrder = 10;
+  wallFaces.renderOrder = 11;
+  wallMaterial.depthFunc = T.EqualDepth;
+  const wallTransform = new T.Object3D();
+  let wallsDirty = true;
+  let lastWallHeight = 0;
+  let shift = null;
+  let nextShift = Infinity;
+  let nextGeneration = Infinity;
+  let mazeSettings = {};
   const circle = new T.CircleGeometry(1, 24);
   const sphere = new T.SphereGeometry(1, 16, 12);
   const ring = new T.RingGeometry(.85, 1, 32);
@@ -156,38 +194,214 @@
     return mesh;
   }
 
-  for (let z = 0; z < height; z++) {
-    for (let x = 0; x < width; x++) {
-      const character = layout[z][x];
-      if (character === '#') {
-        const wall = new T.Mesh(wallBox, wallMaterial);
-        wall.position.set(xAt(x), .41, zAt(z));
-        wall.add(new T.LineSegments(wallEdges, edgeMaterial));
-        walls.add(wall);
+  function randomMaze(columns) {
+    columns = T.MathUtils.clamp(Math.round((columns - 1) / 2) * 2 + 1, 15, maxMazeSize);
+    const rows = columns - 6;
+    const board = Array.from({ length: rows }, () => Array(columns).fill('#'));
+    const stack = [[1, 1]];
+    board[1][1] = '.';
+    while (stack.length) {
+      const [x, z] = stack.at(-1);
+      const options = directions.filter(([dx, dz]) =>
+        board[z + dz * 2]?.[x + dx * 2] === '#' &&
+        x + dx * 2 > 0 && x + dx * 2 < columns - 1 &&
+        z + dz * 2 > 0 && z + dz * 2 < rows - 1);
+      if (!options.length) {
+        stack.pop();
         continue;
       }
-      const cell = { id: cells.length, x, z, links: [], ready: 0 };
-      grid[z][x] = cell;
-      cells.push(cell);
-      cell.dot = new T.Mesh(sphere, character === 'o' ? powerMaterial : dotMaterial);
-      cell.dot.position.set(xAt(x), .12, zAt(z));
-      floor.add(cell.dot);
-      cell.pool = disk(circle, '#ffad37', .015, true);
-      cell.pool.position.set(xAt(x), .015, zAt(z));
-      if (character === 'o') powers.set(cell, 0);
-      else regular.push(cell);
+      const [dx, dz] = options[Math.floor(Math.random() * options.length)];
+      board[z + dz][x + dx] = '.';
+      board[z + dz * 2][x + dx * 2] = '.';
+      stack.push([x + dx * 2, z + dz * 2]);
+    }
+    for (let z = 1; z < rows - 1; z++) {
+      for (let x = 1; x < columns - 1; x++) {
+        if ((x + z) % 2 && Math.random() < .25) board[z][x] = '.';
+      }
+    }
+    const middle = Math.floor(rows / 2);
+    for (const x of [0, 1, columns - 2, columns - 1]) board[middle][x] = '.';
+    for (const z of [1, rows - 2]) {
+      for (const x of [1, columns - 2]) board[z][x] = 'o';
+    }
+    return board;
+  }
+
+  function addCell(x, z, character) {
+    const cell = { id: -1, x, z, links: [], ready: 0 };
+    cell.dot = new T.Mesh(sphere, character === 'o' ? powerMaterial : dotMaterial);
+    cell.dot.position.set(xAt(x), .12, zAt(z));
+    floor.add(cell.dot);
+    cell.pool = disk(circle, '#ffad37', .015, true);
+    cell.pool.position.set(xAt(x), .015, zAt(z));
+    grid[z][x] = cell;
+    if (character === 'o') powers.set(cell, 0);
+    return cell;
+  }
+
+  function removeCell(cell) {
+    floor.remove(cell.dot, cell.pool);
+    cell.pool.material.dispose();
+    powers.delete(cell);
+    grid[cell.z][cell.x] = null;
+  }
+
+  function rebuildLinks() {
+    cells.length = regular.length = 0;
+    routes.clear();
+    for (const row of grid) {
+      for (const cell of row) {
+        if (!cell) continue;
+        cell.id = cells.length;
+        cells.push(cell);
+        if (layout[cell.z][cell.x] !== 'o') regular.push(cell);
+        cell.links = [];
+        directions.forEach(([dx, dz], direction) => {
+          const x = cell.x + dx;
+          const wrap = cell.z === tunnelRow && (x < 0 || x >= width);
+          const next = grid[cell.z + dz]?.[(x + width) % width];
+          if (next && (wrap || (x >= 0 && x < width))) {
+            cell.links.push({ next, direction, wrap });
+          }
+        });
+      }
+    }
+    junctions = cells.filter(cell => cell.links.length > 2);
+    if (!junctions.length) junctions = cells;
+  }
+
+  function tileKey(x, z) {
+    return z * width + x;
+  }
+
+  function rebuildMaze(random) {
+    resizeTeam(pacmen, 0, false);
+    resizeTeam(ghosts, 0, true);
+    for (const cell of cells) removeCell(cell);
+    wallTiles.clear();
+    shift = wave = dropped = manual = null;
+    powerStart = powerEnd = -100;
+    for (const effect of effects) effect.userData = {};
+    layout = random ? randomMaze(config.maze.size) : classic.map(row => [...row]);
+    width = layout[0].length;
+    height = layout.length;
+    tunnelRow = Math.floor(height / 2);
+    grid = layout.map(row => row.map(() => null));
+    layout.forEach((row, z) => row.forEach((character, x) => {
+      if (character === '#') wallTiles.set(tileKey(x, z), { x, z });
+      else addCell(x, z, character);
+    }));
+    rebuildLinks();
+    const spawnNear = ([classicX, classicZ]) => {
+      const x = classicX / 20 * (width - 1);
+      const z = classicZ / 14 * (height - 1);
+      return cells.reduce((best, cell) =>
+        Math.abs(cell.x - x) + Math.abs(cell.z - z) <
+        Math.abs(best.x - x) + Math.abs(best.z - z) ? cell : best);
+    };
+    pacSpawns = [[9, 7], [11, 7], [3, 5], [17, 9]].map(spawnNear);
+    ghostSpawns = [[10, 3], [10, 11], [9, 5], [11, 9]].map(spawnNear);
+    wallsDirty = true;
+    scheduleMazeChanges();
+  }
+
+  function scheduleMazeChanges() {
+    const { autoGenerate, generateEvery, shifting, shiftEvery } = config.maze;
+    nextGeneration = autoGenerate ? clock + generateEvery : Infinity;
+    nextShift = shifting ? clock + shiftEvery : Infinity;
+  }
+
+  function isConnected() {
+    const seen = new Set();
+    const first = cells.find(cell => layout[cell.z][cell.x] !== '#');
+    const queue = [first];
+    seen.add(tileKey(first.x, first.z));
+    for (const { x, z } of queue) {
+      for (const [dx, dz] of directions) {
+        const nz = z + dz;
+        let nx = x + dx;
+        if (z === tunnelRow) nx = (nx + width) % width;
+        const tile = layout[nz]?.[nx];
+        const key = tileKey(nx, nz);
+        if (!tile || tile === '#' || seen.has(key)) continue;
+        seen.add(key);
+        queue.push({ x: nx, z: nz });
+      }
+    }
+    return seen.size === cells.length;
+  }
+
+  function beginShift() {
+    const actors = [...pacmen, ...ghosts];
+    const protectedCells = new Set([wave, dropped, ...pacSpawns, ...ghostSpawns]);
+    for (const actor of actors) {
+      protectedCells.add(actor.cell);
+      protectedCells.add(anchor(actor));
+    }
+    const interior = ({ x, z }) => x > 1 && x < width - 2 && z > 1 && z < height - 2;
+    const openings = [...wallTiles.values()].filter(tile => interior(tile) &&
+      directions.filter(([dx, dz]) => grid[tile.z + dz][tile.x + dx]).length >= 2);
+    const closings = regular.filter(cell => interior(cell) && !protectedCells.has(cell));
+    for (let attempt = 0; attempt < 48 && openings.length && closings.length; attempt++) {
+      const opening = openings[Math.floor(Math.random() * openings.length)];
+      const closing = closings[Math.floor(Math.random() * closings.length)];
+      layout[opening.z][opening.x] = '.';
+      layout[closing.z][closing.x] = '#';
+      const connected = isConnected();
+      layout[opening.z][opening.x] = '#';
+      layout[closing.z][closing.x] = '.';
+      if (!connected) continue;
+      shift = { opening, closing, start: clock, duration: .55 };
+      wallTiles.set(tileKey(closing.x, closing.z), closing);
+      return;
     }
   }
 
-  for (const cell of cells) {
-    directions.forEach(([dx, dz], direction) => {
-      const x = cell.x + dx;
-      const wrap = cell.z === tunnelRow && (x < 0 || x >= width);
-      const next = grid[cell.z + dz]?.[(x + width) % width];
-      if (next && (wrap || (x >= 0 && x < width))) {
-        cell.links.push({ next, direction, wrap });
-      }
-    });
+  function finishShift() {
+    const { opening, closing } = shift;
+    layout[opening.z][opening.x] = '.';
+    layout[closing.z][closing.x] = '#';
+    wallTiles.delete(tileKey(opening.x, opening.z));
+    removeCell(closing);
+    addCell(opening.x, opening.z, '.').ready = clock;
+    rebuildLinks();
+    for (const actor of [...pacmen, ...ghosts]) actor.goal = null;
+    shift = null;
+    wallsDirty = true;
+  }
+
+  function drawWalls(is3D, dim) {
+    const opacity = config.style.glass;
+    walls.visible = opacity > 0;
+    wallMaterial.opacity = opacity;
+    wallMaterial.color.set(config.style.wall).multiplyScalar(dim * (is3D ? .66 : .37));
+    rim.value.set(config.style.wall).multiplyScalar(dim);
+    const wallHeight = is3D ? config.maze.wallHeight : .0656;
+    if (!shift && !wallsDirty && lastWallHeight === wallHeight) return;
+    let index = 0;
+    const progress = shift ? Math.min(1, (clock - shift.start) / shift.duration) : 0;
+    const eased = progress * progress * (3 - 2 * progress);
+    for (const tile of wallTiles.values()) {
+      let factor = 1;
+      if (tile === shift?.opening) factor = 1 - eased;
+      if (tile === shift?.closing) factor = eased;
+      if (factor <= 0) continue;
+      const h = is3D ? wallHeight * factor : wallHeight;
+      const span = is3D ? 1 : factor;
+      wallTransform.position.set(xAt(tile.x), h / 2, zAt(tile.z));
+      wallTransform.scale.set(span, h, span);
+      wallTransform.updateMatrix();
+      wallFaces.setMatrixAt(index, wallTransform.matrix);
+      wallMask.setMatrixAt(index, wallTransform.matrix);
+      index++;
+    }
+    for (const mesh of [wallFaces, wallMask]) {
+      mesh.count = index;
+      mesh.instanceMatrix.needsUpdate = true;
+    }
+    wallsDirty = false;
+    lastWallHeight = wallHeight;
   }
 
   function distances(start) {
@@ -204,10 +418,6 @@
     return distance;
   }
 
-  const routes = cells.map(distances);
-  const junctions = cells.filter(cell => cell.links.length > 2);
-  const pacSpawns = [grid[7][9], grid[7][11], grid[5][3], grid[9][17]];
-  const ghostSpawns = [grid[3][10], grid[11][10], grid[5][9], grid[9][11]];
   const pacmen = [];
   const ghosts = [];
   const effects = Array.from({ length: 160 }, () => disk(circle, yellow, .23));
@@ -295,7 +505,10 @@
   const activePower = () => clock < powerEnd;
   const anchor = actor => actor.edge?.next ?? actor.cell;
   const controlled = () => pacmen[config.input.player - 1] ?? pacmen[0];
-  const distance = (a, b) => routes[a.id][b.id];
+  function distance(a, b) {
+    if (!routes.has(a)) routes.set(a, distances(a));
+    return routes.get(a)[b.id];
+  }
 
   function closest(team, cell) {
     return team.reduce((best, actor) =>
@@ -424,6 +637,17 @@
 
   function simulate(dt) {
     clock += dt;
+    if (clock >= nextGeneration && !shift) rebuildMaze(true);
+    if (shift) {
+      // Keep actors off both tiles until their collision geometry and routes agree.
+      if (clock < shift.start + shift.duration) return;
+      finishShift();
+    }
+    if (clock >= nextShift) {
+      nextShift = clock + config.maze.shiftEvery;
+      beginShift();
+      if (shift) return;
+    }
     resizeTeam(pacmen, config.chase.pacmen, false);
     resizeTeam(ghosts, config.chase.ghosts, true);
     for (const pac of pacmen) step(pac, dt);
@@ -512,17 +736,7 @@
     const dim = config.style.brightness *
       (1 - .85 * feature('surge') * Math.max(0, 1 - elapsed / .7));
     scene.background = new T.Color(config.style.background).multiplyScalar(.55 + dim * .45);
-    wallMaterial.color.set(config.style.wall).multiplyScalar(dim * (is3D ? .66 : .37));
-    edgeMaterial.color.set(config.style.wall).multiplyScalar(dim);
-    const wallOpacity = is3D ? config.style.glass : 1;
-    const translucent = wallOpacity < 1;
-    for (const material of [wallMaterial, edgeMaterial]) {
-      material.opacity = wallOpacity;
-      material.transparent = translucent;
-      material.depthWrite = !translucent;
-    }
-    walls.visible = wallOpacity > 0;
-    walls.scale.y = is3D ? 1 : .08;
+    drawWalls(is3D, dim);
     dotMaterial.color.set(yellow).multiplyScalar(dim);
     powerMaterial.color.set('#ffbd53').multiplyScalar(dim);
     for (const cell of cells) {
@@ -638,7 +852,7 @@
       if (config.input.control) steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3));
       return;
     }
-    if (!config.input.drop || !camera) return;
+    if (!config.input.drop || !camera || shift) return;
     const rect = canvas.getBoundingClientRect();
     mouse.set((event.clientX - rect.left) / rect.width * 2 - 1,
       1 - (event.clientY - rect.top) / rect.height * 2);
@@ -652,15 +866,28 @@
     powers.set(cell, 0);
   });
 
-  function applyInputSettings() {
+  function applySettings() {
     canvas.style.touchAction = config.input.control ? 'none' : 'manipulation';
     if (!config.input.control) manual = null;
+    const { size, layout, autoGenerate, generateEvery, shifting, shiftEvery } = config.maze;
+    if (size !== mazeSettings.size || layout !== mazeSettings.layout) {
+      rebuildMaze(layout === 'Random');
+    } else {
+      if (autoGenerate !== mazeSettings.autoGenerate || generateEvery !== mazeSettings.generateEvery) {
+        nextGeneration = autoGenerate ? clock + generateEvery : Infinity;
+      }
+      if (shifting !== mazeSettings.shifting || shiftEvery !== mazeSettings.shiftEvery) {
+        nextShift = shifting ? clock + shiftEvery : Infinity;
+      }
+    }
+    mazeSettings = { size, layout, autoGenerate, generateEvery, shifting, shiftEvery };
   }
 
   if (typeof window.MidnightMazeSettings === 'function') {
-    window.MidnightMazeSettings({ config, defaults, presets, onChange: applyInputSettings });
+    window.MidnightMazeSettings({ config, defaults, presets, onChange: applySettings,
+      onGenerate: () => rebuildMaze(true) });
   } else {
-    applyInputSettings();
+    applySettings();
     status.textContent = 'Settings unavailable. Put settings-editor.js next to index.html and reload.';
   }
   let last = performance.now();
