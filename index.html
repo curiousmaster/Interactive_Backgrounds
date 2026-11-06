@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Animated Background Gallery</title>
-
 <style>
 :root {
     color-scheme: dark;
@@ -154,15 +153,38 @@ header p {
     color: var(--accent);
 }
 
-/* Search only navigates the thumbnails.
-   Its highlighted result is separate from the selected background. */
-
 .search-row {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 9px;
     padding: 3px 17px 9px;
+}
+
+.search-filters {
+    display: flex;
+    align-items: center;
+    flex: 1 1 350px;
+    min-width: 0;
+    gap: inherit;
+}
+
+#tag-filter {
+    flex: 0 0 auto;
+    max-width: 48%;
+    min-height: 38px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #151b26;
+    color: #fff;
+    font: inherit;
+    font-size: 12px;
+}
+
+#tag-filter:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 .search-field {
@@ -202,10 +224,7 @@ header p {
 }
 
 #search::placeholder { color: #ffffff65; }
-
-#search::-webkit-search-cancel-button {
-    display: none;
-}
+#search::-webkit-search-cancel-button { display: none; }
 
 .search-clear {
     flex: 0 0 24px;
@@ -248,9 +267,7 @@ header p {
     font-size: 18px;
 }
 
-.search-step:hover:not(:disabled) {
-    background: #ffffff25;
-}
+.search-step:hover:not(:disabled) { background: #ffffff25; }
 
 .search-hint {
     margin: -2px 17px 7px;
@@ -298,10 +315,7 @@ header p {
     text-align: left;
     overflow: hidden;
     scroll-snap-align: center;
-    transition:
-        border-color .2s,
-        transform .2s,
-        box-shadow .2s;
+    transition: border-color .2s, transform .2s, box-shadow .2s;
 }
 
 .thumb:hover { transform: translateY(-3px); }
@@ -311,16 +325,10 @@ header p {
     background: #91d8f51b;
 }
 
-/* Search results are gold; the playing selection stays blue. */
-
-.thumb.search-match:not(.selected) {
-    border-color: #f5d39170;
-}
+.thumb.search-match:not(.selected) { border-color: #f5d39170; }
 
 .thumb.search-current {
-    box-shadow:
-        0 0 0 1px var(--search-accent),
-        0 0 18px #f5d39130;
+    box-shadow: 0 0 0 1px var(--search-accent), 0 0 18px #f5d39130;
 }
 
 .thumb.search-current:not(.selected) {
@@ -463,14 +471,13 @@ header p {
     .icon-button { width: 32px; height: 32px; }
     .actions { gap: 4px; }
     .search-row { padding: 3px 12px 8px; }
-    .search-field { flex-basis: 180px; }
+    .search-filters { flex-basis: 265px; }
     .search-hint { margin-left: 12px; margin-right: 12px; }
     #description { max-height: 45px; overflow: hidden; }
 }
 
 @media (max-width: 440px) {
     #search-status { min-width: 70px; }
-    .search-field { flex-basis: 150px; }
     .search-row { gap: 6px; }
 }
 
@@ -484,7 +491,6 @@ header p {
 </head>
 
 <body>
-
 <iframe id="background" title="Animated background"></iframe>
 <div id="shade"></div>
 
@@ -504,90 +510,68 @@ header p {
             <div class="actions">
                 <button class="icon-button" id="previous"
                     title="Previous background" aria-label="Previous">‹</button>
-
                 <button class="icon-button" id="next"
                     title="Next background" aria-label="Next">›</button>
-
                 <a class="icon-button" id="open-background"
                     title="Open in new tab" aria-label="Open background"
                     target="_blank" rel="noopener">↗</a>
-
                 <button class="icon-button" id="settings"
                     title="Download options" aria-label="Download options"
                     aria-expanded="false">⚙</button>
-
                 <button class="icon-button" id="hide"
                     title="Hide gallery" aria-label="Hide gallery">×</button>
             </div>
         </div>
 
         <div class="search-row" role="search" aria-label="Find a background">
-            <div class="search-field">
-                <span class="search-symbol" aria-hidden="true">⌕</span>
-
-                <input
-                    id="search"
-                    type="search"
-                    placeholder="Find a background…"
-                    aria-label="Search background names"
-                    aria-describedby="search-hint"
-                    aria-controls="track"
-                    autocomplete="off"
-                    spellcheck="false"
-                >
-
-                <button
-                    class="search-clear"
-                    id="search-clear"
-                    type="button"
-                    aria-label="Clear search"
-                    title="Clear search"
-                    hidden
-                >×</button>
+            <div class="search-filters">
+                <div class="search-field">
+                    <span class="search-symbol" aria-hidden="true">⌕</span>
+                    <input
+                        id="search"
+                        type="search"
+                        placeholder="Find a background…"
+                        aria-label="Search background names"
+                        aria-describedby="search-hint"
+                        aria-controls="track"
+                        autocomplete="off"
+                        spellcheck="false"
+                    >
+                    <button
+                        class="search-clear"
+                        id="search-clear"
+                        type="button"
+                        aria-label="Clear search"
+                        title="Clear search"
+                        hidden
+                    >×</button>
+                </div>
+                <select id="tag-filter" aria-label="Filter backgrounds by tag" aria-controls="track">
+                    <option value="">All tags</option>
+                </select>
             </div>
 
             <div class="search-results">
-                <span
-                    id="search-status"
-                    role="status"
-                    aria-live="polite"
-                    aria-atomic="true"
-                >All backgrounds</span>
-
-                <button
-                    class="search-step"
-                    id="search-previous"
-                    type="button"
-                    title="Previous search match"
-                    aria-label="Previous search match"
-                    disabled
-                >‹</button>
-
-                <button
-                    class="search-step"
-                    id="search-next"
-                    type="button"
-                    title="Next search match"
-                    aria-label="Next search match"
-                    disabled
-                >›</button>
+                <span id="search-status" role="status" aria-live="polite"
+                    aria-atomic="true">All backgrounds</span>
+                <button class="search-step" id="search-previous" type="button"
+                    title="Previous search match" aria-label="Previous search match"
+                    disabled>‹</button>
+                <button class="search-step" id="search-next" type="button"
+                    title="Next search match" aria-label="Next search match"
+                    disabled>›</button>
             </div>
         </div>
 
         <p class="search-hint" id="search-hint">
-            Search scrolls only. Click a thumbnail to play.
+            Filter by name or tag. Click a thumbnail to play.
             Enter / Shift+Enter moves between matches.
         </p>
 
         <div class="carousel">
-            <button class="arrow" id="scroll-left"
-                aria-label="Scroll left">‹</button>
-
-            <div class="track" id="track"
-                aria-label="Background thumbnails"></div>
-
-            <button class="arrow" id="scroll-right"
-                aria-label="Scroll right">›</button>
+            <button class="arrow" id="scroll-left" aria-label="Scroll left">‹</button>
+            <div class="track" id="track" aria-label="Background thumbnails"></div>
+            <button class="arrow" id="scroll-right" aria-label="Scroll right">›</button>
         </div>
 
         <div class="dock-footer">
@@ -604,10 +588,7 @@ header p {
                 <span>Enable settings editor in downloaded background</span>
             </label>
 
-            <button class="primary" id="download">
-                Download background ZIP ↓
-            </button>
-
+            <button class="primary" id="download">Download background ZIP ↓</button>
             <p id="status" role="status" aria-live="polite"></p>
         </div>
     </section>
@@ -621,38 +602,33 @@ header p {
 import { backgrounds } from "./backgrounds.js";
 
 const $ = id => document.getElementById(id);
-
 const frame = $("background");
 const shade = $("shade");
 const track = $("track");
 const dock = $("dock");
 const popover = $("popover");
 const search = $("search");
+const tagFilter = $("tag-filter");
 
 const cards = new Map();
 const labels = new Map();
-
 const storageKey = "background-gallery-selection";
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
 let selectedIndex = 0;
 let selectionVersion = 0;
 
-// Search state never changes selectedIndex or the iframe URL.
+// Filtering never changes selectedIndex or the iframe URL.
 let searchMatches = [];
 let searchMatchIndex = -1;
 let searchScrollTimer = null;
 
 function backgroundURL(folder) {
-    return folder.split("/")
-        .map(encodeURIComponent)
-        .join("/") + "/index.html";
+    return folder.split("/").map(encodeURIComponent).join("/") + "/index.html";
 }
 
 function thumbnailURL(folder) {
-    return folder.split("/")
-        .map(encodeURIComponent)
-        .join("/") + "/thumbnail.webp";
+    return folder.split("/").map(encodeURIComponent).join("/") + "/thumbnail.webp";
 }
 
 function fallbackImage(folder) {
@@ -671,10 +647,8 @@ function fallbackImage(folder) {
 
     const hue = seed % 360;
     const gradient = ctx.createLinearGradient(0, 0, 480, 270);
-
     gradient.addColorStop(0, `hsl(${hue}, 65%, 19%)`);
     gradient.addColorStop(1, `hsl(${(hue + 95) % 360}, 65%, 5%)`);
-
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 480, 270);
 
@@ -687,7 +661,6 @@ function fallbackImage(folder) {
 
     for (let i = 0; i < 100; i++) {
         ctx.beginPath();
-
         ctx.arc(
             random() * 480,
             random() * 270,
@@ -695,10 +668,7 @@ function fallbackImage(folder) {
             0,
             Math.PI * 2
         );
-
-        ctx.fillStyle =
-            `rgba(255,255,255,${.2 + random() * .7})`;
-
+        ctx.fillStyle = `rgba(255,255,255,${.2 + random() * .7})`;
         ctx.fill();
     }
 
@@ -707,7 +677,6 @@ function fallbackImage(folder) {
 
 function makeCard(background, index) {
     const button = document.createElement("button");
-
     button.type = "button";
     button.className = "thumb";
     button.title = background.description || background.name;
@@ -718,7 +687,6 @@ function makeCard(background, index) {
     picture.className = "thumb-picture";
 
     const image = document.createElement("img");
-
     image.alt = "";
     image.loading = "lazy";
     image.decoding = "async";
@@ -730,18 +698,14 @@ function makeCard(background, index) {
     };
 
     const check = document.createElement("span");
-
     check.className = "thumb-check";
     check.textContent = "✓";
     check.setAttribute("aria-hidden", "true");
-
     picture.append(image, check);
 
     const label = document.createElement("span");
-
     label.className = "thumb-label";
     label.textContent = background.name;
-
     button.append(picture, label);
 
     button.addEventListener("click", () => {
@@ -750,21 +714,17 @@ function makeCard(background, index) {
 
     cards.set(background.folder, button);
     labels.set(background.folder, label);
-
     return button;
 }
 
-// ==================================================
-// THUMBNAIL SCROLLING
-// Scrolling a card into view does not select or load it.
-// ==================================================
+// Thumbnail scrolling
 
 function centerCard(index) {
     const background = backgrounds[index];
     if (!background) return;
 
     const card = cards.get(background.folder);
-    if (!card) return;
+    if (!card || card.hidden) return;
 
     const cardRect = card.getBoundingClientRect();
     const trackRect = track.getBoundingClientRect();
@@ -792,18 +752,26 @@ function centerCurrentSearchMatch() {
 }
 
 function centerRelevantCard() {
-    if (search.value.trim()) {
+    if (search.value.trim() || cards.get(backgrounds[selectedIndex]?.folder)?.hidden) {
         centerCurrentSearchMatch();
     } else {
         centerSelected();
     }
 }
 
-// ==================================================
-// SEARCH
-// Matches remain in the gallery; nothing is filtered out.
-// Only an explicit selection loads a background.
-// ==================================================
+// Search and tag filter
+
+function populateTagFilter() {
+    const tags = [...new Set(backgrounds.flatMap(background => background.tags ?? []))];
+    tags.sort((first, second) => first.localeCompare(second));
+
+    for (const tag of tags) {
+        const label = tag.charAt(0).toUpperCase() + tag.slice(1);
+        tagFilter.add(new Option(label, tag));
+    }
+
+    tagFilter.disabled = tags.length === 0;
+}
 
 function highlightLabel(label, name, query) {
     label.replaceChildren();
@@ -820,29 +788,23 @@ function highlightLabel(label, name, query) {
         const match = lowerName.indexOf(query, position);
 
         if (match < 0) {
-            label.append(
-                document.createTextNode(name.slice(position))
-            );
+            label.append(document.createTextNode(name.slice(position)));
             break;
         }
 
         if (match > position) {
-            label.append(
-                document.createTextNode(name.slice(position, match))
-            );
+            label.append(document.createTextNode(name.slice(position, match)));
         }
 
         const mark = document.createElement("mark");
         mark.textContent = name.slice(match, match + query.length);
         label.append(mark);
-
         position = match + query.length;
     }
 }
 
 function updateSearchPresentation() {
     const hasQuery = Boolean(search.value.trim());
-
     const currentIndex = searchMatchIndex >= 0
         ? searchMatches[searchMatchIndex]
         : -1;
@@ -850,25 +812,20 @@ function updateSearchPresentation() {
     for (let index = 0; index < backgrounds.length; index++) {
         const background = backgrounds[index];
         const card = cards.get(background.folder);
-
-        card.classList.toggle(
-            "search-current",
-            hasQuery && index === currentIndex
-        );
+        card.classList.toggle("search-current", hasQuery && index === currentIndex);
     }
 
     $("search-clear").hidden = !search.value;
+    $("search-previous").disabled = !hasQuery || searchMatches.length < 2;
+    $("search-next").disabled = !hasQuery || searchMatches.length < 2;
 
-    $("search-previous").disabled =
-        !hasQuery || searchMatches.length < 2;
-
-    $("search-next").disabled =
-        !hasQuery || searchMatches.length < 2;
-
-    if (!hasQuery) {
+    if (!hasQuery && !tagFilter.value) {
         $("search-status").textContent = "All backgrounds";
     } else if (!searchMatches.length) {
         $("search-status").textContent = "No matches";
+    } else if (!hasQuery) {
+        const count = searchMatches.length;
+        $("search-status").textContent = count === 1 ? "1 background" : `${count} backgrounds`;
     } else {
         $("search-status").textContent =
             `${searchMatchIndex + 1} of ${searchMatches.length} ` +
@@ -881,19 +838,19 @@ function updateSearch() {
     searchScrollTimer = null;
 
     const query = search.value.trim().toLowerCase();
-
+    const tag = tagFilter.value;
     searchMatches = [];
     searchMatchIndex = -1;
 
     backgrounds.forEach((background, index) => {
-        const matches = Boolean(query) &&
-            background.name.toLowerCase().includes(query);
-
+        const matchesName = !query || background.name.toLowerCase().includes(query);
+        const matchesTag = !tag || (background.tags ?? []).includes(tag);
+        const matches = matchesName && matchesTag;
         const card = cards.get(background.folder);
         const label = labels.get(background.folder);
 
-        card.classList.toggle("search-match", matches);
-        card.hidden = Boolean(query) && !matches;
+        card.classList.toggle("search-match", Boolean(query) && matches);
+        card.hidden = !matches;
         highlightLabel(label, background.name, query);
 
         if (matches) searchMatches.push(index);
@@ -906,9 +863,9 @@ function updateSearch() {
     updateSearchPresentation();
 
     if (!query) {
-        centerSelected();
+        centerRelevantCard();
     } else if (searchMatches.length) {
-        // Brief debounce avoids starting a new scroll for every keystroke.
+        // Avoid starting a new scroll for every keystroke.
         searchScrollTimer = setTimeout(() => {
             searchScrollTimer = null;
             centerCurrentSearchMatch();
@@ -937,14 +894,14 @@ function clearSearch() {
 }
 
 search.addEventListener("input", updateSearch);
+tagFilter.addEventListener("change", updateSearch);
 
 search.addEventListener("keydown", event => {
     if (event.isComposing) return;
 
-    if (event.key === "Enter") {
+    if (event.key === "Enter" && search.value.trim()) {
         event.preventDefault();
         event.stopPropagation();
-
         moveSearchMatch(event.shiftKey ? -1 : 1);
     }
 
@@ -959,9 +916,7 @@ $("search-clear").onclick = clearSearch;
 $("search-previous").onclick = () => moveSearchMatch(-1);
 $("search-next").onclick = () => moveSearchMatch(1);
 
-// ==================================================
-// BACKGROUND SELECTION
-// ==================================================
+// Background selection
 
 function selectBackground(indexOrFolder) {
     if (!backgrounds.length) return;
@@ -972,9 +927,7 @@ function selectBackground(indexOrFolder) {
 
     let index = typeof indexOrFolder === "number"
         ? indexOrFolder
-        : backgrounds.findIndex(
-            background => background.folder === indexOrFolder
-        );
+        : backgrounds.findIndex(background => background.folder === indexOrFolder);
 
     if (index < 0 || index >= backgrounds.length) index = 0;
 
@@ -991,7 +944,6 @@ function selectBackground(indexOrFolder) {
 
     for (const [folder, button] of cards) {
         const active = folder === background.folder;
-
         button.classList.toggle("selected", active);
         button.setAttribute("aria-pressed", String(active));
     }
@@ -1022,8 +974,7 @@ function moveSelection(delta) {
     if (!backgrounds.length) return;
 
     selectBackground(
-        (selectedIndex + delta + backgrounds.length) %
-        backgrounds.length
+        (selectedIndex + delta + backgrounds.length) % backgrounds.length
     );
 }
 
@@ -1068,10 +1019,9 @@ $("scroll-right").onclick = () => track.scrollBy({
 track.addEventListener("wheel", event => {
     if (track.scrollWidth <= track.clientWidth) return;
 
-    track.scrollLeft +=
-        Math.abs(event.deltaX) > Math.abs(event.deltaY)
-            ? event.deltaX
-            : event.deltaY;
+    track.scrollLeft += Math.abs(event.deltaX) > Math.abs(event.deltaY)
+        ? event.deltaX
+        : event.deltaY;
 
     event.preventDefault();
 }, { passive: false });
@@ -1106,10 +1056,7 @@ document.addEventListener("keydown", event => {
     if (event.key === "ArrowRight") moveSelection(1);
 });
 
-// ==================================================
-// ZIP WRITER
-// Store entries without compression.
-// ==================================================
+// ZIP writer. Store entries without compression.
 
 function makeBackgroundZip(files) {
     const encoder = new TextEncoder();
@@ -1138,8 +1085,7 @@ function makeBackgroundZip(files) {
             crc ^= byte;
 
             for (let i = 0; i < 8; i++) {
-                crc = (crc >>> 1) ^
-                    ((crc & 1) ? 0xedb88320 : 0);
+                crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
             }
         }
 
@@ -1198,10 +1144,7 @@ function makeBackgroundZip(files) {
     ev.setUint32(12, directorySize, true);
     ev.setUint32(16, offset, true);
 
-    return new Blob(
-        [...parts, ...directory, end],
-        { type: "application/zip" }
-    );
+    return new Blob([...parts, ...directory, end], { type: "application/zip" });
 }
 
 function applyDownloadedConfig(html, config) {
@@ -1213,7 +1156,6 @@ function applyDownloadedConfig(html, config) {
     }
 
     const match = matches[0];
-
     const serialized = JSON.stringify(config, null, 2)
         .replace(/</g, "\\u003c")
         .replace(/\u2028/g, "\\u2028")
@@ -1228,9 +1170,7 @@ async function fetchSource(url) {
     const response = await fetch(url, { cache: "no-cache" });
 
     if (!response.ok) {
-        throw new Error(
-            `Could not fetch ${url.pathname}: ${response.status}`
-        );
+        throw new Error(`Could not fetch ${url.pathname}: ${response.status}`);
     }
 
     return response.text();
@@ -1254,11 +1194,7 @@ $("download").addEventListener("click", async () => {
             throw new Error("Select a background first.");
         }
 
-        const sourceURL = new URL(
-            backgroundURL(background.folder),
-            document.baseURI
-        );
-
+        const sourceURL = new URL(backgroundURL(background.folder), document.baseURI);
         const child = frame.contentWindow;
 
         if (
@@ -1270,9 +1206,7 @@ $("download").addEventListener("click", async () => {
             );
         }
 
-        const config = JSON.parse(
-            JSON.stringify(child.getBackgroundConfig())
-        );
+        const config = JSON.parse(JSON.stringify(child.getBackgroundConfig()));
 
         if (config.panel && typeof config.panel === "object") {
             config.panel.enabled = $("editor-enabled").checked;
@@ -1285,10 +1219,7 @@ $("download").addEventListener("click", async () => {
 
         const html = applyDownloadedConfig(htmlSource, config);
 
-        if (
-            !/\bexport\b/.test(editorSource) ||
-            /^\s*</.test(editorSource)
-        ) {
+        if (!/\bexport\b/.test(editorSource) || /^\s*</.test(editorSource)) {
             throw new Error("Could not retrieve the settings editor.");
         }
 
@@ -1301,15 +1232,13 @@ $("download").addEventListener("click", async () => {
         const link = document.createElement("a");
 
         link.href = blobURL;
-        link.download =
-            `${background.folder.split("/").pop()}-custom.zip`;
+        link.download = `${background.folder.split("/").pop()}-custom.zip`;
 
         document.body.append(link);
         link.click();
         link.remove();
 
         setTimeout(() => URL.revokeObjectURL(blobURL), 60000);
-
         $("status").textContent = "Background ZIP prepared.";
     } catch (error) {
         $("status").textContent = error.message;
@@ -1319,10 +1248,9 @@ $("download").addEventListener("click", async () => {
     }
 });
 
-// ==================================================
-// START
-// Preserve the existing saved-background startup behavior.
-// ==================================================
+// Startup
+
+populateTagFilter();
 
 if (backgrounds.length) {
     backgrounds.forEach((background, index) => {
@@ -1340,16 +1268,9 @@ if (backgrounds.length) {
 } else {
     $("current-name").textContent = "No backgrounds found";
     $("search-status").textContent = "No backgrounds";
-
     search.disabled = true;
 
-    for (const id of [
-        "previous",
-        "next",
-        "scroll-left",
-        "scroll-right",
-        "download"
-    ]) {
+    for (const id of ["previous", "next", "scroll-left", "scroll-right", "download"]) {
         $(id).disabled = true;
     }
 }
