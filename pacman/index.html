@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Midnight Maze</title>
 <style>
-  html, body { margin: 0; width: 100%; height: 100%; background: #050815; }
+  html, body { margin: 0; width: 100%; height: 100%; background: transparent; }
   #maze { display: block; width: 100%; height: 100%; }
   #scan { position: fixed; inset: 0; pointer-events: none;
     background: repeating-linear-gradient(transparent 0 2px, #000 2px 3px); }
@@ -20,92 +20,27 @@
 <script src="./settings-editor.js"></script>
 <script>
 (async () => {
-const config = {
-  "chase": {
-    "pacmen": 1,
-    "ghosts": 8,
-    "speed": 3.5,
-    "refill": 19,
-    "power": 5
-  },
-  "view": {
-    "mode": "3D",
-    "zoom": 1,
-    "panX": 0,
-    "panY": 0
-  },
-  "camera": {
-    "zoom": 1.4,
-    "panX": 0,
-    "panY": 0,
-    "tilt": 39,
-    "rotation": 0,
-    "fov": 38
-  },
-  "style": {
-    "background": "#040715",
-    "wall": "#253eff",
-    "brightness": 1,
-    "glass": 0.54
-  },
-  "input": {
-    "drop": true,
-    "control": true,
-    "player": 1,
-    "idle": 5
-  },
-  "features": {
-    "corners": {
-      "enabled": false,
-      "strength": 0.9
-    },
-    "surge": {
-      "enabled": true,
-      "strength": 0.45
-    },
-    "sparks": {
-      "enabled": true,
-      "strength": 0.65
-    },
-    "regrowth": {
-      "enabled": true,
-      "strength": 0.8
-    },
-    "eyes": {
-      "enabled": true,
-      "strength": 0.12
-    },
-    "pressure": {
-      "enabled": true,
-      "strength": 0.65
-    },
-    "rings": {
-      "enabled": true,
-      "strength": 0.75
-    },
-    "tunnel": {
-      "enabled": true,
-      "strength": 0.7
-    },
-    "pools": {
-      "enabled": false,
-      "strength": 0.55
-    },
-    "crt": {
-      "enabled": true,
-      "strength": 0.24
+  const transparentBackdrop = new URLSearchParams(location.search).get('transparentBackdrop') === '1';
+
+  const config = {
+    chase: { pacmen: 1, ghosts: 4, speed: 3.5, refill: 13, power: 7 },
+    view: { mode: '2D', zoom: 1, panX: 0, panY: 0 },
+    camera: { zoom: 1, panX: 0, panY: 0, tilt: 32, rotation: 0, fov: 38 },
+    style: { background: '#040715', wall: '#253eff', brightness: 1, glass: .48 },
+    input: { drop: true, control: false, player: 1, idle: 5 },
+    features: {
+      corners: { enabled: true, strength: .6 },
+      surge: { enabled: true, strength: .45 },
+      sparks: { enabled: true, strength: .65 },
+      regrowth: { enabled: true, strength: .8 },
+      eyes: { enabled: true, strength: .12 },
+      pressure: { enabled: true, strength: .65 },
+      rings: { enabled: true, strength: .75 },
+      tunnel: { enabled: true, strength: .7 },
+      pools: { enabled: false, strength: .55 },
+      crt: { enabled: true, strength: .24 }
     }
-  },
-  "maze": {
-    "layout": "Random",
-    "size": 25,
-    "wallHeight": 0.70,
-    "autoGenerate": false,
-    "generateEvery": 15,
-    "shifting": false,
-    "shiftEvery": 3.5
-  }
-};
+  };
   const presets = {
     'Arcade CRT': {},
     'Neon Glass': {
@@ -124,9 +59,13 @@ const config = {
   };
   // Fill in Maze settings when using a config copied from an earlier version.
   config.maze = {
-    layout: 'Classic', size: 21, wallHeight: .82, autoGenerate: false,
+    layout: 'Classic', size: 21, wallHeight: .82, floor: false, autoGenerate: false,
     generateEvery: 90, shifting: false, shiftEvery: 8, ...config.maze
   };
+  if (!/^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i.test(config.style.background)) {
+    config.style.background = '#040715';
+  }
+  if (transparentBackdrop) config.style.background = config.style.background.slice(0, 7) + '00';
   const defaults = structuredClone(config);
   const canvas = document.querySelector('#maze');
   const status = document.querySelector('#status');
@@ -141,19 +80,27 @@ const config = {
 
   let renderer;
   try {
-    renderer = new T.WebGLRenderer({ canvas, antialias: true });
+    renderer = new T.WebGLRenderer({ canvas, antialias: true, alpha: true });
   } catch (error) {
     status.textContent = 'Could not start WebGL. Check that WebGL is available in this browser.';
     console.error(error);
     return;
   }
 
+  const backdropColor = new T.Color();
+
   const scene = new T.Scene();
   const ortho = new T.OrthographicCamera();
   const perspective = new T.PerspectiveCamera();
   const walls = new T.Group();
   const floor = new T.Group();
-  scene.add(walls, floor);
+  const floorSurface = new T.Mesh(
+    new T.PlaneGeometry(1, 1),
+    new T.MeshBasicMaterial({ color: '#121a2f' })
+  );
+  floorSurface.rotation.x = -Math.PI / 2;
+  floorSurface.position.y = -.02;
+  scene.add(walls, floor, floorSurface);
   const classic = [
     '#####################',
     '#.........#.........#',
@@ -353,6 +300,7 @@ const config = {
     layout = random ? randomMaze(config.maze.size) : classic.map(row => [...row]);
     width = layout[0].length;
     height = layout.length;
+    floorSurface.scale.set(width, height, 1);
     tunnelRow = Math.floor(height / 2);
     grid = layout.map(row => row.map(() => null));
     layout.forEach((row, z) => row.forEach((character, x) => {
@@ -802,7 +750,15 @@ const config = {
     const elapsed = clock - powerStart;
     const dim = config.style.brightness *
       (1 - .85 * feature('surge') * Math.max(0, 1 - elapsed / .7));
-    scene.background = new T.Color(config.style.background).multiplyScalar(.55 + dim * .45);
+    const background = config.style.background;
+    const backgroundAlpha = background.length === 9
+      ? Number.parseInt(background.slice(7), 16) / 255
+      : 1;
+    backdropColor.set(background.slice(0, 7)).multiplyScalar(.55 + dim * .45);
+    scene.background = backgroundAlpha === 1 ? backdropColor : null;
+    renderer.setClearColor(backdropColor, backgroundAlpha);
+    floorSurface.visible = config.maze.floor;
+    floorSurface.material.color.set('#121a2f').multiplyScalar(dim);
     drawWalls(is3D, dim);
     dotMaterial.color.set(yellow).multiplyScalar(dim);
     powerMaterial.color.set('#ffbd53').multiplyScalar(dim);
@@ -849,7 +805,7 @@ const config = {
           feature(name) * (1 - age / life) * dim * .65);
       } else mesh.visible = false;
     }
-    scan.style.opacity = is3D ? 0 : feature('crt') * .46;
+    scan.style.opacity = is3D ? 0 : feature('crt') * .46 * backgroundAlpha;
   }
 
   let camera;

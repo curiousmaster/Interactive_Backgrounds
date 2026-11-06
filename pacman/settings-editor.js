@@ -99,6 +99,7 @@ window.MidnightMazeSettings = function ({ config, defaults, presets, onChange, o
     const input = { ...config.input };
     const maze = { ...config.maze };
     const { glass } = config.style;
+    const backdropAlpha = config.style.background.slice(7);
     const { pacmen, ghosts } = config.chase;
     merge(config, defaults);
     merge(config, presets[preset.value]);
@@ -107,6 +108,7 @@ window.MidnightMazeSettings = function ({ config, defaults, presets, onChange, o
     Object.assign(config.input, input);
     Object.assign(config.maze, maze);
     config.style.glass = glass;
+    config.style.background = config.style.background.slice(0, 7) + backdropAlpha;
     Object.assign(config.chase, { pacmen, ghosts });
     refresh();
   };
@@ -144,6 +146,11 @@ window.MidnightMazeSettings = function ({ config, defaults, presets, onChange, o
     input.addEventListener('focus', showHelp);
     input.addEventListener('blur', () => { help.hidden = true; });
     input.oninput = () => {
+      if (options.pattern) {
+        const valid = options.pattern.test(input.value);
+        input.setCustomValidity(valid ? '' : 'Enter #RRGGBB or #RRGGBBAA.');
+        if (!valid) return;
+      }
       target[key] = type === 'checkbox' ? input.checked :
         output ? input.valueAsNumber : input.value;
       options.onInput?.();
@@ -155,6 +162,7 @@ window.MidnightMazeSettings = function ({ config, defaults, presets, onChange, o
       sync() {
         if (type === 'checkbox') input.checked = target[key];
         else input.value = target[key];
+        if (options.pattern) input.setCustomValidity('');
         if (output) output.textContent = target[key];
       }
     });
@@ -197,11 +205,15 @@ window.MidnightMazeSettings = function ({ config, defaults, presets, onChange, o
   }
 
   const style = section('Appearance');
-  for (const [key, name] of [['background', 'Background color'], ['wall', 'Wall color']]) {
-    control(style, config.style, key, name, 'Base color before the chase lighting is applied.', { type: 'color' });
-  }
+  control(style, config.style, 'background', 'Background color',
+    'Use #RRGGBB or #RRGGBBAA. The final two digits set opacity. 00 is transparent and FF is opaque.',
+    { type: 'text', pattern: /^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i });
+  control(style, config.style, 'wall', 'Wall color',
+    'Base color before the chase lighting is applied.', { type: 'color' });
   range(style, config.style, 'brightness', 'Brightness', .15, 1.4, .01, 'Global brightness of walls, actors, and pellets.');
   const maze = section('Maze');
+  check(maze, config.maze, 'floor', 'Show maze floor',
+    'Draw a solid surface beneath the board in 2D and 3D. Turn it off to see through the corridors.');
   control(maze, config.maze, 'layout', 'Starting layout', 'Choose the original board or a procedurally generated maze.', {
     choices: ['Classic', 'Random'],
     onInput() { if (config.maze.layout === 'Classic') config.maze.size = 21; }
