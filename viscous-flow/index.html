@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Viscous Cascade · WebGL Backgrounds</title>
+<title>Viscous Flow · WebGL Backgrounds</title>
 <style>
   :root { color-scheme:dark; font:14px/1.45 system-ui,sans-serif; color:#e5f5f7; }
   * { box-sizing:border-box; }
@@ -54,35 +54,62 @@
 
   // Edit these values to configure the background without the settings editor.
   const settings = {
-    view: { mode: "3d", perspective: true, yaw: 16, tilt: 2, zoom: .85, orbit: true, orbitSpeed: 8 },
-    flow: { gravity: 9.5, viscosity: .07, tension: .52, rebound: .04, adhesion: 0,
-      rate: 105, nozzle: .22, nozzleX: .8, depth: .3, speed: .4, sway: true, swayWidth: 1.8, swaySpeed: .65 },
-    scene: { obstacles: true, layout: "cascade", obstacleCount: 4, obstacleType: "box",
-      obstacleMotion: false, motionDistance: .45, motionSpeed: 1, motionTurn: 12, motionSeed: 7,
-      basin: false, retention: 2.8,
-      showSolids: true, solid: "#243F4A", background: "#07131E", backdrop: true, grid: true },
-    liquid: { style: "surface", body: "#584CAE", edge: "#1E1849", highlight: "#FFFFFF", opacity: .96,
-      thickness: 1.05, detail: 0, bloom: true, glow: 1.02, impact: false, impactLight: .75 },
-    interaction: { enabled: true, radius: .58, bounce: .26, show: true, burst: true, force: 7 },
-    quality: { maxParticles: 6000, iterations: 1, renderScale: .68, pixelRatio: 1.85, fps: "30", adaptive: true, stats: false }
+    editor: { enabled: true },
+    view: { mode: "3d", perspective: true, yaw: -10, tilt: 17, zoom: 0.8274788351319514, orbit: true, orbitSpeed: 8 },
+    flow: { gravity: 10, viscosity: .24, tension: .5, rebound: .25, adhesion: .15,
+      rate: 180, nozzle: .2, nozzleX: .8, depth: 1, speed: 1, sway: true, swayWidth: 2.75, swaySpeed: .3 },
+    scene: { obstacles: true, layout: "cascade", obstacleCount: 12, obstacleType: "capsule",
+      obstacleMotion: true, motionDistance: .45, motionSpeed: 1, motionTurn: 12, motionSeed: 7,
+      motionPath: "wander", motionPhase: 57, basin: false, retention: 2.8, showSolids: true,
+      solid: "#243F4A", background: "#07131E", backdrop: true, grid: true },
+    liquid: { style: "surface", body: "#584CAE", edge: "#1E1849", highlight: "#FFFFFF", opacity: .68,
+      thickness: 1.01, detail: 2, bloom: false, glow: 1.02, impact: true, impactLight: 1.5 },
+    interaction: { enabled: true, radius: 1, bounce: .05, show: true, burst: true, force: 7 },
+    quality: { maxParticles: 6000, iterations: 1, renderScale: .68, pixelRatio: 1.4, fps: "display", adaptive: true, stats: false },
+    pulse: { enabled: false, frequency: 1.2, duty: .38, minimum: .2 },
+    secondary: { enabled: false, x: -2.4, z: .35, rate: 95, width: .28, color: "#F09B5D", mix: .25 },
+    wake: { enabled: false, strength: 3.6, reach: 1.25, fade: .8 },
+    wet: { enabled: false, radius: .65, fade: 2.4, strength: .78 },
+    mist: { enabled: false, threshold: 3.8, amount: 3, budget: 450, lifetime: .55 },
+    trails: { enabled: false, length: .12, fade: .42 },
+    speedColor: { enabled: false, fast: "#FF8FC8", low: 2, high: 12 },
+    refraction: { enabled: false, strength: 11 },
+    gravityTilt: { enabled: false, angle: 16, swing: false, amplitude: 15, frequency: .16 }
   };
 
   const jadeFoundry = {
-    ...settings,
-    view: { ...settings.view, yaw: 17, tilt: 11, zoom: 1, orbit: false },
-    flow: { ...settings.flow, gravity: 16, viscosity: .26, tension: .21, rebound: .12, adhesion: .17,
-      rate: 265, nozzle: .44, nozzleX: -2.75, depth: .8, speed: 2.8, swayWidth: .35 },
-    scene: { ...settings.scene, basin: true },
-    liquid: { ...settings.liquid, body: "#139D9D", edge: "#5BF4DE", highlight: "#F2FFF8",
-      thickness: 1.13, detail: 1.2, glow: .43, impact: true },
-    quality: { ...settings.quality, maxParticles: 2800, iterations: 2, renderScale: .66, pixelRatio: 1.5, fps: "60" }
+    view: { mode: "3d", perspective: true, yaw: 17, tilt: 11, zoom: 1, orbit: false, orbitSpeed: 8 },
+    flow: { gravity: 16, viscosity: .26, tension: .21, rebound: .12, adhesion: .17,
+      rate: 265, nozzle: .44, nozzleX: -2.75, depth: .8, speed: 2.8, sway: true, swayWidth: .35, swaySpeed: .65 },
+    scene: { obstacles: true, layout: "cascade", obstacleCount: 4, obstacleType: "box",
+      obstacleMotion: false, motionDistance: .45, motionSpeed: 1, motionTurn: 12, motionSeed: 7,
+      basin: true, retention: 2.8,
+      showSolids: true, solid: "#243F4A", background: "#07131E", backdrop: true, grid: true },
+    liquid: { style: "surface", body: "#139D9D", edge: "#5BF4DE", highlight: "#F2FFF8", opacity: .96,
+      thickness: 1.13, detail: 1.2, bloom: true, glow: .43, impact: true, impactLight: .75 },
+    interaction: { enabled: true, radius: .58, bounce: .26, show: true, burst: true, force: 7 },
+    quality: { maxParticles: 2800, iterations: 2, renderScale: .66, pixelRatio: 1.5, fps: "60", adaptive: true, stats: false }
   };
+
   const jadeVariant = overrides => Object.fromEntries(Object.entries(jadeFoundry).map(
     ([group, values]) => [group, { ...values, ...overrides[group] }]
   ));
 
   const presets = {
     "Preferred settings": settings,
+    "All effects": {
+      ...settings,
+      scene: { ...settings.scene, motionPath: "weave" },
+      pulse: { ...settings.pulse, enabled: true },
+      secondary: { ...settings.secondary, enabled: true },
+      wake: { ...settings.wake, enabled: true },
+      wet: { ...settings.wet, enabled: true },
+      mist: { ...settings.mist, enabled: true },
+      trails: { ...settings.trails, enabled: true },
+      speedColor: { ...settings.speedColor, enabled: true },
+      refraction: { ...settings.refraction, enabled: true },
+      gravityTilt: { ...settings.gravityTilt, enabled: true, swing: true }
+    },
     "Jade Foundry": jadeFoundry,
     "Liquid Mercury": jadeVariant({ flow: { viscosity: .36, tension: .37, rebound: .18 },
       liquid: { body: "#5A758B", edge: "#B9E6FF", highlight: "#FFFFFF", glow: .24 }, scene: { solid: "#343B4A" } }),
@@ -106,7 +133,6 @@
   const color = (path, label, options = {}) => ({ path, label, type: "color", ...options });
   const group = (label, fields) => ({ label, fields });
   const section = (label, groups, open = false) => ({ label, groups, open });
-
   const sections = [
     section("View", [
       group("Camera", [
@@ -115,7 +141,7 @@
         toggle("view.perspective", "Perspective camera", { when: when3D }),
         range("view.yaw", "Yaw", ...cameraLimits.yaw, 1, { when: when3D, unit: "°" }),
         range("view.tilt", "Tilt", ...cameraLimits.tilt, 1, { when: when3D, unit: "°" }),
-        range("view.zoom", "Zoom", ...cameraLimits.zoom, .01)
+        range("view.zoom", "Zoom", ...cameraLimits.zoom, .01, { continuous: true })
       ]),
       group("Camera motion", [
         toggle("view.orbit", "Auto-orbit camera", { when: when3D }),
@@ -182,6 +208,10 @@
         range("scene.motionDistance", "Travel distance", 0, 1.5, .05, { when: movingObstacles }),
         range("scene.motionSpeed", "Movement speed", .1, 3, .05, { when: movingObstacles }),
         range("scene.motionTurn", "Rocking angle", 0, 45, 1, { when: movingObstacles, unit: "°" }),
+        choice("scene.motionPath", "Obstacle motion path", { wander: "Random drift", wave: "Wave",
+          eight: "Figure eight", weave: "Depth weave" }, { when: movingObstacles }),
+        range("scene.motionPhase", "Neighbor phase offset", 0, 360, 1,
+          { when: c => movingObstacles(c) && c.scene.motionPath !== "wander", unit: "°" }),
         range("scene.motionSeed", "Motion seed", 1, 100, 1, { when: movingObstacles,
           help: "Change the seed to give the obstacles different paths." })
       ]),
@@ -194,6 +224,66 @@
         color("scene.background", "Background color", { help: "Use #00000000 for a fully transparent backdrop." }),
         toggle("scene.backdrop", "Backdrop lighting"),
         toggle("scene.grid", "Backdrop grid", { when: c => c.scene.backdrop })
+      ])
+    ]),
+    section("Effects", [
+      group("Pulsed emitter", [
+        toggle("pulse.enabled", "Pulsed emitter"),
+        range("pulse.frequency", "Pulse frequency", .1, 5, .1, { when: c => c.pulse.enabled, unit: " Hz" }),
+        range("pulse.duty", "Burst fraction", .05, .95, .01, { when: c => c.pulse.enabled }),
+        range("pulse.minimum", "Minimum flow fraction", 0, 1, .01, { when: c => c.pulse.enabled })
+      ]),
+      group("Two-tone streams", [
+        toggle("secondary.enabled", "Second emitter"),
+        range("secondary.x", "Second emitter X", -6, 6, .05, { when: c => c.secondary.enabled }),
+        range("secondary.z", "Second emitter depth offset", -2, 2, .05, { when: c => c.secondary.enabled && when3D(c) }),
+        range("secondary.rate", "Second emission rate", 10, 600, 5, { when: c => c.secondary.enabled, unit: " /s" }),
+        range("secondary.width", "Second nozzle width", .16, 1.6, .01, { when: c => c.secondary.enabled }),
+        color("secondary.color", "Second liquid color", { when: c => c.secondary.enabled }),
+        range("secondary.mix", "Dye mixing", 0, 1, .01, { when: c => c.secondary.enabled })
+      ]),
+      group("Wake vortices", [
+        toggle("wake.enabled", "Wake vortices", { when: movingObstacles }),
+        range("wake.strength", "Wake strength", 0, 12, .1, { when: c => movingObstacles(c) && c.wake.enabled }),
+        range("wake.reach", "Wake reach", .25, 3, .05, { when: c => movingObstacles(c) && c.wake.enabled }),
+        range("wake.fade", "Wake fade time", .1, 3, .05, { when: c => movingObstacles(c) && c.wake.enabled, unit: " s" })
+      ]),
+      group("Wet surfaces", [
+        toggle("wet.enabled", "Wet surfaces"),
+        range("wet.radius", "Wet patch radius", .2, 2, .05, { when: c => c.wet.enabled }),
+        range("wet.fade", "Film fade time", .25, 8, .05, { when: c => c.wet.enabled, unit: " s" }),
+        range("wet.strength", "Film strength", 0, 1, .01, { when: c => c.wet.enabled })
+      ]),
+      group("Fine splash mist", [
+        toggle("mist.enabled", "Fine splash mist"),
+        range("mist.threshold", "Mist impact threshold", .5, 15, .1, { when: c => c.mist.enabled }),
+        range("mist.amount", "Droplets per impact", 1, 8, 1, { when: c => c.mist.enabled }),
+        range("mist.budget", "Mist budget", 50, 1200, 10, { when: c => c.mist.enabled }),
+        range("mist.lifetime", "Mist lifetime", .1, 2, .05, { when: c => c.mist.enabled, unit: " s" })
+      ]),
+      group("Liquid ribbons", [
+        toggle("trails.enabled", "Liquid ribbons"),
+        range("trails.length", "Ribbon length", .02, .35, .01, { when: c => c.trails.enabled, unit: " s" }),
+        range("trails.fade", "Ribbon fade strength", .05, 1, .01, { when: c => c.trails.enabled })
+      ]),
+      group("Speed-based color", [
+        toggle("speedColor.enabled", "Speed-based color"),
+        color("speedColor.fast", "Fast liquid color", { when: c => c.speedColor.enabled }),
+        range("speedColor.low", "Color transition start", 0, 20, .1, { when: c => c.speedColor.enabled }),
+        range("speedColor.high", "Color transition end", .1, 25, .1, { when: c => c.speedColor.enabled })
+      ]),
+      group("Glass-like refraction", [
+        toggle("refraction.enabled", "Glass-like refraction"),
+        range("refraction.strength", "Refraction strength", 0, 35, .5, { when: c => c.refraction.enabled, unit: " px" })
+      ]),
+      group("Tilted gravity", [
+        toggle("gravityTilt.enabled", "Tilted gravity"),
+        range("gravityTilt.angle", "Gravity angle", -75, 75, 1, { when: c => c.gravityTilt.enabled, unit: "°" }),
+        toggle("gravityTilt.swing", "Oscillate gravity", { when: c => c.gravityTilt.enabled }),
+        range("gravityTilt.amplitude", "Gravity oscillation angle", 0, 60, 1,
+          { when: c => c.gravityTilt.enabled && c.gravityTilt.swing, unit: "°" }),
+        range("gravityTilt.frequency", "Gravity oscillation frequency", .02, 2, .01,
+          { when: c => c.gravityTilt.enabled && c.gravityTilt.swing, unit: " Hz" })
       ])
     ]),
     section("Performance", [group("", [
@@ -265,6 +355,7 @@
   ];
   const shapeTypes = ["box", "round", "capsule", "wedge", "diamond"];
   const radians = Math.PI / 180;
+  const maxMist = 1200;
   let movingCount = 0;
   let solidsDirty = false;
 
@@ -302,22 +393,38 @@
     solid.boundY = Math.abs(solid.s) * solid.w + Math.abs(solid.c) * solid.h;
   }
 
-  function updateObstacleMotion(time) {
-    const { motionDistance, motionSpeed, motionTurn } = config.scene;
+  function updateObstacleMotion(time, dt = 0) {
+    const { motionDistance, motionSpeed, motionTurn, motionPath, motionPhase } = config.scene;
     for (let i = 0; i < movingCount; i++) {
       const solid = solids[i];
-      const { baseX, baseY, angle, phaseX, phaseY, phaseTurn, pace } = solid;
-      const speed = motionSpeed * pace;
-      const x = time * speed + phaseX;
-      const y = time * speed * .73 + phaseY;
-      const turn = time * speed * 1.17 + phaseTurn;
+      const { baseX, baseY, baseZ, angle, phaseX, phaseY, phaseTurn, pace } = solid;
+      const ordered = motionPath !== "wander";
+      const speed = motionSpeed * (ordered ? 1 : pace);
+      const phase = i * motionPhase * radians;
+      const x = time * speed + (ordered ? phase : phaseX);
+      const eight = motionPath === "eight";
+      const weave = is3D && motionPath === "weave";
+      const verticalRate = ordered ? (eight ? 2 : 1) : .73;
+      const y = time * speed * verticalRate + (ordered ? phase * verticalRate + (eight ? 0 : Math.PI / 2) : phaseY);
+      const z = x + Math.PI / 2;
+      const turn = time * speed * 1.17 + (ordered ? phase : phaseTurn);
       const rocking = motionTurn * radians;
       solid.x = baseX + motionDistance * Math.sin(x);
       solid.y = baseY + motionDistance * .48 * Math.sin(y);
+      solid.z = baseZ + (weave ? motionDistance * Math.sin(z) : 0);
       solid.vx = motionDistance * speed * Math.cos(x);
-      solid.vy = motionDistance * .48 * speed * .73 * Math.cos(y);
+      solid.vy = motionDistance * .48 * speed * verticalRate * Math.cos(y);
+      solid.vz = weave ? motionDistance * speed * Math.cos(z) : 0;
       solid.angularVelocity = rocking * speed * 1.17 * Math.cos(turn);
       setObstaclePose(solid, angle + rocking * Math.sin(turn));
+      if (config.wake.enabled) {
+        const blend = dt ? -Math.expm1(-dt / config.wake.fade) : 1;
+        solid.wakeX += (solid.x - solid.wakeX) * blend;
+        solid.wakeY += (solid.y - solid.wakeY) * blend;
+        solid.wakeZ += (solid.z - solid.wakeZ) * blend;
+        const speedXY = Math.hypot(solid.vx, solid.vy, solid.vz);
+        solid.wakePower += (Math.min(1, speedXY) - solid.wakePower) * blend;
+      }
     }
     solidsDirty ||= movingCount > 0;
   }
@@ -343,16 +450,18 @@
         return { nx, ny, offset: nx * px + ny * py };
       });
       const phase = () => random() * 2 * Math.PI;
-      const solid = { x, y, z, d, outline, faces, baseX: x, baseY: y, angle: degrees * radians,
+      const solid = { x, y, z, d, outline, faces, baseX: x, baseY: y, baseZ: z, angle: degrees * radians,
         w: Math.max(...outline.map(point => Math.abs(point[0]))),
         h: Math.max(...outline.map(point => Math.abs(point[1]))),
         phaseX: phase(), phaseY: phase(), phaseTurn: phase(), pace: .6 + random() * .85,
-        vx: 0, vy: 0, angularVelocity: 0 };
+        vx: 0, vy: 0, vz: 0, angularVelocity: 0,
+        wakeX: x, wakeY: y, wakeZ: z, wakePower: 0,
+        wetX: 0, wetY: 0, wetZ: 0, wetness: 0 };
       setObstaclePose(solid, solid.angle);
       return solid;
     });
     updateObstacleMotion(elapsed);
-    renderer.setSolids(solids, movingCount > 0);
+    renderer.setSolids(solids, movingCount > 0 || config.wet.enabled);
     solidsDirty = false;
   }
 
@@ -368,7 +477,13 @@
       this.wet = new Float32Array(capacity);
       this.next = new Int32Array(capacity);
       this.cells = new Int32Array(capacity);
-      this.vertexData = new Float32Array(capacity * 4);
+      this.dye = new Float32Array(capacity);
+      this.dyeDelta = new Float32Array(capacity);
+      this.vertexData = new Float32Array((capacity + maxMist) * 8);
+      // Mist uses position, velocity, remaining life, initial life and dye.
+      this.mist = new Float32Array(maxMist * 9);
+      this.mistCount = 0;
+      this.secondaryCarry = 0;
       this.count = 0;
       this.carry = 0;
       this.randomState = 1376312589;
@@ -390,23 +505,98 @@
     }
 
     emit(dt) {
-      const f = config.flow;
-      const budget = config.quality.maxParticles;
-      const center = f.nozzleX + (f.sway ? Math.sin(elapsed * f.swaySpeed) * f.swayWidth : 0);
-      this.carry += f.rate * (.5 + .5 * qualityFactor) * dt;
+      const { flow, pulse, secondary } = config;
+      const center = flow.nozzleX + (flow.sway ? Math.sin(elapsed * flow.swaySpeed) * flow.swayWidth : 0);
+      const phase = (elapsed * pulse.frequency) % 1;
+      const pulseScale = pulse.enabled && phase >= pulse.duty ? pulse.minimum : 1;
+      const scale = (.5 + .5 * qualityFactor) * pulseScale * dt;
+      this.carry += flow.rate * scale;
       const due = Math.floor(this.carry);
       this.carry -= due;
+      this.spawn(due, center, 0, flow.nozzle, 0);
+      if (secondary.enabled) {
+        this.secondaryCarry += secondary.rate * scale;
+        const secondDue = Math.floor(this.secondaryCarry);
+        this.secondaryCarry -= secondDue;
+        this.spawn(secondDue, secondary.x, secondary.z, secondary.width, 1);
+      } else {
+        this.secondaryCarry = 0;
+      }
+    }
+
+    spawn(due, center, depth, width, dye) {
+      const budget = config.quality.maxParticles;
+      const f = config.flow;
       for (let spawned = 0; spawned < due && this.count < budget; spawned++) {
         const i = this.count++;
         const k = i * 3;
-        this.p[k] = center + (this.random() - .5) * f.nozzle;
+        this.p[k] = center + (this.random() - .5) * width;
         this.p[k + 1] = 5.49 + this.random() * .21;
-        this.p[k + 2] = is3D ? (this.random() - .5) * f.depth : 0;
+        this.p[k + 2] = is3D ? depth + (this.random() - .5) * f.depth : 0;
         this.v[k] = (this.random() - .5) * .55;
         this.v[k + 1] = -f.speed * (.85 + .3 * this.random());
         this.v[k + 2] = is3D ? (this.random() - .5) * .45 : 0;
         this.impact[i] = 0;
         this.wet[i] = 0;
+        this.dye[i] = dye;
+      }
+    }
+
+    emitMist(i, nx, ny, nz, impact) {
+      const { amount, budget, lifetime } = config.mist;
+      const k = i * 3;
+      for (let j = 0; j < amount && this.mistCount < budget; j++) {
+        const m = this.mistCount++ * 9;
+        const scatter = Math.min(6, impact * .65);
+        const speed = scatter * (.3 + this.random() * .7);
+        this.mist[m] = this.p[k];
+        this.mist[m + 1] = this.p[k + 1];
+        this.mist[m + 2] = this.p[k + 2];
+        this.mist[m + 3] = this.v[k] * .55 + nx * speed + (this.random() - .5) * scatter;
+        this.mist[m + 4] = this.v[k + 1] * .55 + ny * speed + (this.random() - .5) * scatter;
+        this.mist[m + 5] = is3D ? this.v[k + 2] * .55 + nz * speed + (this.random() - .5) * scatter : 0;
+        this.mist[m + 6] = this.mist[m + 7] = lifetime * (.6 + .4 * this.random());
+        this.mist[m + 8] = this.dye[i];
+      }
+    }
+
+    updateMist(dt, gx, gy) {
+      if (!config.mist.enabled) {
+        this.mistCount = 0;
+        return;
+      }
+      this.mistCount = Math.min(this.mistCount, config.mist.budget);
+      const mist = this.mist;
+      const drag = Math.exp(-dt * 1.8);
+      for (let i = this.mistCount - 1; i >= 0; i--) {
+        const m = i * 9;
+        mist[m + 6] -= dt;
+        if (mist[m + 6] <= 0) {
+          const last = --this.mistCount * 9;
+          mist.copyWithin(m, last, last + 9);
+          continue;
+        }
+        mist[m + 3] = (mist[m + 3] + gx * dt * .55) * drag;
+        mist[m + 4] = (mist[m + 4] + gy * dt * .55) * drag;
+        mist[m + 5] *= drag;
+        for (let axis = 0; axis < 3; axis++) mist[m + axis] += mist[m + 3 + axis] * dt;
+      }
+    }
+
+    applyWake(k, dt) {
+      const reach = config.wake.reach;
+      const strength = config.wake.strength * dt / reach;
+      for (let i = 0; i < movingCount; i++) {
+        const solid = solids[i];
+        const dx = this.p[k] - solid.wakeX;
+        const dy = this.p[k + 1] - solid.wakeY;
+        const dz = this.p[k + 2] - solid.wakeZ;
+        const distance2 = dx * dx + dy * dy + dz * dz;
+        if (distance2 >= reach * reach) continue;
+        const falloff = 1 - distance2 / (reach * reach);
+        const spin = (i % 2 ? -1 : 1) * strength * solid.wakePower * falloff * falloff;
+        this.v[k] -= dy * spin;
+        this.v[k + 1] += dx * spin;
       }
     }
 
@@ -418,6 +608,7 @@
       this.v.copyWithin(k, end * 3, end * 3 + 3);
       this.impact[i] = this.impact[end];
       this.wet[i] = this.wet[end];
+      this.dye[i] = this.dye[end];
     }
 
     hash() {
@@ -439,6 +630,7 @@
       const { p, v, delta, density, cells, head, next, h, nx, ny, nz, layer } = this;
       const h2 = h * h;
       const { tension, viscosity } = config.flow;
+      const dyeMix = config.secondary.enabled ? config.secondary.mix : 0;
       const targetDensity = is3D ? 3.2 : 4.5;
       const pressureScale = is3D ? 1 : .62;
       for (let i = 0, a = 0; i < this.count; i++, a += 3) {
@@ -482,6 +674,12 @@
                   fx = (v[a] - v[b]) * mix;
                   fy = (v[a + 1] - v[b + 1]) * mix;
                   fz = (v[a + 2] - v[b + 2]) * mix;
+                  if (dyeMix) {
+                    const transfer = (this.dye[i] - this.dye[j]) * dyeMix * q
+                      / (4 + Math.max(density[i], density[j]) * 4);
+                    this.dyeDelta[i] -= transfer;
+                    this.dyeDelta[j] += transfer;
+                  }
                 }
                 delta[a] -= fx;
                 delta[a + 1] -= fy;
@@ -496,7 +694,7 @@
       }
     }
 
-    contact(i, nx, ny, nz, overlap, bounce, adhesion, surfaceX, surfaceY, respond) {
+    contact(i, nx, ny, nz, overlap, bounce, adhesion, surfaceX, surfaceY, surfaceZ, respond, solid) {
       const k = i * 3;
       this.p[k] += nx * overlap;
       this.p[k + 1] += ny * overlap;
@@ -504,14 +702,27 @@
       if (!respond) return;
       const vx = this.v[k] - surfaceX;
       const vy = this.v[k + 1] - surfaceY;
-      const vz = this.v[k + 2];
+      const vz = this.v[k + 2] - surfaceZ;
       const normalSpeed = vx * nx + vy * ny + vz * nz;
       if (normalSpeed >= 0) return;
       const reflected = -normalSpeed * bounce;
       const friction = 1 - adhesion * .32;
       this.v[k] = surfaceX + (vx - normalSpeed * nx) * friction + reflected * nx;
       this.v[k + 1] = surfaceY + (vy - normalSpeed * ny) * friction + reflected * ny;
-      this.v[k + 2] = (vz - normalSpeed * nz) * friction + reflected * nz;
+      this.v[k + 2] = surfaceZ + (vz - normalSpeed * nz) * friction + reflected * nz;
+      if (solid && config.wet.enabled) {
+        const dx = this.p[k] - solid.x, dy = this.p[k + 1] - solid.y;
+        const deposit = Math.min(.6, -normalSpeed * .09);
+        const mix = deposit / Math.max(.01, deposit + solid.wetness);
+        solid.wetX += (solid.c * dx + solid.s * dy - solid.wetX) * mix;
+        solid.wetY += (-solid.s * dx + solid.c * dy - solid.wetY) * mix;
+        solid.wetZ += (this.p[k + 2] - solid.z - solid.wetZ) * mix;
+        solid.wetness = Math.min(1, solid.wetness + deposit);
+        solidsDirty = true;
+      }
+      if (config.mist.enabled && -normalSpeed >= config.mist.threshold) {
+        this.emitMist(i, nx, ny, nz, -normalSpeed);
+      }
       this.impact[i] = Math.max(this.impact[i], Math.min(1, -normalSpeed * .085));
     }
 
@@ -540,7 +751,7 @@
         }
         if (distance >= radius) continue;
         this.contact(i, solid.c * nx - solid.s * ny, solid.s * nx + solid.c * ny, nz, radius - distance, rebound, adhesion,
-          solid.vx - solid.angularVelocity * dy, solid.vy + solid.angularVelocity * dx, respond);
+          solid.vx - solid.angularVelocity * dy, solid.vy + solid.angularVelocity * dx, solid.vz, respond, solid);
       }
       if (!pointer.valid) return;
       const dx = p[k] - pointer.x;
@@ -552,12 +763,12 @@
         const distance = Math.sqrt(distance2);
         const inverse = distance > 1e-6 ? 1 / distance : 0;
         this.contact(i, dx * inverse, inverse ? dy * inverse : 1, dz * inverse, reach - distance,
-          config.interaction.bounce, 0, pointer.vx, pointer.vy, respond);
+          config.interaction.bounce, 0, pointer.vx, pointer.vy, 0, respond);
       }
     }
 
     step(dt) {
-      if (movingCount) updateObstacleMotion(elapsed);
+      if (movingCount) updateObstacleMotion(elapsed, dt);
       const { p, v, base, delta, density, impact, wet } = this;
       const { gravity, viscosity } = config.flow;
       const { retention, basin: hasBasin } = config.scene;
@@ -570,6 +781,19 @@
           || wet[i] > retention || this.count > config.quality.maxParticles) this.remove(i);
       }
       this.emit(dt);
+      const tilt = config.gravityTilt;
+      const angle = tilt.enabled ? (tilt.angle + (tilt.swing
+        ? Math.sin(elapsed * tilt.frequency * 2 * Math.PI) * tilt.amplitude : 0)) * radians : 0;
+      const gx = gravity * Math.sin(angle), gy = -gravity * Math.cos(angle);
+      this.updateMist(dt, gx, gy);
+      if (config.wet.enabled) {
+        const fade = Math.exp(-dt / config.wet.fade);
+        for (const solid of solids) {
+          if (!solid.wetness) continue;
+          solid.wetness = solid.wetness > .002 ? solid.wetness * fade : 0;
+          solidsDirty = true;
+        }
+      }
 
       for (let i = 0, k = 0; i < this.count; i++, k += 3) {
         impact[i] *= .95;
@@ -585,7 +809,9 @@
             impact[i] = Math.max(impact[i], .8);
           }
         }
-        v[k + 1] -= gravity * dt;
+        if (config.wake.enabled && movingCount) this.applyWake(k, dt);
+        v[k] += gx * dt;
+        v[k + 1] += gy * dt;
         // A speed limit keeps one step shorter than the thinnest expanded ledge.
         const speed = Math.max(1, Math.hypot(v[k], v[k + 1], v[k + 2]) / 21);
         for (let axis = 0; axis < 3; axis++) {
@@ -611,22 +837,39 @@
 
       const correctionVelocity = (is3D ? .45 : .27) / dt;
       for (let k = 0; k < this.count * 3; k++) v[k] += (p[k] - base[k]) * correctionVelocity;
-      if (viscosity > 0) {
+      const mixDye = config.secondary.enabled && config.secondary.mix > 0;
+      if (viscosity > 0 || mixDye) {
         // Reuse the last pressure pass's density estimate for velocity mixing.
         this.hash();
         delta.fill(0, 0, active);
+        if (mixDye) this.dyeDelta.fill(0, 0, this.count);
         this.neighbors(2);
-        for (let k = 0; k < this.count * 3; k++) v[k] += delta[k];
+        for (let k = 0; k < active; k++) v[k] += delta[k];
+        if (mixDye) for (let i = 0; i < this.count; i++) this.dye[i] = clamp(this.dye[i] + this.dyeDelta[i], 0, 1);
       }
     }
 
     pack() {
       const out = this.vertexData;
-      for (let i = 0, a = 0, b = 0; i < this.count; i++, a += 3, b += 4) {
+      for (let i = 0, a = 0, b = 0; i < this.count; i++, a += 3, b += 8) {
         out[b] = this.p[a];
         out[b + 1] = this.p[a + 1];
         out[b + 2] = this.p[a + 2];
         out[b + 3] = this.impact[i];
+        out[b + 4] = this.v[a];
+        out[b + 5] = this.v[a + 1];
+        out[b + 6] = this.v[a + 2];
+        out[b + 7] = this.dye[i];
+      }
+      for (let i = 0, a = 0, b = this.count * 8; i < this.mistCount; i++, a += 9, b += 8) {
+        out[b] = this.mist[a];
+        out[b + 1] = this.mist[a + 1];
+        out[b + 2] = this.mist[a + 2];
+        out[b + 3] = -this.mist[a + 6] / this.mist[a + 7];
+        out[b + 4] = this.mist[a + 3];
+        out[b + 5] = this.mist[a + 4];
+        out[b + 6] = this.mist[a + 5];
+        out[b + 7] = this.mist[a + 8];
       }
       return out;
     }
@@ -703,59 +946,91 @@
     layout(location=0) in vec3 point;
     layout(location=1) in vec3 normal;
     layout(location=2) in vec2 tile;
+    layout(location=3) in vec4 wet;
     out vec3 n;
     out vec2 face;
+    out vec4 film;
     ${project}
     void main() {
       n = normal;
       face = tile;
+      film = wet;
       gl_Position = project(point);
     }`;
   const solidFS = `#version 300 es
     precision mediump float;
     in vec3 n;
     in vec2 face;
-    uniform vec3 uColor;
+    in vec4 film;
+    uniform vec3 uColor, uWetColor;
+    uniform float uWetRadius, uWetStrength;
     out vec4 result;
     void main() {
       float light = max(0.0, dot(n, normalize(vec3(-0.48,0.78,0.68))));
       float edge = min(min(face.x,1.0-face.x),min(face.y,1.0-face.y));
       float rim = 1.0 - smoothstep(0.0, 0.025, edge);
-      result = vec4(uColor * (0.45 + 0.69 * light) + rim * vec3(0.07,0.105,0.12), 1.0);
+      vec3 surface = uColor * (0.45 + 0.69 * light) + rim * vec3(0.07,0.105,0.12);
+      if (uWetStrength > 0.0 && film.w > 0.0) {
+        float coverage = (1.0-smoothstep(uWetRadius*.28,uWetRadius,length(film.xyz))) * film.w * uWetStrength;
+        vec3 stain = surface*.58 + uWetColor*(.29+.34*pow(light,5.0));
+        surface = mix(surface,stain,coverage);
+      }
+      result = vec4(surface,1.0);
     }`;
   const fluidVS = `#version 300 es
     layout(location=0) in vec4 particle;
-    uniform float uRadius;
+    layout(location=1) in vec4 velocityDye;
+    uniform float uRadius, uTrailLength;
+    uniform vec2 uSpeedRange;
     out vec2 local;
-    flat out float impact;
-    flat out float depthCenter;
+    out float depthCenter;
+    flat out vec4 traits;
     ${project}
     void main() {
       local = vec2(float((gl_VertexID & 1) * 2 - 1), float((gl_VertexID >> 1) * 2 - 1));
       vec4 clip = project(particle.xyz);
-      clip.xy += local * uRadius / uExtent;
-      impact = particle.w;
+      float speed = length(velocityDye.xyz);
+      float tint = smoothstep(uSpeedRange.x,uSpeedRange.y,speed);
+      float mist = max(0.0,-particle.w);
+      traits = vec4(max(0.0,particle.w), velocityDye.w, tint, mist);
+      if (uTrailLength > 0.0) {
+        vec4 tail = project(particle.xyz - velocityDye.xyz * uTrailLength);
+        vec2 axis = (clip.xy/clip.w - tail.xy/tail.w) * uExtent;
+        if (length(axis) < .05) {
+          gl_Position = vec4(2.0,2.0,2.0,1.0);
+          return;
+        }
+        vec2 side = normalize(vec2(-axis.y,axis.x));
+        float t = local.y*.5+.5;
+        clip = mix(tail,clip,t);
+        clip.xy += side * local.x * uRadius * mix(.11,.8,t) / uExtent;
+      } else {
+        clip.xy += local * uRadius * (mist > 0.0 ? .37 : 1.0) / uExtent;
+      }
       depthCenter = clip.z / clip.w * .5 + .5;
       gl_Position = clip;
     }`;
   const fluidFS = `#version 300 es
     precision highp float;
     in vec2 local;
-    flat in float impact;
-    flat in float depthCenter;
+    in float depthCenter;
+    flat in vec4 traits;
     uniform sampler2D uSolidDepth;
     uniform vec2 uSize;
-    uniform float uRadius, uParticles, uHasSolids;
+    uniform float uRadius, uParticles, uHasSolids, uTrailLength, uTrailFade, uUseSpeed;
     out vec4 result;
     void main() {
-      float r2 = dot(local,local);
+      bool ribbon = uTrailLength > 0.0;
+      float r2 = ribbon ? local.x*local.x : dot(local,local);
       if (r2 >= 1.0) discard;
       float front = depthCenter - sqrt(1.0-r2)*uRadius/28.0;
       if (uHasSolids > .5 && front > texture(uSolidDepth,gl_FragCoord.xy/uSize).r + .001) discard;
       float kernel = (1.0-r2)*(1.0-r2);
       float weight = mix(.37,.82,uParticles)*kernel;
+      if (traits.w > 0.0) weight *= traits.w*.8;
+      if (ribbon) weight *= uTrailFade * smoothstep(0.0,.92,local.y*.5+.5);
       float gleam = smoothstep(.37,.96,1.0-length(local+vec2(.26,-.31)));
-      result = vec4(weight,weight*impact,weight*gleam,weight);
+      result = vec4(weight, weight*traits.x, weight*mix(gleam,traits.z,uUseSpeed), weight*traits.y);
     }`;
   const finishFS = `#version 300 es
     precision highp float;
@@ -763,7 +1038,8 @@
     uniform sampler2D uScene, uFluid;
     uniform vec2 uPixel, uViewport, uPointer;
     uniform vec4 uBackground;
-    uniform vec3 uBody, uEdge, uHighlight;
+    uniform vec3 uBody, uEdge, uHighlight, uDyeColor, uFastColor;
+    uniform float uUseDye, uUseSpeed, uRefraction;
     uniform float uBackdrop, uGrid, uOpacity, uDetail, uGlow, uImpact, uParticles, uPointerRadius;
     out vec4 result;
     void layer(inout vec4 base, vec3 color, float alpha) {
@@ -771,42 +1047,53 @@
       base = vec4(color*alpha + base.rgb*(1.0-alpha), alpha + base.a*(1.0-alpha));
     }
     float density(vec2 offset) { return texture(uFluid, uv + offset*uPixel).r; }
-    void main() {
-      vec2 center = (uv-.5)*vec2(uViewport.x/uViewport.y,1.);
+    vec4 backdrop(vec2 point) {
+      point = clamp(point,0.0,1.0);
+      vec2 center = (point-.5)*vec2(uViewport.x/uViewport.y,1.);
       float halo = exp(-dot(center,center)*3.6);
-      vec2 gridUV = (uv-.5)*uViewport/54.;
+      vec2 gridUV = (point-.5)*uViewport/54.;
       vec2 g = abs(fract(gridUV+.5)-.5);
       float grid = (1.0-smoothstep(.005,.023,min(g.x,g.y)))*halo*uGrid;
       vec3 bg = uBackground.rgb * (1.0 + halo*.48*uBackdrop);
       bg += uBackdrop*(vec3(.012,.03,.035)*halo+vec3(.025,.041,.046)*grid);
-      vec4 mixed = vec4(bg*uBackground.a,uBackground.a);
-      vec4 scene = texture(uScene,uv);
-      layer(mixed,scene.rgb,scene.a);
-
-      vec3 sampleData = texture(uFluid,uv).rgb;
+      vec4 base = vec4(bg*uBackground.a,uBackground.a);
+      vec4 scene = texture(uScene,point);
+      layer(base,scene.rgb,scene.a);
+      return base;
+    }
+    vec2 gradient() {
+      return vec2(density(vec2(-1.,0.))-density(vec2(1.,0.)),
+        density(vec2(0.,-1.))-density(vec2(0.,1.)));
+    }
+    void main() {
+      vec4 sampleData = texture(uFluid,uv);
       float d = sampleData.r;
+      float alpha = uParticles > .5 ? smoothstep(.035,.54,d) : smoothstep(.065,.22,d);
+      vec2 grad = alpha > .001 && (uParticles < .5 || uRefraction > 0.0) ? gradient() : vec2(0.0);
+      vec4 mixed = backdrop(uv + grad*uRefraction*alpha/uViewport);
       if (uGlow > .001) {
         float glow = (density(vec2(4.,0.))+density(vec2(-4.,0.))
           +density(vec2(0.,4.))+density(vec2(0.,-4.))
           +density(vec2(3.,3.))+density(vec2(-3.,-3.)))/6.;
         layer(mixed,uEdge,clamp(glow*.8*uGlow,0.,.8)*uOpacity);
       }
-      float alpha = uParticles > .5 ? smoothstep(.035,.54,d) : smoothstep(.065,.22,d);
       if (alpha > .001) {
         float heat = clamp(sampleData.g/max(.01,d),0.0,1.0)*uImpact;
-        vec3 color = mix(uEdge,uBody,smoothstep(.09,.7,d));
+        float dye = clamp(sampleData.a/max(.01,d),0.0,1.0)*uUseDye;
+        float speed = clamp(sampleData.b/max(.01,d),0.0,1.0)*uUseSpeed;
+        vec3 body = mix(mix(uBody,uDyeColor,dye),uFastColor,speed);
+        vec3 edgeTint = mix(uEdge,body,max(dye,speed)*.65);
+        vec3 color = mix(edgeTint,body,smoothstep(.09,.7,d));
         if (uParticles < .5) {
-          vec2 grad = vec2(density(vec2(-1.,0.))-density(vec2(1.,0.)),
-            density(vec2(0.,-1.))-density(vec2(0.,1.)));
           vec3 n = normalize(vec3(grad*8.5*uDetail,1.0));
           vec3 l = normalize(vec3(-.47,.54,.7));
           float spec = pow(max(dot(reflect(-l,n),vec3(0.,0.,1.)),0.),14.);
           float edge = pow(1.0-max(0.0,n.z),.8);
           color = mix(color*.66,color*1.2,max(dot(l,n),0.));
-          color = mix(color,uEdge,edge*.68);
+          color = mix(color,edgeTint,edge*.68);
           color = mix(color,uHighlight,clamp(spec*.72+heat*.46,0.0,.92));
         } else {
-          color = mix(color,uHighlight,clamp(sampleData.b/max(d,.01)*.55+heat*.55,0.,.9));
+          color = mix(color,uHighlight,clamp(sampleData.b/max(d,.01)*.55*(1.0-uUseSpeed)+heat*.55,0.,.9));
         }
         layer(mixed,color,alpha*uOpacity);
       }
@@ -836,18 +1123,21 @@
       this.solidBuffer = gl.createBuffer();
       gl.bindVertexArray(this.solidsVAO);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.solidBuffer);
-      for (let i = 0; i < 3; i++) {
+      const solidAttributes = [[3, 0], [3, 12], [2, 24], [4, 32]];
+      for (const [i, [size, offset]] of solidAttributes.entries()) {
         gl.enableVertexAttribArray(i);
-        gl.vertexAttribPointer(i, i === 2 ? 2 : 3, gl.FLOAT, false, 32, i * 12);
+        gl.vertexAttribPointer(i, size, gl.FLOAT, false, 48, offset);
       }
       this.particlesVAO = gl.createVertexArray();
       this.particleBuffer = gl.createBuffer();
       gl.bindVertexArray(this.particlesVAO);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, 6000 * 16, gl.DYNAMIC_DRAW);
-      gl.enableVertexAttribArray(0);
-      gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 16, 0);
-      gl.vertexAttribDivisor(0, 1);
+      gl.bufferData(gl.ARRAY_BUFFER, (6000 + maxMist) * 32, gl.DYNAMIC_DRAW);
+      for (let i = 0; i < 2; i++) {
+        gl.enableVertexAttribArray(i);
+        gl.vertexAttribPointer(i, 4, gl.FLOAT, false, 32, i * 16);
+        gl.vertexAttribDivisor(i, 1);
+      }
       gl.bindVertexArray(null);
       this.sceneTarget = this.target(true);
       this.fluidTarget = this.target(false);
@@ -916,7 +1206,7 @@
 
     setSolids(obstacles, dynamic) {
       const vertices = obstacles.reduce((count, solid) => count + solid.outline.length * 12 - 12, 0);
-      if (this.solidVertices?.length !== vertices * 8) this.solidVertices = new Float32Array(vertices * 8);
+      if (this.solidVertices?.length !== vertices * 12) this.solidVertices = new Float32Array(vertices * 12);
       const points = this.solidVertices;
       let offset = 0;
       for (const solid of obstacles) {
@@ -931,6 +1221,10 @@
           points[offset++] = nz;
           points[offset++] = u;
           points[offset++] = v;
+          points[offset++] = x - solid.wetX;
+          points[offset++] = y - solid.wetY;
+          points[offset++] = is3D ? z - solid.wetZ : 0;
+          points[offset++] = solid.wetness;
         };
         const cap = (point, sign) => vertex(point, sign * depth, 0, 0, sign,
           .5 + .5 * point[0] / w, .5 + .5 * point[1] / h);
@@ -987,7 +1281,7 @@
     draw() {
       const { quality, scene, liquid, interaction } = config;
       if (solidsDirty && scene.showSolids) {
-        this.setSolids(solids, movingCount > 0);
+        this.setSolids(solids, movingCount > 0 || config.wet.enabled);
         solidsDirty = false;
       }
       const ratio = Math.min(devicePixelRatio || 1, quality.pixelRatio,
@@ -1012,6 +1306,9 @@
         gl.useProgram(handle);
         this.cameraUniforms(u);
         gl.uniform3fv(u.uColor, hex(scene.solid));
+        gl.uniform3fv(u.uWetColor, hex(liquid.body));
+        gl.uniform1f(u.uWetRadius, config.wet.radius);
+        gl.uniform1f(u.uWetStrength, config.wet.enabled ? config.wet.strength : 0);
         gl.bindVertexArray(this.solidsVAO);
         gl.drawArrays(gl.TRIANGLES, 0, this.solidCount);
       }
@@ -1032,9 +1329,19 @@
         gl.uniform1f(u.uHasSolids, Number(show));
         gl.bindVertexArray(this.particlesVAO);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffer);
-        if (simulation.count) {
-          gl.bufferSubData(gl.ARRAY_BUFFER, 0, simulation.pack(), 0, simulation.count * 4);
-          gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, simulation.count);
+        const total = simulation.count + (config.mist.enabled ? simulation.mistCount : 0);
+        const { low, high } = config.speedColor;
+        gl.uniform2f(u.uSpeedRange, low, Math.max(low + .01, high));
+        gl.uniform1f(u.uUseSpeed, Number(config.speedColor.enabled));
+        gl.uniform1f(u.uTrailFade, config.trails.fade);
+        if (total) {
+          gl.bufferSubData(gl.ARRAY_BUFFER, 0, simulation.pack(), 0, total * 8);
+          if (config.trails.enabled && simulation.count) {
+            gl.uniform1f(u.uTrailLength, config.trails.length);
+            gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, simulation.count);
+          }
+          gl.uniform1f(u.uTrailLength, 0);
+          gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, total);
         }
       }
       gl.disable(gl.BLEND);
@@ -1050,6 +1357,11 @@
       gl.uniform3fv(u.uBody, hex(liquid.body));
       gl.uniform3fv(u.uEdge, hex(liquid.edge));
       gl.uniform3fv(u.uHighlight, hex(liquid.highlight));
+      gl.uniform3fv(u.uDyeColor, hex(config.secondary.color));
+      gl.uniform3fv(u.uFastColor, hex(config.speedColor.fast));
+      gl.uniform1f(u.uUseDye, Number(config.secondary.enabled));
+      gl.uniform1f(u.uUseSpeed, Number(config.speedColor.enabled));
+      gl.uniform1f(u.uRefraction, config.refraction.enabled ? config.refraction.strength * ratio : 0);
       gl.uniform1f(u.uBackdrop, Number(scene.backdrop));
       gl.uniform1f(u.uGrid, Number(scene.grid));
       gl.uniform1f(u.uOpacity, liquid.opacity);
@@ -1132,7 +1444,7 @@
       try { renderer.draw(); }
       catch (error) {
         console.error(error);
-        message.textContent = "Viscous Cascade could not render at these settings.";
+        message.textContent = "Viscous Flow could not render at these settings.";
         message.hidden = false;
         return;
       }
@@ -1171,6 +1483,10 @@
     if (path === "quality.fps") resetClock();
     if (!renderer || contextLost) return;
     if (!path || changedMode || path.startsWith("scene.")) buildSolids();
+    if (path === "wet.enabled" && !config.wet.enabled) {
+      for (const solid of solids) solid.wetness = 0;
+      solidsDirty = true;
+    }
     if (changedMode) restart();
     needsRender = true;
     schedule();
@@ -1309,11 +1625,10 @@
     } catch (error) {
       console.error(error);
       renderer = null;
-      message.textContent = "Viscous Cascade could not start the WebGL renderer.";
+      message.textContent = "Viscous Flow could not start the WebGL renderer.";
       message.hidden = false;
     }
   }
-
   function loadSettingsEditor() {
     const script = document.createElement("script");
     script.src = "./settings-editor.js";
@@ -1339,9 +1654,9 @@
     document.head.append(script);
   }
 
-  loadSettingsEditor();
+  if (settings.editor.enabled) loadSettingsEditor();
   if (!gl) {
-    message.textContent = "Viscous Cascade requires WebGL 2.";
+    message.textContent = "Viscous Flow requires WebGL 2.";
     message.hidden = false;
     return;
   }

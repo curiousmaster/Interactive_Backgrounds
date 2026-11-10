@@ -1,4 +1,4 @@
-/* Schema-driven settings editor for Viscous Cascade. */
+/* Schema-driven settings editor for Viscous Flow. */
 (() => {
   "use strict";
 
@@ -25,6 +25,7 @@
       case "range": {
         if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
         const bounded = Math.min(field.max, Math.max(field.min, value));
+        if (field.continuous) return bounded;
         return Number((field.min + Math.round((bounded - field.min) / field.step) * field.step).toFixed(6));
       }
       default: return fallback;
@@ -67,10 +68,10 @@
     const panel = element("aside");
     panel.className = "settings-panel";
     panel.id = "cascade-settings";
-    panel.setAttribute("aria-label", "Viscous Cascade settings");
+    panel.setAttribute("aria-label", "Viscous Flow settings");
     const header = element("header");
     const title = element("div");
-    title.append(element("small", "WEBGL BACKGROUNDS"), element("h1", "Viscous Cascade"));
+    title.append(element("small", "WEBGL BACKGROUNDS"), element("h1", "Viscous Flow"));
     const close = button("×", () => setOpen(false, true));
     close.setAttribute("aria-label", "Close settings");
     header.append(title, close);
@@ -239,7 +240,7 @@
         apply(sanitize(parsed, config), "");
         announce("Settings imported.");
       } catch {
-        announce("Paste a JSON object containing Viscous Cascade settings.");
+        announce("Paste a JSON object containing Viscous Flow settings.");
       }
     }));
     io.append(json, ioActions);
