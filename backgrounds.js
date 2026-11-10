@@ -357,6 +357,14 @@ export const backgrounds = [
             "Move your pointer to comb the surface and leave a fading impression.",
     },
     {
+        name: "Viscous Flow",
+        folder: "viscous-flow",
+        tags: ["fluid", "particles", "interactive", "3d"],
+        description:
+            "A stream of viscous liquid breaks into glossy droplets as it strikes a series of obstacles. " +
+            "Move your pointer to divert the flow, click to splash, or drag to rotate the 3D view.",
+    },
+    {
         name: "Wave Field",
         folder: "wave-field",
         tags: ["abstract", "fluids"],

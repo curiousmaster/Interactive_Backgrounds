@@ -1,0 +1,1425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Viscous Cascade · WebGL Backgrounds</title>
+<style>
+  :root { color-scheme:dark; font:14px/1.45 system-ui,sans-serif; color:#e5f5f7; }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  html,body { margin:0; width:100%; height:100%; overflow:hidden; background:transparent; }
+  #scene { display:block; width:100%; height:100%; touch-action:none; }
+  #scene.rotating { cursor:grabbing; }
+  #message { position:fixed; inset:0; display:grid; place-items:center; padding:2rem; text-align:center; }
+  .settings-open,.settings-panel { position:fixed; top:max(14px,env(safe-area-inset-top)); right:max(14px,env(safe-area-inset-right)); z-index:1; }
+  .settings-panel { width:min(345px,calc(100% - 28px)); max-height:calc(100dvh - 28px); overflow:auto; overscroll-behavior:contain;
+    background:rgba(11,21,29,.94); border:1px solid #30444e; border-radius:17px; padding:15px; box-shadow:0 12px 45px #0007; }
+  .settings-panel header,.settings-line,.settings-preset { display:flex; align-items:center; justify-content:space-between; gap:9px; }
+  .settings-panel h1 { margin:2px 0 9px; font-size:21px; font-weight:650; letter-spacing:-.03em; }
+  .settings-panel header small { color:#87c6c7; font-size:9px; font-weight:700; letter-spacing:.19em; }
+  button,select,input[type=search],input[type=text],textarea { font:inherit; color:inherit; border:1px solid #34505b;
+    border-radius:7px; background:#142631; padding:6px 8px; }
+  button { cursor:pointer; }
+  button:hover { background:#254450; }
+  :focus-visible { outline:2px solid #8df4e7; outline-offset:2px; }
+  input[type=search],textarea { width:100%; }
+  textarea { margin-top:8px; resize:vertical; font:11px/1.4 ui-monospace,monospace; }
+  input[type=range] { display:block; width:100%; margin:4px 0; accent-color:#75d9ca; }
+  input[type=checkbox] { accent-color:#75d9ca; }
+  input[type=color] { width:24px; height:24px; padding:0; border:0; background:transparent; cursor:pointer; }
+  .settings-color,.settings-actions { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+  .settings-color input[type=text] { font:11px ui-monospace,monospace; width:83px; }
+  .settings-preset,.settings-actions,.settings-stats { margin-top:9px; }
+  .settings-preset select { flex:1; }
+  .settings-actions button { font-size:12px; }
+  .settings-panel details { border-top:1px solid #30444e; margin-top:9px; }
+  .settings-panel summary { padding:8px 0 1px; cursor:pointer; font-weight:650; }
+  .settings-group { padding-top:4px; }
+  .settings-group h2 { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#94c7cb; margin:9px 0 1px; }
+  .settings-row { padding:5px 0; }
+  .settings-row small,.settings-status,.settings-stats { color:#a1b6c0; font-size:11px; }
+  .settings-stats { display:block; font-variant-numeric:tabular-nums; }
+  .settings-row output { color:#a6e6df; font-size:11px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .settings-status { margin:7px 0 0; }
+</style>
+</head>
+<body>
+<canvas id="scene" aria-label="Animated viscous liquid cascade"></canvas>
+<div id="message" role="status" hidden></div>
+<div id="editor"></div>
+<script>
+(() => {
+  "use strict";
+
+  // Edit these values to configure the background without the settings editor.
+  const settings = 
+  "view": {
+    "mode": "3d",
+    "perspective": true,
+    "yaw": -28,
+    "tilt": 8,
+    "zoom": 0.85,
+    "orbit": true,
+    "orbitSpeed": 8
+  },
+  "flow": {
+    "gravity": 9.5,
+    "viscosity": 0.07,
+    "tension": 0.52,
+    "rebound": 0.17,
+    "adhesion": 0.02,
+    "rate": 140,
+    "nozzle": 0.2,
+    "nozzleX": 0.8,
+    "depth": 1.75,
+    "speed": 2.5,
+    "sway": true,
+    "swayWidth": 3,
+    "swaySpeed": 0.8
+  },
+  "scene": {
+    "obstacles": true,
+    "layout": "terraces",
+    "obstacleCount": 7,
+    "obstacleType": "capsule",
+    "obstacleMotion": false,
+    "motionDistance": 0.45,
+    "motionSpeed": 1,
+    "motionTurn": 12,
+    "motionSeed": 7,
+    "basin": false,
+    "retention": 2.8,
+    "showSolids": true,
+    "solid": "#243F4A",
+    "background": "#07131E",
+    "backdrop": true,
+    "grid": true
+  },
+  "liquid": {
+    "style": "surface",
+    "body": "#584CAE",
+    "edge": "#1E1849",
+    "highlight": "#FFFFFF",
+    "opacity": 0.96,
+    "thickness": 1.05,
+    "detail": 0.15,
+    "bloom": true,
+    "glow": 1.02,
+    "impact": true,
+    "impactLight": 1.5
+  },
+  "interaction": {
+    "enabled": true,
+    "radius": 0.58,
+    "bounce": 0.05,
+    "show": true,
+    "burst": true,
+    "force": 7
+  },
+  "quality": {
+    "maxParticles": 1800,
+    "iterations": 3,
+    "renderScale": 1,
+    "pixelRatio": 1.2,
+    "fps": "display",
+    "adaptive": true,
+    "stats": false
+  }
+};
+
+  const jadeFoundry = {
+    ...settings,
+    view: { ...settings.view, yaw: 17, tilt: 11, zoom: 1, orbit: false },
+    flow: { ...settings.flow, gravity: 16, viscosity: .26, tension: .21, rebound: .12, adhesion: .17,
+      rate: 265, nozzle: .44, nozzleX: -2.75, depth: .8, speed: 2.8, swayWidth: .35 },
+    scene: { ...settings.scene, basin: true },
+    liquid: { ...settings.liquid, body: "#139D9D", edge: "#5BF4DE", highlight: "#F2FFF8",
+      thickness: 1.13, detail: 1.2, glow: .43, impact: true },
+    quality: { ...settings.quality, maxParticles: 2800, iterations: 2, renderScale: .66, pixelRatio: 1.5, fps: "60" }
+  };
+  const jadeVariant = overrides => Object.fromEntries(Object.entries(jadeFoundry).map(
+    ([group, values]) => [group, { ...values, ...overrides[group] }]
+  ));
+
+  const presets = {
+    "Preferred settings": settings,
+    "Jade Foundry": jadeFoundry,
+    "Liquid Mercury": jadeVariant({ flow: { viscosity: .36, tension: .37, rebound: .18 },
+      liquid: { body: "#5A758B", edge: "#B9E6FF", highlight: "#FFFFFF", glow: .24 }, scene: { solid: "#343B4A" } }),
+    "Amber Syrup": jadeVariant({ flow: { gravity: 12, viscosity: .59, tension: .29, adhesion: .44, rate: 230 },
+      liquid: { body: "#A43D14", edge: "#FFAB3C", highlight: "#FFF5C1", glow: .33 }, scene: { background: "#1A0C12" } }),
+    "Blueprint": jadeVariant({ view: { mode: "2d" }, scene: { background: "#08182B", layout: "pinball", obstacleCount: 6 },
+      flow: { tension: .15 }, liquid: { style: "particles", body: "#2F8CC7", edge: "#77DCFF", glow: .24 } }),
+    "Transparent Overlay": jadeVariant({ scene: { background: "#00000000", backdrop: false, showSolids: false },
+      liquid: { glow: .23 }, view: { mode: "2d" } }),
+    "Low Power": jadeVariant({ view: { mode: "2d" }, flow: { rate: 145 },
+      liquid: { bloom: false }, quality: { maxParticles: 1150, iterations: 1, renderScale: .45, pixelRatio: 1, fps: "30" } })
+  };
+
+  const when3D = config => config.view.mode === "3d";
+  const hasObstacles = config => config.scene.obstacles && config.scene.obstacleCount > 0;
+  const movingObstacles = config => hasObstacles(config) && config.scene.obstacleMotion;
+  const cameraLimits = { yaw: [-180, 180], tilt: [-75, 75], zoom: [.6, 1.7] };
+  const range = (path, label, min, max, step, options = {}) => ({ path, label, type: "range", min, max, step, ...options });
+  const toggle = (path, label, options = {}) => ({ path, label, type: "boolean", ...options });
+  const choice = (path, label, options, extra = {}) => ({ path, label, type: "select", options, ...extra });
+  const color = (path, label, options = {}) => ({ path, label, type: "color", ...options });
+  const group = (label, fields) => ({ label, fields });
+  const section = (label, groups, open = false) => ({ label, groups, open });
+
+  const sections = [
+    section("View", [
+      group("Camera", [
+        choice("view.mode", "View mode", { "2d": "2D · planar", "3d": "3D · volume" },
+          { help: "Left-drag to rotate in 3D. Use the mouse wheel to zoom in either view." }),
+        toggle("view.perspective", "Perspective camera", { when: when3D }),
+        range("view.yaw", "Yaw", ...cameraLimits.yaw, 1, { when: when3D, unit: "°" }),
+        range("view.tilt", "Tilt", ...cameraLimits.tilt, 1, { when: when3D, unit: "°" }),
+        range("view.zoom", "Zoom", ...cameraLimits.zoom, .01)
+      ]),
+      group("Camera motion", [
+        toggle("view.orbit", "Auto-orbit camera", { when: when3D }),
+        range("view.orbitSpeed", "Orbit speed", 1, 25, 1, { when: c => when3D(c) && c.view.orbit })
+      ])
+    ], true),
+    section("Particles", [
+      group("Physics", [
+        range("flow.gravity", "Gravity", 0, 30, .5),
+        range("flow.viscosity", "Viscosity", 0, .8, .01, { help: "Blends the velocities of nearby particles." }),
+        range("flow.tension", "Surface tension", 0, .6, .01, { help: "Draws the edges of the liquid together." }),
+        range("flow.rebound", "Surface bounce", 0, .8, .01),
+        range("flow.adhesion", "Surface stickiness", 0, .8, .01),
+        range("scene.retention", "Pool retention", .5, 6, .1, { when: c => c.scene.basin, unit: " s",
+          help: "Controls how long liquid collects before it drains." })
+      ]),
+      group("Emitter", [
+        range("flow.rate", "Emission rate", 30, 600, 5, { unit: " /s" }),
+        range("flow.nozzle", "Nozzle width", .16, 1.6, .01),
+        range("flow.nozzleX", "Nozzle position", -6, 6, .05),
+        range("flow.depth", "Nozzle depth", .15, 2.4, .05, { when: when3D }),
+        range("flow.speed", "Emission speed", .4, 9, .1),
+        toggle("flow.sway", "Sweep the stream"),
+        range("flow.swayWidth", "Sweep width", 0, 3, .05, { when: c => c.flow.sway }),
+        range("flow.swaySpeed", "Sweep speed", .1, 3, .05, { when: c => c.flow.sway })
+      ]),
+      group("Appearance", [
+        choice("liquid.style", "Render style", { surface: "Glossy surface", particles: "Visible particles" }),
+        color("liquid.body", "Body color"), color("liquid.edge", "Edge color"), color("liquid.highlight", "Highlight color"),
+        range("liquid.opacity", "Liquid opacity", .1, 1, .01),
+        range("liquid.thickness", "Rendered particle size", .6, 1.75, .01),
+        range("liquid.detail", "Surface relief", 0, 3, .05, { when: c => c.liquid.style === "surface" })
+      ]),
+      group("Lighting", [
+        toggle("liquid.bloom", "Liquid glow"),
+        range("liquid.glow", "Glow intensity", 0, 1.5, .01, { when: c => c.liquid.bloom }),
+        toggle("liquid.impact", "Impact highlights"),
+        range("liquid.impactLight", "Impact brightness", 0, 1.5, .05, { when: c => c.liquid.impact })
+      ]),
+      group("Pointer", [
+        toggle("interaction.enabled", "Pointer deflector", { help: "Mouse hover or touch pushes liquid aside. In 3D it sits at the center of the stream depth." }),
+        range("interaction.radius", "Deflector radius", .18, 1.8, .01, { when: c => c.interaction.enabled }),
+        range("interaction.bounce", "Deflector bounce", 0, .8, .01, { when: c => c.interaction.enabled }),
+        toggle("interaction.show", "Show deflector", { when: c => c.interaction.enabled }),
+        toggle("interaction.burst", "Click or tap for an impulse", { when: c => c.interaction.enabled }),
+        range("interaction.force", "Impulse strength", 1, 18, .5, { when: c => c.interaction.enabled && c.interaction.burst })
+      ]),
+      group("Simulation quality", [
+        range("quality.maxParticles", "Particle budget", 400, 6000, 100),
+        range("quality.iterations", "Pressure iterations", 1, 4, 1),
+        range("quality.renderScale", "Liquid resolution", .35, 1, .01),
+        toggle("quality.adaptive", "Adaptive quality", { help: "Lowers liquid resolution and emission when frames slow down." }),
+        toggle("quality.stats", "Show FPS and particles")
+      ])
+    ], true),
+    section("Scene", [
+      group("Obstacles", [
+        toggle("scene.obstacles", "Enable obstacles"),
+        range("scene.obstacleCount", "Obstacle count", 0, 12, 1, { when: c => c.scene.obstacles }),
+        choice("scene.layout", "Obstacle layout", { cascade: "Foundry cascade", pinball: "Pinball", terraces: "Split terraces" }, { when: hasObstacles }),
+        choice("scene.obstacleType", "Obstacle type", { box: "Ledge", round: "Round bumper",
+          capsule: "Capsule", wedge: "Wedge", diamond: "Diamond", mixed: "Mixed" }, { when: hasObstacles }),
+        toggle("scene.obstacleMotion", "Random obstacle movement", { when: hasObstacles }),
+        range("scene.motionDistance", "Travel distance", 0, 1.5, .05, { when: movingObstacles }),
+        range("scene.motionSpeed", "Movement speed", .1, 3, .05, { when: movingObstacles }),
+        range("scene.motionTurn", "Rocking angle", 0, 45, 1, { when: movingObstacles, unit: "°" }),
+        range("scene.motionSeed", "Motion seed", 1, 100, 1, { when: movingObstacles,
+          help: "Change the seed to give the obstacles different paths." })
+      ]),
+      group("Basin and surfaces", [
+        toggle("scene.basin", "Catch basin"),
+        toggle("scene.showSolids", "Show obstacle surfaces", { when: c => hasObstacles(c) || c.scene.basin }),
+        color("scene.solid", "Obstacle color", { when: c => c.scene.showSolids && (hasObstacles(c) || c.scene.basin) })
+      ]),
+      group("Backdrop", [
+        color("scene.background", "Background color", { help: "Use #00000000 for a fully transparent backdrop." }),
+        toggle("scene.backdrop", "Backdrop lighting"),
+        toggle("scene.grid", "Backdrop grid", { when: c => c.scene.backdrop })
+      ])
+    ]),
+    section("Performance", [group("", [
+      range("quality.pixelRatio", "Pixel ratio cap", .75, 2, .05),
+      choice("quality.fps", "Render limit", { 30: "30 fps", 60: "60 fps", display: "Display rate" })
+    ])])
+  ];
+
+  const canvas = document.querySelector("#scene");
+  const message = document.querySelector("#message");
+  const gl = canvas.getContext("webgl2", { alpha: true, premultipliedAlpha: false, antialias: false, depth: false });
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+  let config = { ...settings, view: { ...settings.view } };
+  let paused = false;
+  let is3D = config.view.mode === "3d";
+  let renderer;
+  let simulation;
+  let solids;
+  let qualityFactor = 1;
+  let needsRender = true;
+  let lastDraw = -Infinity;
+  let lastTime = 0;
+  let accumulator = 0;
+  let elapsed = 0;
+  const timestep = 1 / 90;
+  const pointer = { active: false, u: 0, v: 0, x: 0, y: 0, valid: false, vx: 0, vy: 0, impulse: false };
+  let drag = null;
+
+  // x, y, z, half-width, half-height, half-depth, angle in degrees.
+  const layouts = {
+    cascade: [
+      [-2.13, 3.28, 0, 2.05, .13, 1.42, -16],
+      [1.18, 1.18, .1, 1.94, .14, 1.38, 21],
+      [-2.42, -.78, .04, 1.67, .13, 1.48, -24],
+      [1.45, -2.37, -.05, 1.75, .13, 1.34, 17]
+    ],
+    pinball: [
+      [-2.55, 3.2, 0, 1.14, .18, 1.25, -29],
+      [-.65, 1.66, -.04, .75, .31, 1.25, 34],
+      [-3.28, .5, .05, 1.19, .18, 1.4, -22],
+      [1.48, -.2, 0, 1.43, .17, 1.3, 22],
+      [-1.25, -1.76, .08, .96, .34, 1.45, -37],
+      [2.85, -2.75, -.08, 1.06, .16, 1.35, 23]
+    ],
+    terraces: [
+      [-3.3, 3.18, 0, 1.76, .15, 1.5, -8],
+      [.07, 1.72, 0, 1.94, .15, 1.4, 11],
+      [-2.86, .18, 0, 1.55, .15, 1.48, -11],
+      [1.98, -1.02, 0, 1.71, .15, 1.5, 9],
+      [-1.02, -2.52, 0, 2.08, .15, 1.44, -8]
+    ]
+  };
+  const basin = [
+    [0, -4.76, 0, 4.92, .16, 1.9, 0],
+    [-4.76, -4.36, 0, .14, .53, 1.9, -13],
+    [4.76, -4.36, 0, .14, .53, 1.9, 13],
+    [0, -4.48, -1.81, 4.68, .35, .1, 0],
+    [0, -4.58, 1.81, 4.68, .25, .1, 0]
+  ];
+  const extraObstacles = [
+    [3.65, 3.65, 0, .74, .19, 1.18, 27],
+    [-4.48, 1.73, 0, .66, .18, 1.25, -29],
+    [3.93, .14, 0, .74, .19, 1.2, 23],
+    [-4.58, -1.95, 0, .65, .17, 1.15, -18],
+    [3.65, -2.92, 0, .72, .18, 1.24, 19],
+    [.42, 3.85, 0, .69, .17, 1.1, 23],
+    [-.25, -3.38, 0, .72, .16, 1.1, -27],
+    [4.65, 2.02, 0, .58, .17, 1.1, -18]
+  ];
+  const shapeTypes = ["box", "round", "capsule", "wedge", "diamond"];
+  const radians = Math.PI / 180;
+  let movingCount = 0;
+  let solidsDirty = false;
+
+  function obstacleOutline(type, width, height) {
+    if (type === "round") {
+      const radius = clamp(width * .52, .32, .78);
+      return Array.from({ length: 20 }, (_, i) => {
+        const angle = i * 2 * Math.PI / 20;
+        return [radius * Math.cos(angle), radius * Math.sin(angle)];
+      });
+    }
+    if (type === "capsule") {
+      const radius = Math.min(width * .6, Math.max(height, .27));
+      const span = width - radius;
+      return Array.from({ length: 18 }, (_, i) => {
+        const angle = (i % 9) * Math.PI / 8 - Math.PI / 2 + (i < 9 ? 0 : Math.PI);
+        return [(i < 9 ? span : -span) + radius * Math.cos(angle), radius * Math.sin(angle)];
+      });
+    }
+    if (type === "wedge") {
+      const h = Math.max(height, .38);
+      return [[-width, -h], [width, -h], [-width, h]];
+    }
+    if (type === "diamond") {
+      const h = Math.max(height, .48);
+      return [[0, -h], [width, 0], [0, h], [-width, 0]];
+    }
+    return [[-width, -height], [width, -height], [width, height], [-width, height]];
+  }
+
+  function setObstaclePose(solid, angle) {
+    solid.c = Math.cos(angle);
+    solid.s = Math.sin(angle);
+    solid.boundX = Math.abs(solid.c) * solid.w + Math.abs(solid.s) * solid.h;
+    solid.boundY = Math.abs(solid.s) * solid.w + Math.abs(solid.c) * solid.h;
+  }
+
+  function updateObstacleMotion(time) {
+    const { motionDistance, motionSpeed, motionTurn } = config.scene;
+    for (let i = 0; i < movingCount; i++) {
+      const solid = solids[i];
+      const { baseX, baseY, angle, phaseX, phaseY, phaseTurn, pace } = solid;
+      const speed = motionSpeed * pace;
+      const x = time * speed + phaseX;
+      const y = time * speed * .73 + phaseY;
+      const turn = time * speed * 1.17 + phaseTurn;
+      const rocking = motionTurn * radians;
+      solid.x = baseX + motionDistance * Math.sin(x);
+      solid.y = baseY + motionDistance * .48 * Math.sin(y);
+      solid.vx = motionDistance * speed * Math.cos(x);
+      solid.vy = motionDistance * .48 * speed * .73 * Math.cos(y);
+      solid.angularVelocity = rocking * speed * 1.17 * Math.cos(turn);
+      setObstaclePose(solid, angle + rocking * Math.sin(turn));
+    }
+    solidsDirty ||= movingCount > 0;
+  }
+
+  function buildSolids() {
+    const { layout, obstacleCount, obstacleType, obstacleMotion, motionSeed } = config.scene;
+    const ledges = config.scene.obstacles ? [...layouts[layout], ...extraObstacles].slice(0, obstacleCount) : [];
+    const pool = config.scene.basin ? basin.slice(0, is3D ? 5 : 3) : [];
+    let seed = motionSeed >>> 0;
+    const random = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    movingCount = obstacleMotion ? ledges.length : 0;
+    solids = [...ledges, ...pool].map(([x, y, z, w, h, d, degrees], i) => {
+      const type = i >= ledges.length ? "box"
+        : obstacleType === "mixed" ? shapeTypes[i % shapeTypes.length] : obstacleType;
+      const outline = obstacleOutline(type, w, h);
+      const faces = outline.map(([px, py], j) => {
+        const [qx, qy] = outline[(j + 1) % outline.length];
+        const length = Math.hypot(qx - px, qy - py);
+        const nx = (qy - py) / length, ny = (px - qx) / length;
+        return { nx, ny, offset: nx * px + ny * py };
+      });
+      const phase = () => random() * 2 * Math.PI;
+      const solid = { x, y, z, d, outline, faces, baseX: x, baseY: y, angle: degrees * radians,
+        w: Math.max(...outline.map(point => Math.abs(point[0]))),
+        h: Math.max(...outline.map(point => Math.abs(point[1]))),
+        phaseX: phase(), phaseY: phase(), phaseTurn: phase(), pace: .6 + random() * .85,
+        vx: 0, vy: 0, angularVelocity: 0 };
+      setObstaclePose(solid, solid.angle);
+      return solid;
+    });
+    updateObstacleMotion(elapsed);
+    renderer.setSolids(solids, movingCount > 0);
+    solidsDirty = false;
+  }
+
+  class Fluid {
+    constructor() {
+      const capacity = 6000;
+      this.p = new Float32Array(capacity * 3);
+      this.v = new Float32Array(capacity * 3);
+      this.base = new Float32Array(capacity * 3);
+      this.delta = new Float32Array(capacity * 3);
+      this.density = new Float32Array(capacity);
+      this.impact = new Float32Array(capacity);
+      this.wet = new Float32Array(capacity);
+      this.next = new Int32Array(capacity);
+      this.cells = new Int32Array(capacity);
+      this.vertexData = new Float32Array(capacity * 4);
+      this.count = 0;
+      this.carry = 0;
+      this.randomState = 1376312589;
+      this.h = .39;
+      this.nx = 64;
+      this.ny = 45;
+      this.layer = this.nx * this.ny;
+      this.nz = is3D ? 26 : 1;
+      this.head = new Int32Array(this.layer * this.nz);
+    }
+
+    random() {
+      let n = this.randomState;
+      n ^= n << 13;
+      n ^= n >>> 17;
+      n ^= n << 5;
+      this.randomState = n;
+      return (n >>> 0) / 4294967296;
+    }
+
+    emit(dt) {
+      const f = config.flow;
+      const budget = config.quality.maxParticles;
+      const center = f.nozzleX + (f.sway ? Math.sin(elapsed * f.swaySpeed) * f.swayWidth : 0);
+      this.carry += f.rate * (.5 + .5 * qualityFactor) * dt;
+      const due = Math.floor(this.carry);
+      this.carry -= due;
+      for (let spawned = 0; spawned < due && this.count < budget; spawned++) {
+        const i = this.count++;
+        const k = i * 3;
+        this.p[k] = center + (this.random() - .5) * f.nozzle;
+        this.p[k + 1] = 5.49 + this.random() * .21;
+        this.p[k + 2] = is3D ? (this.random() - .5) * f.depth : 0;
+        this.v[k] = (this.random() - .5) * .55;
+        this.v[k + 1] = -f.speed * (.85 + .3 * this.random());
+        this.v[k + 2] = is3D ? (this.random() - .5) * .45 : 0;
+        this.impact[i] = 0;
+        this.wet[i] = 0;
+      }
+    }
+
+    remove(i) {
+      const end = --this.count;
+      if (end === i) return;
+      const k = i * 3;
+      this.p.copyWithin(k, end * 3, end * 3 + 3);
+      this.v.copyWithin(k, end * 3, end * 3 + 3);
+      this.impact[i] = this.impact[end];
+      this.wet[i] = this.wet[end];
+    }
+
+    hash() {
+      const { p, head, next, cells, h, nx, ny, nz, layer } = this;
+      head.fill(-1);
+      for (let i = 0, k = 0; i < this.count; i++, k += 3) {
+        const x = clamp(Math.floor(p[k] / h + nx / 2), 0, nx - 1);
+        const y = clamp(Math.floor(p[k + 1] / h + ny / 2), 0, ny - 1);
+        const z = clamp(Math.floor(p[k + 2] / h + nz / 2), 0, nz - 1);
+        const cell = x + y * nx + z * layer;
+        cells[i] = cell;
+        next[i] = head[cell];
+        head[cell] = i;
+      }
+    }
+
+    // Two pressure passes share the same grid. Each pair is evaluated once per pass.
+    neighbors(phase) {
+      const { p, v, delta, density, cells, head, next, h, nx, ny, nz, layer } = this;
+      const h2 = h * h;
+      const { tension, viscosity } = config.flow;
+      const targetDensity = is3D ? 3.2 : 4.5;
+      const pressureScale = is3D ? 1 : .62;
+      for (let i = 0, a = 0; i < this.count; i++, a += 3) {
+        const cell = cells[i];
+        const cx = cell % nx;
+        const cy = Math.floor(cell / nx) % ny;
+        const cz = Math.floor(cell / layer);
+        const px = p[a], py = p[a + 1], pz = p[a + 2];
+        const minX = Math.max(0, cx - 1), maxX = Math.min(nx - 1, cx + 1);
+        const minY = Math.max(0, cy - 1), maxY = Math.min(ny - 1, cy + 1);
+        const minZ = Math.max(0, cz - 1), maxZ = Math.min(nz - 1, cz + 1);
+        for (let z = minZ; z <= maxZ; z++) {
+          for (let y = minY; y <= maxY; y++) {
+            const start = z * layer + y * nx;
+            for (let x = minX; x <= maxX; x++) {
+              for (let j = head[start + x]; j > i; j = next[j]) {
+                // Linked lists contain indices in descending order.
+                const b = j * 3;
+                const dx = p[b] - px, dy = p[b + 1] - py, dz = p[b + 2] - pz;
+                const r2 = dx * dx + dy * dy + dz * dz;
+                if (r2 >= h2) continue;
+                const r = Math.sqrt(Math.max(r2, 1e-10));
+                const q = 1 - r / h;
+                if (phase === 0) {
+                  density[i] += q * q;
+                  density[j] += q * q;
+                  continue;
+                }
+                let fx, fy, fz;
+                if (phase === 1) {
+                  const excess = Math.max(0, (density[i] + density[j]) * .5 - targetDensity);
+                  const core = .055 * q * q * q;
+                  const repel = pressureScale * Math.min(.047, .008 * excess * q + core);
+                  const cohesion = tension * .029 * q * (1 - q);
+                  const force = (repel - cohesion) / r;
+                  fx = r2 < 1e-10 ? .012 : dx * force;
+                  fy = dy * force;
+                  fz = dz * force;
+                } else {
+                  const mix = viscosity * q / (2 + Math.max(density[i], density[j]) * 2);
+                  fx = (v[a] - v[b]) * mix;
+                  fy = (v[a + 1] - v[b + 1]) * mix;
+                  fz = (v[a + 2] - v[b + 2]) * mix;
+                }
+                delta[a] -= fx;
+                delta[a + 1] -= fy;
+                delta[a + 2] -= fz;
+                delta[b] += fx;
+                delta[b + 1] += fy;
+                delta[b + 2] += fz;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    contact(i, nx, ny, nz, overlap, bounce, adhesion, surfaceX, surfaceY, respond) {
+      const k = i * 3;
+      this.p[k] += nx * overlap;
+      this.p[k + 1] += ny * overlap;
+      this.p[k + 2] += nz * overlap;
+      if (!respond) return;
+      const vx = this.v[k] - surfaceX;
+      const vy = this.v[k + 1] - surfaceY;
+      const vz = this.v[k + 2];
+      const normalSpeed = vx * nx + vy * ny + vz * nz;
+      if (normalSpeed >= 0) return;
+      const reflected = -normalSpeed * bounce;
+      const friction = 1 - adhesion * .32;
+      this.v[k] = surfaceX + (vx - normalSpeed * nx) * friction + reflected * nx;
+      this.v[k + 1] = surfaceY + (vy - normalSpeed * ny) * friction + reflected * ny;
+      this.v[k + 2] = (vz - normalSpeed * nz) * friction + reflected * nz;
+      this.impact[i] = Math.max(this.impact[i], Math.min(1, -normalSpeed * .085));
+    }
+
+    collide(i, respond) {
+      const k = i * 3;
+      const p = this.p;
+      const radius = .083;
+      const { rebound, adhesion } = config.flow;
+      for (const solid of solids) {
+        const dx = p[k] - solid.x, dy = p[k + 1] - solid.y, z = p[k + 2] - solid.z;
+        if (Math.abs(dy) > solid.boundY + radius || Math.abs(dx) > solid.boundX + radius
+          || (is3D && Math.abs(z) >= solid.d + radius)) continue;
+        const x = solid.c * dx + solid.s * dy;
+        const y = -solid.s * dx + solid.c * dy;
+        let distance = is3D ? Math.abs(z) - solid.d : -Infinity;
+        let nx = 0, ny = 0, nz = Math.sign(z) || 1;
+        for (const face of solid.faces) {
+          const signed = face.nx * x + face.ny * y - face.offset;
+          if (signed > distance) {
+            distance = signed;
+            nx = face.nx;
+            ny = face.ny;
+            nz = 0;
+          }
+          if (distance >= radius) break;
+        }
+        if (distance >= radius) continue;
+        this.contact(i, solid.c * nx - solid.s * ny, solid.s * nx + solid.c * ny, nz, radius - distance, rebound, adhesion,
+          solid.vx - solid.angularVelocity * dy, solid.vy + solid.angularVelocity * dx, respond);
+      }
+      if (!pointer.valid) return;
+      const dx = p[k] - pointer.x;
+      const dy = p[k + 1] - pointer.y;
+      const dz = p[k + 2];
+      const reach = config.interaction.radius + radius;
+      const distance2 = dx * dx + dy * dy + dz * dz;
+      if (distance2 < reach * reach) {
+        const distance = Math.sqrt(distance2);
+        const inverse = distance > 1e-6 ? 1 / distance : 0;
+        this.contact(i, dx * inverse, inverse ? dy * inverse : 1, dz * inverse, reach - distance,
+          config.interaction.bounce, 0, pointer.vx, pointer.vy, respond);
+      }
+    }
+
+    step(dt) {
+      if (movingCount) updateObstacleMotion(elapsed);
+      const { p, v, base, delta, density, impact, wet } = this;
+      const { gravity, viscosity } = config.flow;
+      const { retention, basin: hasBasin } = config.scene;
+      for (let i = this.count - 1; i >= 0; i--) {
+        const k = i * 3;
+        if (hasBasin && p[k + 1] < -3.95 && Math.abs(p[k]) < 4.85 && Math.abs(p[k + 2]) < 1.9) {
+          wet[i] += dt * (.85 + Math.abs(p[k]) * .12);
+        }
+        if (p[k + 1] < -7.15 || p[k + 1] > 7.6 || Math.abs(p[k]) > 11.6 || Math.abs(p[k + 2]) > 4.7
+          || wet[i] > retention || this.count > config.quality.maxParticles) this.remove(i);
+      }
+      this.emit(dt);
+
+      for (let i = 0, k = 0; i < this.count; i++, k += 3) {
+        impact[i] *= .95;
+        if (pointer.valid && pointer.impulse) {
+          const dx = p[k] - pointer.x, dy = p[k + 1] - pointer.y, dz = p[k + 2];
+          const distance = Math.hypot(dx, dy, dz);
+          const reach = config.interaction.radius * 3;
+          if (distance < reach) {
+            const force = config.interaction.force * (1 - distance / reach) / Math.max(distance, .05);
+            v[k] += dx * force;
+            v[k + 1] += dy * force;
+            v[k + 2] += dz * force;
+            impact[i] = Math.max(impact[i], .8);
+          }
+        }
+        v[k + 1] -= gravity * dt;
+        // A speed limit keeps one step shorter than the thinnest expanded ledge.
+        const speed = Math.max(1, Math.hypot(v[k], v[k + 1], v[k + 2]) / 21);
+        for (let axis = 0; axis < 3; axis++) {
+          v[k + axis] /= speed;
+          p[k + axis] += v[k + axis] * dt;
+        }
+        this.collide(i, true);
+      }
+      pointer.impulse = false;
+      const active = this.count * 3;
+      for (let k = 0; k < active; k++) base[k] = p[k];
+      for (let iteration = 0; iteration < config.quality.iterations; iteration++) {
+        this.hash();
+        density.fill(0, 0, this.count);
+        delta.fill(0, 0, this.count * 3);
+        this.neighbors(0);
+        this.neighbors(1);
+        for (let i = 0, k = 0; i < this.count; i++, k += 3) {
+          for (let axis = 0; axis < 3; axis++) p[k + axis] += clamp(delta[k + axis], -.065, .065);
+          this.collide(i, false);
+        }
+      }
+
+      const correctionVelocity = (is3D ? .45 : .27) / dt;
+      for (let k = 0; k < this.count * 3; k++) v[k] += (p[k] - base[k]) * correctionVelocity;
+      if (viscosity > 0) {
+        // Reuse the last pressure pass's density estimate for velocity mixing.
+        this.hash();
+        delta.fill(0, 0, active);
+        this.neighbors(2);
+        for (let k = 0; k < this.count * 3; k++) v[k] += delta[k];
+      }
+    }
+
+    pack() {
+      const out = this.vertexData;
+      for (let i = 0, a = 0, b = 0; i < this.count; i++, a += 3, b += 4) {
+        out[b] = this.p[a];
+        out[b + 1] = this.p[a + 1];
+        out[b + 2] = this.p[a + 2];
+        out[b + 3] = this.impact[i];
+      }
+      return out;
+    }
+  }
+
+  const camera = {
+    right: new Float32Array(3), up: new Float32Array(3), axis: new Float32Array(3),
+    extent: new Float32Array(2), perspective: 0
+  };
+
+  function updateCamera() {
+    const view = config.view;
+    const orbit = view.orbit ? Math.sin(elapsed * view.orbitSpeed * .018) * 25 : 0;
+    const yaw = is3D ? (view.yaw + orbit) * Math.PI / 180 : 0;
+    const pitch = is3D ? view.tilt * Math.PI / 180 : 0;
+    const sy = Math.sin(yaw), cy = Math.cos(yaw);
+    const sp = Math.sin(pitch), cp = Math.cos(pitch);
+    camera.right.set([cy, 0, -sy]);
+    camera.up.set([-sy * sp, cp, -cy * sp]);
+    camera.axis.set([sy * cp, sp, cy * cp]);
+    const aspect = canvas.clientWidth / Math.max(1, canvas.clientHeight);
+    const halfHeight = Math.max(6.05, 5.4 / Math.max(.01, aspect)) / view.zoom;
+    camera.extent[0] = halfHeight * aspect;
+    camera.extent[1] = halfHeight;
+    camera.perspective = Number(is3D && view.perspective);
+  }
+
+  function mapPointer(dt) {
+    const wasValid = pointer.valid;
+    pointer.valid = pointer.active && config.interaction.enabled;
+    if (!pointer.valid) {
+      pointer.vx = pointer.vy = 0;
+      pointer.impulse = false;
+      return;
+    }
+    const { right, up, axis, extent, perspective } = camera;
+    const sx = pointer.u * extent[0], sy = pointer.v * extent[1];
+    const ox = sx * right[0] + sy * up[0];
+    const oy = sx * right[1] + sy * up[1];
+    const oz = sx * right[2] + sy * up[2];
+    const dx = -axis[0] + (perspective ? ox / 18 : 0);
+    const dy = -axis[1] + (perspective ? oy / 18 : 0);
+    const dz = -axis[2] + (perspective ? oz / 18 : 0);
+    if (Math.abs(dz) < .025) {
+      pointer.valid = false;
+      return;
+    }
+    const x = ox - dx * oz / dz;
+    const y = oy - dy * oz / dz;
+    pointer.vx = wasValid && dt ? clamp((x - pointer.x) / dt, -12, 12) : 0;
+    pointer.vy = wasValid && dt ? clamp((y - pointer.y) / dt, -12, 12) : 0;
+    pointer.x = x;
+    pointer.y = y;
+  }
+
+  const project = `
+    uniform vec3 uRight, uUp, uAxis;
+    uniform vec2 uExtent;
+    uniform float uPerspective;
+    vec4 project(vec3 world) {
+      vec3 cam = vec3(dot(world,uRight),dot(world,uUp),dot(world,uAxis));
+      float w = 1.0 - uPerspective * cam.z / 18.0;
+      return vec4(cam.xy/uExtent, -cam.z/14.0*w, w);
+    }
+  `;
+  const fullscreen = `#version 300 es
+    out vec2 uv;
+    void main() {
+      uv = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+      gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);
+    }`;
+
+  const solidVS = `#version 300 es
+    layout(location=0) in vec3 point;
+    layout(location=1) in vec3 normal;
+    layout(location=2) in vec2 tile;
+    out vec3 n;
+    out vec2 face;
+    ${project}
+    void main() {
+      n = normal;
+      face = tile;
+      gl_Position = project(point);
+    }`;
+  const solidFS = `#version 300 es
+    precision mediump float;
+    in vec3 n;
+    in vec2 face;
+    uniform vec3 uColor;
+    out vec4 result;
+    void main() {
+      float light = max(0.0, dot(n, normalize(vec3(-0.48,0.78,0.68))));
+      float edge = min(min(face.x,1.0-face.x),min(face.y,1.0-face.y));
+      float rim = 1.0 - smoothstep(0.0, 0.025, edge);
+      result = vec4(uColor * (0.45 + 0.69 * light) + rim * vec3(0.07,0.105,0.12), 1.0);
+    }`;
+  const fluidVS = `#version 300 es
+    layout(location=0) in vec4 particle;
+    uniform float uRadius;
+    out vec2 local;
+    flat out float impact;
+    flat out float depthCenter;
+    ${project}
+    void main() {
+      local = vec2(float((gl_VertexID & 1) * 2 - 1), float((gl_VertexID >> 1) * 2 - 1));
+      vec4 clip = project(particle.xyz);
+      clip.xy += local * uRadius / uExtent;
+      impact = particle.w;
+      depthCenter = clip.z / clip.w * .5 + .5;
+      gl_Position = clip;
+    }`;
+  const fluidFS = `#version 300 es
+    precision highp float;
+    in vec2 local;
+    flat in float impact;
+    flat in float depthCenter;
+    uniform sampler2D uSolidDepth;
+    uniform vec2 uSize;
+    uniform float uRadius, uParticles, uHasSolids;
+    out vec4 result;
+    void main() {
+      float r2 = dot(local,local);
+      if (r2 >= 1.0) discard;
+      float front = depthCenter - sqrt(1.0-r2)*uRadius/28.0;
+      if (uHasSolids > .5 && front > texture(uSolidDepth,gl_FragCoord.xy/uSize).r + .001) discard;
+      float kernel = (1.0-r2)*(1.0-r2);
+      float weight = mix(.37,.82,uParticles)*kernel;
+      float gleam = smoothstep(.37,.96,1.0-length(local+vec2(.26,-.31)));
+      result = vec4(weight,weight*impact,weight*gleam,weight);
+    }`;
+  const finishFS = `#version 300 es
+    precision highp float;
+    in vec2 uv;
+    uniform sampler2D uScene, uFluid;
+    uniform vec2 uPixel, uViewport, uPointer;
+    uniform vec4 uBackground;
+    uniform vec3 uBody, uEdge, uHighlight;
+    uniform float uBackdrop, uGrid, uOpacity, uDetail, uGlow, uImpact, uParticles, uPointerRadius;
+    out vec4 result;
+    void layer(inout vec4 base, vec3 color, float alpha) {
+      alpha = clamp(alpha,0.0,1.0);
+      base = vec4(color*alpha + base.rgb*(1.0-alpha), alpha + base.a*(1.0-alpha));
+    }
+    float density(vec2 offset) { return texture(uFluid, uv + offset*uPixel).r; }
+    void main() {
+      vec2 center = (uv-.5)*vec2(uViewport.x/uViewport.y,1.);
+      float halo = exp(-dot(center,center)*3.6);
+      vec2 gridUV = (uv-.5)*uViewport/54.;
+      vec2 g = abs(fract(gridUV+.5)-.5);
+      float grid = (1.0-smoothstep(.005,.023,min(g.x,g.y)))*halo*uGrid;
+      vec3 bg = uBackground.rgb * (1.0 + halo*.48*uBackdrop);
+      bg += uBackdrop*(vec3(.012,.03,.035)*halo+vec3(.025,.041,.046)*grid);
+      vec4 mixed = vec4(bg*uBackground.a,uBackground.a);
+      vec4 scene = texture(uScene,uv);
+      layer(mixed,scene.rgb,scene.a);
+
+      vec3 sampleData = texture(uFluid,uv).rgb;
+      float d = sampleData.r;
+      if (uGlow > .001) {
+        float glow = (density(vec2(4.,0.))+density(vec2(-4.,0.))
+          +density(vec2(0.,4.))+density(vec2(0.,-4.))
+          +density(vec2(3.,3.))+density(vec2(-3.,-3.)))/6.;
+        layer(mixed,uEdge,clamp(glow*.8*uGlow,0.,.8)*uOpacity);
+      }
+      float alpha = uParticles > .5 ? smoothstep(.035,.54,d) : smoothstep(.065,.22,d);
+      if (alpha > .001) {
+        float heat = clamp(sampleData.g/max(.01,d),0.0,1.0)*uImpact;
+        vec3 color = mix(uEdge,uBody,smoothstep(.09,.7,d));
+        if (uParticles < .5) {
+          vec2 grad = vec2(density(vec2(-1.,0.))-density(vec2(1.,0.)),
+            density(vec2(0.,-1.))-density(vec2(0.,1.)));
+          vec3 n = normalize(vec3(grad*8.5*uDetail,1.0));
+          vec3 l = normalize(vec3(-.47,.54,.7));
+          float spec = pow(max(dot(reflect(-l,n),vec3(0.,0.,1.)),0.),14.);
+          float edge = pow(1.0-max(0.0,n.z),.8);
+          color = mix(color*.66,color*1.2,max(dot(l,n),0.));
+          color = mix(color,uEdge,edge*.68);
+          color = mix(color,uHighlight,clamp(spec*.72+heat*.46,0.0,.92));
+        } else {
+          color = mix(color,uHighlight,clamp(sampleData.b/max(d,.01)*.55+heat*.55,0.,.9));
+        }
+        layer(mixed,color,alpha*uOpacity);
+      }
+
+      if (uPointerRadius > 0.0) {
+        float r = length((uv-uPointer)*uViewport);
+        float ring = 1.0-smoothstep(.55,1.65,abs(r-uPointerRadius));
+        layer(mixed,uEdge,ring*.52);
+      }
+      result = vec4(mixed.rgb / max(mixed.a,.00001),mixed.a);
+    }`;
+
+  function hex(value, opacity = false) {
+    const rgb = parseInt(value.slice(1, 7), 16);
+    const rgba = [(rgb >> 16) / 255, ((rgb >> 8) & 255) / 255, (rgb & 255) / 255];
+    if (opacity) rgba.push(value.length === 9 ? parseInt(value.slice(7), 16) / 255 : 1);
+    return rgba;
+  }
+
+  class Renderer {
+    constructor() {
+      this.solid = this.program(solidVS, solidFS);
+      this.fluid = this.program(fluidVS, fluidFS);
+      this.finish = this.program(fullscreen, finishFS);
+      this.emptyVAO = gl.createVertexArray();
+      this.solidsVAO = gl.createVertexArray();
+      this.solidBuffer = gl.createBuffer();
+      gl.bindVertexArray(this.solidsVAO);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.solidBuffer);
+      for (let i = 0; i < 3; i++) {
+        gl.enableVertexAttribArray(i);
+        gl.vertexAttribPointer(i, i === 2 ? 2 : 3, gl.FLOAT, false, 32, i * 12);
+      }
+      this.particlesVAO = gl.createVertexArray();
+      this.particleBuffer = gl.createBuffer();
+      gl.bindVertexArray(this.particlesVAO);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, 6000 * 16, gl.DYNAMIC_DRAW);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 16, 0);
+      gl.vertexAttribDivisor(0, 1);
+      gl.bindVertexArray(null);
+      this.sceneTarget = this.target(true);
+      this.fluidTarget = this.target(false);
+      this.maxSize = Math.min(4096, gl.getParameter(gl.MAX_TEXTURE_SIZE));
+      gl.disable(gl.DITHER);
+    }
+
+    program(vertex, fragment) {
+      const compile = (type, source) => {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
+        return shader;
+      };
+      const vs = compile(gl.VERTEX_SHADER, vertex);
+      const fs = compile(gl.FRAGMENT_SHADER, fragment);
+      const handle = gl.createProgram();
+      gl.attachShader(handle, vs);
+      gl.attachShader(handle, fs);
+      gl.linkProgram(handle);
+      gl.deleteShader(vs);
+      gl.deleteShader(fs);
+      if (!gl.getProgramParameter(handle, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(handle));
+      const u = {};
+      for (let i = 0; i < gl.getProgramParameter(handle, gl.ACTIVE_UNIFORMS); i++) {
+        const { name } = gl.getActiveUniform(handle, i);
+        u[name] = gl.getUniformLocation(handle, name);
+      }
+      return { handle, u };
+    }
+
+    target(withDepth) {
+      const texture = filter => {
+        const id = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, id);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        return id;
+      };
+      return {
+        fb: gl.createFramebuffer(), color: texture(gl.LINEAR),
+        depth: withDepth ? texture(gl.NEAREST) : null, w: 0, h: 0
+      };
+    }
+
+    sizeTarget(target, w, h) {
+      if (w === target.w && h === target.h) return;
+      target.w = w;
+      target.h = h;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target.fb);
+      gl.bindTexture(gl.TEXTURE_2D, target.color);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target.color, 0);
+      if (target.depth) {
+        gl.bindTexture(gl.TEXTURE_2D, target.depth);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, w, h, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, target.depth, 0);
+      }
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+        throw new Error("WebGL could not allocate the fluid render targets.");
+      }
+    }
+
+    setSolids(obstacles, dynamic) {
+      const vertices = obstacles.reduce((count, solid) => count + solid.outline.length * 12 - 12, 0);
+      if (this.solidVertices?.length !== vertices * 8) this.solidVertices = new Float32Array(vertices * 8);
+      const points = this.solidVertices;
+      let offset = 0;
+      for (const solid of obstacles) {
+        const { outline, faces, c, s, w, h } = solid;
+        const depth = is3D ? solid.d : .065;
+        const vertex = ([x, y], z, nx, ny, nz, u, v) => {
+          points[offset++] = solid.x + x * c - y * s;
+          points[offset++] = solid.y + x * s + y * c;
+          points[offset++] = solid.z + z;
+          points[offset++] = nx * c - ny * s;
+          points[offset++] = nx * s + ny * c;
+          points[offset++] = nz;
+          points[offset++] = u;
+          points[offset++] = v;
+        };
+        const cap = (point, sign) => vertex(point, sign * depth, 0, 0, sign,
+          .5 + .5 * point[0] / w, .5 + .5 * point[1] / h);
+        for (let i = 1; i < outline.length - 1; i++) {
+          cap(outline[0], 1);
+          cap(outline[i], 1);
+          cap(outline[i + 1], 1);
+          cap(outline[0], -1);
+          cap(outline[i + 1], -1);
+          cap(outline[i], -1);
+        }
+        for (let i = 0; i < outline.length; i++) {
+          const a = outline[i], b = outline[(i + 1) % outline.length];
+          const { nx, ny } = faces[i];
+          vertex(a, -depth, nx, ny, 0, 0, 0);
+          vertex(b, -depth, nx, ny, 0, 1, 0);
+          vertex(b, depth, nx, ny, 0, 1, 1);
+          vertex(a, -depth, nx, ny, 0, 0, 0);
+          vertex(b, depth, nx, ny, 0, 1, 1);
+          vertex(a, depth, nx, ny, 0, 0, 1);
+        }
+      }
+      this.solidCount = vertices;
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.solidBuffer);
+      const usage = dynamic ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW;
+      if (this.solidBufferBytes !== points.byteLength || this.solidUsage !== usage) {
+        gl.bufferData(gl.ARRAY_BUFFER, points, usage);
+        this.solidBufferBytes = points.byteLength;
+        this.solidUsage = usage;
+      } else if (vertices) {
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, points);
+      }
+    }
+
+    cameraUniforms(u) {
+      gl.uniform3fv(u.uRight, camera.right);
+      gl.uniform3fv(u.uUp, camera.up);
+      gl.uniform3fv(u.uAxis, camera.axis);
+      gl.uniform2fv(u.uExtent, camera.extent);
+      gl.uniform1f(u.uPerspective, camera.perspective);
+    }
+
+    bind(target) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target?.fb || null);
+      gl.viewport(0, 0, target?.w || canvas.width, target?.h || canvas.height);
+    }
+
+    texture(unit, id, location) {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, id);
+      gl.uniform1i(location, unit);
+    }
+
+    draw() {
+      const { quality, scene, liquid, interaction } = config;
+      if (solidsDirty && scene.showSolids) {
+        this.setSolids(solids, movingCount > 0);
+        solidsDirty = false;
+      }
+      const ratio = Math.min(devicePixelRatio || 1, quality.pixelRatio,
+        this.maxSize / Math.max(1, canvas.clientWidth, canvas.clientHeight));
+      const w = Math.max(1, Math.round(canvas.clientWidth * ratio));
+      const h = Math.max(1, Math.round(canvas.clientHeight * ratio));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      const scale = Math.max(.32, quality.renderScale * qualityFactor);
+      this.sizeTarget(this.sceneTarget, w, h);
+      this.sizeTarget(this.fluidTarget, Math.max(1, Math.round(w*scale)), Math.max(1, Math.round(h*scale)));
+      const show = scene.showSolids && this.solidCount > 0;
+
+      this.bind(this.sceneTarget);
+      gl.enable(gl.DEPTH_TEST);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      if (show) {
+        const { handle, u } = this.solid;
+        gl.useProgram(handle);
+        this.cameraUniforms(u);
+        gl.uniform3fv(u.uColor, hex(scene.solid));
+        gl.bindVertexArray(this.solidsVAO);
+        gl.drawArrays(gl.TRIANGLES, 0, this.solidCount);
+      }
+
+      this.bind(this.fluidTarget);
+      gl.disable(gl.DEPTH_TEST);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      {
+        const { handle, u } = this.fluid;
+        gl.useProgram(handle);
+        this.cameraUniforms(u);
+        this.texture(0, this.sceneTarget.depth, u.uSolidDepth);
+        gl.uniform2f(u.uSize, this.fluidTarget.w, this.fluidTarget.h);
+        gl.uniform1f(u.uRadius, (liquid.style === "particles" ? .145 : .24) * liquid.thickness);
+        gl.uniform1f(u.uParticles, Number(liquid.style === "particles"));
+        gl.uniform1f(u.uHasSolids, Number(show));
+        gl.bindVertexArray(this.particlesVAO);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffer);
+        if (simulation.count) {
+          gl.bufferSubData(gl.ARRAY_BUFFER, 0, simulation.pack(), 0, simulation.count * 4);
+          gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, simulation.count);
+        }
+      }
+      gl.disable(gl.BLEND);
+
+      this.bind(null);
+      const { handle, u } = this.finish;
+      gl.useProgram(handle);
+      this.texture(0, this.sceneTarget.color, u.uScene);
+      this.texture(1, this.fluidTarget.color, u.uFluid);
+      gl.uniform2f(u.uPixel, 1 / this.fluidTarget.w, 1 / this.fluidTarget.h);
+      gl.uniform2f(u.uViewport, w, h);
+      gl.uniform4fv(u.uBackground, hex(scene.background, true));
+      gl.uniform3fv(u.uBody, hex(liquid.body));
+      gl.uniform3fv(u.uEdge, hex(liquid.edge));
+      gl.uniform3fv(u.uHighlight, hex(liquid.highlight));
+      gl.uniform1f(u.uBackdrop, Number(scene.backdrop));
+      gl.uniform1f(u.uGrid, Number(scene.grid));
+      gl.uniform1f(u.uOpacity, liquid.opacity);
+      gl.uniform1f(u.uDetail, liquid.detail);
+      gl.uniform1f(u.uGlow, liquid.bloom ? liquid.glow : 0);
+      gl.uniform1f(u.uImpact, liquid.impact ? liquid.impactLight : 0);
+      gl.uniform1f(u.uParticles, Number(liquid.style === "particles"));
+      gl.uniform2f(u.uPointer, .5+.5*pointer.u, .5+.5*pointer.v);
+      const depth = camera.axis[0]*pointer.x + camera.axis[1]*pointer.y;
+      const projection = 1 - camera.perspective * depth / 18;
+      gl.uniform1f(u.uPointerRadius, pointer.valid && interaction.show
+        ? interaction.radius*h/(2*camera.extent[1]*projection) : 0);
+      gl.bindVertexArray(this.emptyVAO);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+  }
+
+  let raf = 0;
+  let sampleStart = 0;
+  let sampleFrames = 0;
+  let healthySamples = 0;
+  let editor;
+  let contextLost = false;
+  const targetFPS = () => config.quality.fps === "display" ? 0 : Number(config.quality.fps);
+
+  function schedule() {
+    if (!raf && renderer && !contextLost && !document.hidden && (!paused || needsRender)) {
+      raf = requestAnimationFrame(frame);
+    }
+  }
+
+  function resetClock() {
+    lastTime = 0;
+    lastDraw = -Infinity;
+    sampleStart = sampleFrames = healthySamples = 0;
+    accumulator = 0;
+  }
+
+  function restart(warm = true) {
+    elapsed = 0;
+    if (movingCount) updateObstacleMotion(elapsed);
+    pointer.impulse = false;
+    simulation = new Fluid();
+    const valid = pointer.valid;
+    pointer.valid = false;
+    // Show a falling stream immediately while leaving the basin room to fill.
+    if (warm) for (let step = 0; step < 32; step++) {
+      elapsed += timestep;
+      simulation.step(timestep);
+    }
+    pointer.valid = valid;
+    resetClock();
+    needsRender = true;
+    schedule();
+  }
+
+  function frame(now) {
+    raf = 0;
+    const dt = lastTime ? Math.min(.1, (now - lastTime) / 1000) : 0;
+    lastTime = now;
+    const fps = targetFPS();
+    const period = fps ? 1000 / fps : 0;
+    if (!paused) {
+      accumulator = Math.min(accumulator + dt, timestep * 4);
+      updateCamera();
+      mapPointer(dt);
+      while (accumulator >= timestep) {
+        elapsed += timestep;
+        simulation.step(timestep);
+        accumulator -= timestep;
+      }
+    }
+    if (needsRender || now - lastDraw >= period - 1.25) {
+      if (paused) {
+        updateCamera();
+        mapPointer(0);
+      }
+      lastDraw = now;
+      needsRender = false;
+      try { renderer.draw(); }
+      catch (error) {
+        console.error(error);
+        message.textContent = "Viscous Cascade could not render at these settings.";
+        message.hidden = false;
+        return;
+      }
+      if (!paused) {
+        if (!sampleStart) sampleStart = now;
+        sampleFrames++;
+        if (now - sampleStart >= 1200) {
+          const actual = Math.round((sampleFrames - 1) * 1000 / (now - sampleStart));
+          if (config.quality.stats) editor?.setStats(actual + " fps · " + simulation.count + " particles · "
+            + Math.round(qualityFactor * 100) + "% adaptive quality");
+          if (config.quality.adaptive) {
+            const target = fps || 60;
+            if (actual < target * .83) {
+              qualityFactor = Math.max(.58, qualityFactor - .08);
+              healthySamples = 0;
+            } else if (actual >= target * .97 && ++healthySamples >= 4) {
+              qualityFactor = Math.min(1, qualityFactor + .04);
+              healthySamples = 0;
+            }
+          }
+          sampleStart = now;
+          sampleFrames = 1;
+        }
+      }
+    }
+    schedule();
+  }
+
+  function apply(next, path) {
+    const newMode = next.view.mode === "3d";
+    const changedMode = newMode !== is3D;
+    config = next;
+    is3D = newMode;
+    if (!config.quality.adaptive || !path) qualityFactor = 1;
+    if (!config.quality.stats) editor?.setStats("");
+    if (path === "quality.fps") resetClock();
+    if (!renderer || contextLost) return;
+    if (!path || changedMode || path.startsWith("scene.")) buildSolids();
+    if (changedMode) restart();
+    needsRender = true;
+    schedule();
+  }
+
+  function track(event) {
+    const rect = canvas.getBoundingClientRect();
+    pointer.u = 2 * (event.clientX - rect.left) / rect.width - 1;
+    pointer.v = 1 - 2 * (event.clientY - rect.top) / rect.height;
+    pointer.active = true;
+    if (paused) {
+      needsRender = true;
+      schedule();
+    }
+  }
+  function redrawView() {
+    needsRender = true;
+    schedule();
+  }
+
+  function finishDrag() {
+    const completed = drag;
+    drag = null;
+    if (completed?.rotating) {
+      canvas.classList.remove("rotating");
+      editor?.commitChanges?.();
+    }
+    return completed;
+  }
+
+  function splash() {
+    if (config.interaction.enabled && config.interaction.burst && !paused) pointer.impulse = true;
+  }
+
+  function clearPointer() {
+    pointer.active = false;
+    pointer.impulse = false;
+    if (paused) {
+      needsRender = true;
+      schedule();
+    }
+  }
+  window.addEventListener("pointermove", event => {
+    if (drag?.id === event.pointerId) {
+      if (!(event.buttons & 1)) {
+        finishDrag();
+        clearPointer();
+        return;
+      }
+      const dx = event.clientX - drag.x;
+      const dy = event.clientY - drag.y;
+      if (is3D && (drag.rotating || Math.hypot(dx, dy) >= 4)) {
+        drag.rotating = true;
+        canvas.classList.add("rotating");
+        const yaw = drag.yaw - dx * .3;
+        config.view.yaw = ((Math.round(yaw) + 180) % 360 + 360) % 360 - 180;
+        config.view.tilt = clamp(Math.round(drag.tilt + dy * .3), ...cameraLimits.tilt);
+        clearPointer();
+        redrawView();
+        return;
+      }
+    }
+    if (event.target === canvas && (event.pointerType !== "touch" || event.buttons)) track(event);
+    else clearPointer();
+  });
+  canvas.addEventListener("pointerdown", event => {
+    if (!event.isPrimary || event.button !== 0) return;
+    track(event);
+    canvas.setPointerCapture(event.pointerId);
+    if (event.pointerType === "mouse") {
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY,
+        yaw: config.view.yaw, tilt: config.view.tilt, rotating: false };
+    } else {
+      splash();
+    }
+  });
+  canvas.addEventListener("pointerup", event => {
+    if (event.pointerType === "mouse" && event.button === 0 && drag?.id === event.pointerId) {
+      const completed = finishDrag();
+      track(event);
+      if (!completed.rotating) splash();
+    }
+    if (event.pointerType === "touch") {
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      // Let the next simulation step consume even a very quick tap.
+      if (pointer.impulse) setTimeout(clearPointer, 90);
+      else clearPointer();
+    }
+  });
+  canvas.addEventListener("wheel", event => {
+    event.preventDefault();
+    const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1);
+    const zoom = clamp(config.view.zoom * Math.exp(-pixels * .0015), ...cameraLimits.zoom);
+    if (zoom === config.view.zoom) return;
+    config.view.zoom = zoom;
+    editor?.commitChanges?.();
+    redrawView();
+  }, { passive: false });
+  canvas.addEventListener("pointercancel", event => {
+    if (drag?.id === event.pointerId) finishDrag();
+    clearPointer();
+  });
+  canvas.addEventListener("lostpointercapture", event => {
+    if (drag?.id !== event.pointerId) return;
+    finishDrag();
+    clearPointer();
+  });
+  canvas.addEventListener("pointerleave", event => {
+    if (event.pointerType !== "touch") clearPointer();
+  });
+  window.addEventListener("blur", () => {
+    finishDrag();
+    clearPointer();
+  });
+  window.addEventListener("resize", () => {
+    needsRender = true;
+    schedule();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      cancelAnimationFrame(raf);
+      raf = 0;
+      finishDrag();
+      clearPointer();
+    }
+    resetClock();
+    schedule();
+  });
+
+  function setup() {
+    try {
+      renderer = new Renderer();
+      buildSolids();
+      restart();
+      message.hidden = true;
+    } catch (error) {
+      console.error(error);
+      renderer = null;
+      message.textContent = "Viscous Cascade could not start the WebGL renderer.";
+      message.hidden = false;
+    }
+  }
+
+  function loadSettingsEditor() {
+    const script = document.createElement("script");
+    script.src = "./settings-editor.js";
+    script.addEventListener("load", () => {
+      if (typeof window.createSettingsEditor !== "function") return;
+      editor = window.createSettingsEditor({
+        root: document.querySelector("#editor"),
+        defaults: settings,
+        presets,
+        sections,
+        storageKey: "viscous-cascade-v1",
+        onChange: apply,
+        onRestart: () => { if (renderer && !contextLost) restart(false); },
+        onPause: value => {
+          paused = value;
+          resetClock();
+          needsRender = true;
+          schedule();
+        }
+      });
+      apply(editor.config, null);
+    }, { once: true });
+    document.head.append(script);
+  }
+
+  loadSettingsEditor();
+  if (!gl) {
+    message.textContent = "Viscous Cascade requires WebGL 2.";
+    message.hidden = false;
+    return;
+  }
+  canvas.addEventListener("webglcontextlost", event => {
+    event.preventDefault();
+    contextLost = true;
+    cancelAnimationFrame(raf);
+    raf = 0;
+    message.textContent = "The WebGL context was interrupted. Waiting for it to recover…";
+    message.hidden = false;
+  });
+  canvas.addEventListener("webglcontextrestored", () => {
+    contextLost = false;
+    setup();
+  });
+  setup();
+})();
+</script>
+</body>
+</html>
