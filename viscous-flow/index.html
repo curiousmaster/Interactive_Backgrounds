@@ -55,7 +55,7 @@
   // Edit these values to configure the background without the settings editor.
   const settings = {
     editor: { enabled: true },
-    view: { mode: "3d", perspective: true, yaw: -10, tilt: 17, zoom: 0.8274788351319514, orbit: true, orbitSpeed: 8 },
+    view: { mode: "3d", perspective: true, yaw: 30, tilt: 21, zoom: 0.8274788351319514, orbit: true, orbitSpeed: 8 },
     flow: { gravity: 10, viscosity: .24, tension: .5, rebound: .25, adhesion: .15,
       rate: 180, nozzle: .2, nozzleX: .8, depth: 1, speed: 1, sway: true, swayWidth: 2.75, swaySpeed: .3 },
     scene: { obstacles: true, layout: "cascade", obstacleCount: 12, obstacleType: "capsule",
@@ -66,14 +66,16 @@
       thickness: 1.01, detail: 2, bloom: false, glow: 1.02, impact: true, impactLight: 1.5 },
     interaction: { enabled: true, radius: 1, bounce: .05, show: true, burst: true, force: 7 },
     quality: { maxParticles: 6000, iterations: 1, renderScale: .68, pixelRatio: 1.4, fps: "display", adaptive: true, stats: false },
+    lighting: { preset: "studio", intensity: 1, azimuth: 0, elevation: 0 },
+    bloom: { enabled: true, intensity: .65, threshold: .52, radius: 16, knee: .16 },
     pulse: { enabled: false, frequency: 1.2, duty: .38, minimum: .2 },
-    secondary: { enabled: false, x: -2.4, z: .35, rate: 95, width: .28, color: "#F09B5D", mix: .25 },
+    secondary: { enabled: true, x: -2.4, z: .35, rate: 95, width: .28, color: "#F09B5D", mix: .25 },
     wake: { enabled: false, strength: 3.6, reach: 1.25, fade: .8 },
-    wet: { enabled: false, radius: .65, fade: 2.4, strength: .78 },
-    mist: { enabled: false, threshold: 3.8, amount: 3, budget: 450, lifetime: .55 },
-    trails: { enabled: false, length: .12, fade: .42 },
-    speedColor: { enabled: false, fast: "#FF8FC8", low: 2, high: 12 },
-    refraction: { enabled: false, strength: 11 },
+    wet: { enabled: false, radius: 1.5, fade: 4.4, strength: .63 },
+    mist: { enabled: false, threshold: 15, amount: 6, budget: 1200, lifetime: .75 },
+    trails: { enabled: false, length: .28, fade: .41 },
+    speedColor: { enabled: true, fast: "#A5AAF3", low: 2, high: 12 },
+    refraction: { enabled: true, strength: 35 },
     gravityTilt: { enabled: false, angle: 16, swing: false, amplitude: 15, frequency: .16 }
   };
 
@@ -89,6 +91,29 @@
       thickness: 1.13, detail: 1.2, bloom: true, glow: .43, impact: true, impactLight: .75 },
     interaction: { enabled: true, radius: .58, bounce: .26, show: true, burst: true, force: 7 },
     quality: { maxParticles: 2800, iterations: 2, renderScale: .66, pixelRatio: 1.5, fps: "60", adaptive: true, stats: false }
+  };
+
+  const classicEffects = {
+    secondary: { ...settings.secondary, enabled: false },
+    speedColor: { ...settings.speedColor, enabled: false, fast: "#FF8FC8" },
+    refraction: { enabled: false, strength: 11 },
+    bloom: { ...settings.bloom, enabled: false }
+  };
+  Object.assign(jadeFoundry, classicEffects);
+
+  const lightingPresets = {
+    studio: { label: "Soft Studio", key: "#FFFFFF", rim: "#C8DAFF", azimuth: -34, elevation: 34,
+      ambient: .66, diffuse: .54, specular: .72, gloss: 14, edge: .16 },
+    moon: { label: "Moonlit Steel", key: "#A6D8FF", rim: "#7B9EFF", azimuth: -56, elevation: 27,
+      ambient: .48, diffuse: .83, specular: 1.12, gloss: 24, edge: .38 },
+    amber: { label: "Amber Furnace", key: "#FFB369", rim: "#FF713E", azimuth: 42, elevation: 29,
+      ambient: .49, diffuse: .88, specular: 1.07, gloss: 19, edge: .31 },
+    neon: { label: "Neon Violet", key: "#BB99FF", rim: "#6AFBEE", azimuth: -55, elevation: 12,
+      ambient: .42, diffuse: .78, specular: 1.22, gloss: 21, edge: .54 },
+    overcast: { label: "Overcast", key: "#E5F1FF", rim: "#DBECFF", azimuth: -8, elevation: 62,
+      ambient: .78, diffuse: .40, specular: .39, gloss: 7, edge: .07 },
+    noir: { label: "Noir Rim", key: "#DDE5FF", rim: "#B7D9FF", azimuth: 77, elevation: 18,
+      ambient: .31, diffuse: .84, specular: 1.2, gloss: 30, edge: .57 }
   };
 
   const jadeVariant = overrides => Object.fromEntries(Object.entries(jadeFoundry).map(
@@ -175,8 +200,8 @@
         range("liquid.thickness", "Rendered particle size", .6, 1.75, .01),
         range("liquid.detail", "Surface relief", 0, 3, .05, { when: c => c.liquid.style === "surface" })
       ]),
-      group("Lighting", [
-        toggle("liquid.bloom", "Liquid glow"),
+      group("Liquid highlights", [
+        toggle("liquid.bloom", "Liquid edge glow"),
         range("liquid.glow", "Glow intensity", 0, 1.5, .01, { when: c => c.liquid.bloom }),
         toggle("liquid.impact", "Impact highlights"),
         range("liquid.impactLight", "Impact brightness", 0, 1.5, .05, { when: c => c.liquid.impact })
@@ -224,6 +249,22 @@
         color("scene.background", "Background color", { help: "Use #00000000 for a fully transparent backdrop." }),
         toggle("scene.backdrop", "Backdrop lighting"),
         toggle("scene.grid", "Backdrop grid", { when: c => c.scene.backdrop })
+      ])
+    ]),
+    section("Lighting", [
+      group("Light rig", [
+        choice("lighting.preset", "Lighting preset",
+          Object.fromEntries(Object.entries(lightingPresets).map(([key, light]) => [key, light.label]))),
+        range("lighting.intensity", "Lighting intensity", 0, 2, .05),
+        range("lighting.azimuth", "Horizontal light offset", -180, 180, 1, { unit: "°" }),
+        range("lighting.elevation", "Vertical light offset", -75, 75, 1, { unit: "°" })
+      ]),
+      group("Bloom", [
+        toggle("bloom.enabled", "Bloom"),
+        range("bloom.intensity", "Bloom intensity", 0, 2, .05, { when: c => c.bloom.enabled }),
+        range("bloom.threshold", "Brightness threshold", 0, 1, .01, { when: c => c.bloom.enabled }),
+        range("bloom.radius", "Bloom radius", 2, 64, 1, { when: c => c.bloom.enabled, unit: " px" }),
+        range("bloom.knee", "Threshold softness", .01, .5, .01, { when: c => c.bloom.enabled })
       ])
     ]),
     section("Effects", [
@@ -962,14 +1003,21 @@
     in vec3 n;
     in vec2 face;
     in vec4 film;
-    uniform vec3 uColor, uWetColor;
+    uniform vec3 uColor, uWetColor, uLightDir, uKeyColor, uRimColor, uEye;
+    uniform vec4 uLight;
+    uniform float uGloss;
     uniform float uWetRadius, uWetStrength;
     out vec4 result;
     void main() {
-      float light = max(0.0, dot(n, normalize(vec3(-0.48,0.78,0.68))));
+      vec3 normal = normalize(n);
+      float light = max(0.0, dot(normal,uLightDir));
+      float gloss = pow(max(dot(reflect(-uLightDir,normal),uEye),0.0),uGloss);
+      float fresnel = pow(1.0-clamp(dot(normal,uEye),0.0,1.0),2.0);
       float edge = min(min(face.x,1.0-face.x),min(face.y,1.0-face.y));
       float rim = 1.0 - smoothstep(0.0, 0.025, edge);
-      vec3 surface = uColor * (0.45 + 0.69 * light) + rim * vec3(0.07,0.105,0.12);
+      vec3 surface = uColor * (uLight.x*.68 + uKeyColor * uLight.y * 1.28 * light);
+      surface += uKeyColor * gloss * uLight.z * .17 * step(.001,light);
+      surface += uRimColor * uLight.w * (rim*.5 + fresnel*.16);
       if (uWetStrength > 0.0 && film.w > 0.0) {
         float coverage = (1.0-smoothstep(uWetRadius*.28,uWetRadius,length(film.xyz))) * film.w * uWetStrength;
         vec3 stain = surface*.58 + uWetColor*(.29+.34*pow(light,5.0));
@@ -1038,7 +1086,9 @@
     uniform sampler2D uScene, uFluid;
     uniform vec2 uPixel, uViewport, uPointer;
     uniform vec4 uBackground;
-    uniform vec3 uBody, uEdge, uHighlight, uDyeColor, uFastColor;
+    uniform vec3 uBody, uEdge, uHighlight, uDyeColor, uFastColor, uLightDir, uKeyColor, uRimColor;
+    uniform vec4 uLight;
+    uniform float uGloss;
     uniform float uUseDye, uUseSpeed, uRefraction;
     uniform float uBackdrop, uGrid, uOpacity, uDetail, uGlow, uImpact, uParticles, uPointerRadius;
     out vec4 result;
@@ -1086,14 +1136,17 @@
         vec3 color = mix(edgeTint,body,smoothstep(.09,.7,d));
         if (uParticles < .5) {
           vec3 n = normalize(vec3(grad*8.5*uDetail,1.0));
-          vec3 l = normalize(vec3(-.47,.54,.7));
-          float spec = pow(max(dot(reflect(-l,n),vec3(0.,0.,1.)),0.),14.);
+          float diffuse = max(dot(uLightDir,n),0.0);
+          float spec = pow(max(reflect(-uLightDir,n).z,0.0),uGloss) * step(.001,diffuse);
           float edge = pow(1.0-max(0.0,n.z),.8);
-          color = mix(color*.66,color*1.2,max(dot(l,n),0.));
+          color *= uLight.x + uKeyColor*uLight.y*diffuse;
           color = mix(color,edgeTint,edge*.68);
-          color = mix(color,uHighlight,clamp(spec*.72+heat*.46,0.0,.92));
+          color += uRimColor*uLight.w*edge;
+          color = mix(color,uHighlight*uKeyColor,clamp(spec*uLight.z+heat*.46,0.0,.92));
         } else {
-          color = mix(color,uHighlight,clamp(sampleData.b/max(d,.01)*.55*(1.0-uUseSpeed)+heat*.55,0.,.9));
+          color *= uLight.x + uKeyColor*uLight.y*.63;
+          color = mix(color,uHighlight*uKeyColor,
+            clamp(sampleData.b/max(d,.01)*uLight.z*.76*(1.0-uUseSpeed)+heat*.55,0.,.9));
         }
         layer(mixed,color,alpha*uOpacity);
       }
@@ -1105,6 +1158,55 @@
       }
       result = vec4(mixed.rgb / max(mixed.a,.00001),mixed.a);
     }`;
+
+  const bloomBlurFS = `#version 300 es
+    precision highp float;
+    in vec2 uv;
+    uniform sampler2D uInput;
+    uniform vec2 uStep;
+    uniform float uThreshold, uKnee;
+    uniform bool uExtract;
+    out vec4 result;
+    vec3 sampleBright(vec2 position) {
+      vec4 sampleValue = texture(uInput,position);
+      if (!uExtract) return sampleValue.rgb;
+      float peak = max(sampleValue.r,max(sampleValue.g,sampleValue.b));
+      float weight = smoothstep(uThreshold-uKnee,uThreshold+uKnee,peak);
+      return sampleValue.rgb*sampleValue.a*weight;
+    }
+    void main() {
+      vec3 sum = sampleBright(uv)*.227027;
+      sum += (sampleBright(uv+uStep*1.384615)+sampleBright(uv-uStep*1.384615))*.316216;
+      sum += (sampleBright(uv+uStep*3.230769)+sampleBright(uv-uStep*3.230769))*.070270;
+      result = vec4(sum,1.0);
+    }`;
+
+  const bloomComposeFS = `#version 300 es
+    precision highp float;
+    in vec2 uv;
+    uniform sampler2D uBase,uBloom;
+    uniform float uIntensity;
+    out vec4 result;
+    void main() {
+      vec4 base = texture(uBase,uv);
+      vec3 glow = texture(uBloom,uv).rgb*uIntensity;
+      float halo = clamp(max(glow.r,max(glow.g,glow.b)),0.0,1.0);
+      float alpha = base.a + (1.0-base.a)*halo;
+      vec3 premultiplied = base.rgb*base.a + glow;
+      result = vec4(clamp(premultiplied/max(alpha,.00001),0.0,1.0),alpha);
+    }`;
+
+  function lightRig(options) {
+    const profile = lightingPresets[options.preset];
+    const yaw = (profile.azimuth + options.azimuth) * radians;
+    const pitch = clamp(profile.elevation + options.elevation,-89,89) * radians;
+    const direction = [Math.sin(yaw)*Math.cos(pitch), Math.sin(pitch), Math.cos(yaw)*Math.cos(pitch)];
+    const dot = axis => direction[0]*axis[0] + direction[1]*axis[1] + direction[2]*axis[2];
+    return { direction, screen: [dot(camera.right),dot(camera.up),dot(camera.axis)],
+      key: hex(profile.key), rim: hex(profile.rim), gloss: profile.gloss,
+      levels: [profile.ambient,profile.diffuse*options.intensity,
+        profile.specular*options.intensity,profile.edge*options.intensity] };
+  }
 
   function hex(value, opacity = false) {
     const rgb = parseInt(value.slice(1, 7), 16);
@@ -1118,6 +1220,8 @@
       this.solid = this.program(solidVS, solidFS);
       this.fluid = this.program(fluidVS, fluidFS);
       this.finish = this.program(fullscreen, finishFS);
+      this.bloomBlur = this.program(fullscreen, bloomBlurFS);
+      this.bloomCompose = this.program(fullscreen, bloomComposeFS);
       this.emptyVAO = gl.createVertexArray();
       this.solidsVAO = gl.createVertexArray();
       this.solidBuffer = gl.createBuffer();
@@ -1278,8 +1382,53 @@
       gl.uniform1i(location, unit);
     }
 
+    lightUniforms(u, light, direction) {
+      gl.uniform3fv(u.uLightDir,direction);
+      gl.uniform3fv(u.uKeyColor,light.key);
+      gl.uniform3fv(u.uRimColor,light.rim);
+      gl.uniform4fv(u.uLight,light.levels);
+      gl.uniform1f(u.uGloss,light.gloss);
+    }
+
+    drawBloom(w, h, ratio) {
+      this.bloomHorizontal ??= this.target(false);
+      this.bloomVertical ??= this.target(false);
+      const width = Math.max(1,Math.ceil(w / 4));
+      const height = Math.max(1,Math.ceil(h / 4));
+      this.sizeTarget(this.bloomHorizontal,width,height);
+      this.sizeTarget(this.bloomVertical,width,height);
+      const { radius, threshold, knee, intensity } = config.bloom;
+      const { handle, u } = this.bloomBlur;
+      const spread = radius * ratio / 3.230769;
+      gl.useProgram(handle);
+      gl.uniform1f(u.uThreshold,threshold);
+      gl.uniform1f(u.uKnee,knee);
+
+      this.bind(this.bloomHorizontal);
+      this.texture(0,this.compositeTarget.color,u.uInput);
+      gl.uniform1i(u.uExtract,1);
+      gl.uniform2f(u.uStep,spread / w,0);
+      gl.drawArrays(gl.TRIANGLES,0,3);
+
+      this.bind(this.bloomVertical);
+      this.texture(0,this.bloomHorizontal.color,u.uInput);
+      gl.uniform1i(u.uExtract,0);
+      gl.uniform2f(u.uStep,0,spread / h);
+      gl.drawArrays(gl.TRIANGLES,0,3);
+
+      this.bind(null);
+      const compose = this.bloomCompose;
+      gl.useProgram(compose.handle);
+      this.texture(0,this.compositeTarget.color,compose.u.uBase);
+      this.texture(1,this.bloomVertical.color,compose.u.uBloom);
+      gl.uniform1f(compose.u.uIntensity,intensity);
+      gl.drawArrays(gl.TRIANGLES,0,3);
+    }
+
     draw() {
-      const { quality, scene, liquid, interaction } = config;
+      const { quality, scene, liquid, interaction, bloom } = config;
+      const light = lightRig(config.lighting);
+      const applyBloom = bloom.enabled && bloom.intensity > 0;
       if (solidsDirty && scene.showSolids) {
         this.setSolids(solids, movingCount > 0 || config.wet.enabled);
         solidsDirty = false;
@@ -1305,6 +1454,8 @@
         const { handle, u } = this.solid;
         gl.useProgram(handle);
         this.cameraUniforms(u);
+        this.lightUniforms(u,light,light.direction);
+        gl.uniform3fv(u.uEye,camera.axis);
         gl.uniform3fv(u.uColor, hex(scene.solid));
         gl.uniform3fv(u.uWetColor, hex(liquid.body));
         gl.uniform1f(u.uWetRadius, config.wet.radius);
@@ -1346,9 +1497,14 @@
       }
       gl.disable(gl.BLEND);
 
-      this.bind(null);
+      if (applyBloom) {
+        this.compositeTarget ??= this.target(false);
+        this.sizeTarget(this.compositeTarget,w,h);
+      }
+      this.bind(applyBloom ? this.compositeTarget : null);
       const { handle, u } = this.finish;
       gl.useProgram(handle);
+      this.lightUniforms(u,light,light.screen);
       this.texture(0, this.sceneTarget.color, u.uScene);
       this.texture(1, this.fluidTarget.color, u.uFluid);
       gl.uniform2f(u.uPixel, 1 / this.fluidTarget.w, 1 / this.fluidTarget.h);
@@ -1376,6 +1532,7 @@
         ? interaction.radius*h/(2*camera.extent[1]*projection) : 0);
       gl.bindVertexArray(this.emptyVAO);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if (applyBloom) this.drawBloom(w,h,ratio);
     }
   }
 
