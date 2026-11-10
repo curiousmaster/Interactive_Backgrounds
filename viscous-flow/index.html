@@ -53,80 +53,19 @@
   "use strict";
 
   // Edit these values to configure the background without the settings editor.
-  const settings = 
-  "view": {
-    "mode": "3d",
-    "perspective": true,
-    "yaw": -28,
-    "tilt": 8,
-    "zoom": 0.85,
-    "orbit": true,
-    "orbitSpeed": 8
-  },
-  "flow": {
-    "gravity": 9.5,
-    "viscosity": 0.07,
-    "tension": 0.52,
-    "rebound": 0.17,
-    "adhesion": 0.02,
-    "rate": 140,
-    "nozzle": 0.2,
-    "nozzleX": 0.8,
-    "depth": 1.75,
-    "speed": 2.5,
-    "sway": true,
-    "swayWidth": 3,
-    "swaySpeed": 0.8
-  },
-  "scene": {
-    "obstacles": true,
-    "layout": "terraces",
-    "obstacleCount": 7,
-    "obstacleType": "capsule",
-    "obstacleMotion": false,
-    "motionDistance": 0.45,
-    "motionSpeed": 1,
-    "motionTurn": 12,
-    "motionSeed": 7,
-    "basin": false,
-    "retention": 2.8,
-    "showSolids": true,
-    "solid": "#243F4A",
-    "background": "#07131E",
-    "backdrop": true,
-    "grid": true
-  },
-  "liquid": {
-    "style": "surface",
-    "body": "#584CAE",
-    "edge": "#1E1849",
-    "highlight": "#FFFFFF",
-    "opacity": 0.96,
-    "thickness": 1.05,
-    "detail": 0.15,
-    "bloom": true,
-    "glow": 1.02,
-    "impact": true,
-    "impactLight": 1.5
-  },
-  "interaction": {
-    "enabled": true,
-    "radius": 0.58,
-    "bounce": 0.05,
-    "show": true,
-    "burst": true,
-    "force": 7
-  },
-  "quality": {
-    "maxParticles": 1800,
-    "iterations": 3,
-    "renderScale": 1,
-    "pixelRatio": 1.2,
-    "fps": "display",
-    "adaptive": true,
-    "stats": false
-  }
-};
+  const settings = {
+    view: { mode: "3d", perspective: true, yaw: 16, tilt: 2, zoom: .85, orbit: true, orbitSpeed: 8 },
+    flow: { gravity: 9.5, viscosity: .07, tension: .52, rebound: .04, adhesion: 0,
+      rate: 105, nozzle: .22, nozzleX: .8, depth: .3, speed: .4, sway: true, swayWidth: 1.8, swaySpeed: .65 },
+    scene: { obstacles: true, layout: "cascade", obstacleCount: 4, obstacleType: "box",
+      obstacleMotion: false, motionDistance: .45, motionSpeed: 1, motionTurn: 12, motionSeed: 7,
+      basin: false, retention: 2.8,
+      showSolids: true, solid: "#243F4A", background: "#07131E", backdrop: true, grid: true },
+    liquid: { style: "surface", body: "#584CAE", edge: "#1E1849", highlight: "#FFFFFF", opacity: .96,
+      thickness: 1.05, detail: 0, bloom: true, glow: 1.02, impact: false, impactLight: .75 },
+    interaction: { enabled: true, radius: .58, bounce: .26, show: true, burst: true, force: 7 },
+    quality: { maxParticles: 6000, iterations: 1, renderScale: .68, pixelRatio: 1.85, fps: "30", adaptive: true, stats: false }
+  };
 
   const jadeFoundry = {
     ...settings,
