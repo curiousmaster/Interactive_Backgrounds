@@ -54,152 +54,36 @@
 
   // Edit these values to configure the background without the settings editor.
   const settings = {
-    "editor": {
-      "enabled": true
-    },
-    "view": {
-      "mode": "3d",
-      "perspective": true,
-      "yaw": -13,
-      "tilt": 24,
-      "zoom": 0.8274788351319514,
-      "orbit": true,
-      "orbitSpeed": 8
-    },
-    "flow": {
-      "gravity": 10,
-      "viscosity": 0.24,
-      "tension": 0.5,
-      "rebound": 0.25,
-      "adhesion": 0.15,
-      "rate": 180,
-      "nozzle": 0.2,
-      "nozzleX": 0.8,
-      "depth": 1,
-      "speed": 1,
-      "sway": true,
-      "swayWidth": 2.75,
-      "swaySpeed": 0.3
-    },
-    "scene": {
-      "obstacles": true,
-      "layout": "cascade",
-      "obstacleCount": 12,
-      "obstacleType": "capsule",
-      "obstacleMotion": true,
-      "motionDistance": 0.45,
-      "motionSpeed": 1,
-      "motionTurn": 12,
-      "motionSeed": 7,
-      "motionPath": "wander",
-      "motionPhase": 57,
-      "basin": false,
-      "retention": 2.8,
-      "showSolids": true,
-      "solid": "#243F4A",
-      "background": "#07131E",
-      "backdrop": true,
-      "grid": true
-    },
-    "liquid": {
-      "style": "surface",
-      "body": "#584CAE",
-      "edge": "#1E1849",
-      "highlight": "#FFFFFF",
-      "opacity": 0.68,
-      "thickness": 1.01,
-      "detail": 2,
-      "bloom": false,
-      "glow": 1.02,
-      "impact": true,
-      "impactLight": 1.5
-    },
-    "interaction": {
-      "enabled": true,
-      "radius": 1,
-      "bounce": 0.05,
-      "show": true,
-      "burst": true,
-      "force": 7
-    },
-    "quality": {
-      "maxParticles": 6000,
-      "iterations": 1,
-      "renderScale": 0.68,
-      "pixelRatio": 1.4,
-      "fps": "display",
-      "adaptive": true,
-      "stats": false
-    },
-    "lighting": {
-      "preset": "studio",
-      "intensity": 0.85,
-      "azimuth": 102,
-      "elevation": 33
-    },
-    "bloom": {
-      "enabled": true,
-      "intensity": 1.5,
-      "threshold": 0.45,
-      "radius": 8,
-      "knee": 0.06
-    },
-    "pulse": {
-      "enabled": true,
-      "frequency": 0.8,
-      "duty": 0.38,
-      "minimum": 0.2
-    },
-    "secondary": {
-      "enabled": true,
-      "x": -2.4,
-      "z": 0.35,
-      "rate": 95,
-      "width": 0.28,
-      "color": "#71117E",
-      "mix": 0
-    },
-    "wake": {
-      "enabled": false,
-      "strength": 3.6,
-      "reach": 1.25,
-      "fade": 0.8
-    },
-    "wet": {
-      "enabled": false,
-      "radius": 1.5,
-      "fade": 4.4,
-      "strength": 0.63
-    },
-    "mist": {
-      "enabled": false,
-      "threshold": 15,
-      "amount": 6,
-      "budget": 1200,
-      "lifetime": 0.75
-    },
-    "trails": {
-      "enabled": false,
-      "length": 0.28,
-      "fade": 0.41
-    },
-    "speedColor": {
-      "enabled": true,
-      "fast": "#A5AAF3",
-      "low": 2,
-      "high": 12
-    },
-    "refraction": {
-      "enabled": true,
-      "strength": 35
-    },
-    "gravityTilt": {
-      "enabled": false,
-      "angle": 16,
-      "swing": false,
-      "amplitude": 15,
-      "frequency": 0.16
-    }
+    editor: { enabled: true },
+    view: { mode: "3d", perspective: true, yaw: -13, tilt: 24, zoom: 0.8274788351319514, orbit: true, orbitSpeed: 8 },
+    flow: { gravity: 10, viscosity: .24, tension: .5, rebound: .25, adhesion: .15,
+      rate: 180, nozzle: .2, nozzleX: .8, depth: 1, speed: 1, sway: true, swayWidth: 2.75, swaySpeed: .3 },
+    scene: { obstacles: true, layout: "cascade", obstacleCount: 12, obstacleType: "capsule",
+      obstacleMotion: true, motionDistance: .45, motionSpeed: 1, motionTurn: 12, motionSeed: 7,
+      motionPath: "wander", motionPhase: 57, basin: false, retention: 2.8, showSolids: true,
+      solid: "#243F4A", background: "#07131E", backdrop: true, grid: true },
+    liquid: { style: "surface", body: "#584CAE", edge: "#1E1849", highlight: "#FFFFFF", opacity: .68,
+      thickness: 1.01, detail: 2, bloom: false, glow: 1.02, impact: true, impactLight: 1.5 },
+    interaction: { enabled: true, radius: 1, bounce: .05, show: true, burst: true, force: 7 },
+    quality: { maxParticles: 6000, iterations: 1, renderScale: .68, pixelRatio: 1.4, fps: "display", adaptive: true, stats: false },
+    lighting: { preset: "studio", intensity: .85, azimuth: 102, elevation: 33 },
+    bloom: { enabled: true, intensity: 1.5, threshold: .45, radius: 8, knee: .06 },
+    pulse: { enabled: true, frequency: .8, duty: .38, minimum: .2, secondaryPhase: 0 },
+    secondary: { enabled: true, x: -2.4, z: .35, rate: 95, width: .28, color: "#71117E", mix: 0 },
+    wake: { enabled: false, strength: 3.6, reach: 1.25, fade: .8 },
+    wet: { enabled: false, radius: 1.5, fade: 4.4, strength: .63 },
+    mist: { enabled: false, threshold: 15, amount: 6, budget: 1200, lifetime: .75 },
+    trails: { enabled: false, length: .28, fade: .41, path: "straight", minSpeed: 0 },
+    speedColor: { enabled: true, fast: "#A5AAF3", low: 2, high: 12 },
+    refraction: { enabled: true, strength: 35, dispersion: 0 },
+    caustics: { enabled: false, strength: .6, reach: 72, scale: 4 },
+    iridescence: { enabled: false, strength: .55, shift: .25 },
+    bridges: { enabled: false, strength: .85, length: .75, lifetime: .23, width: .28 },
+    recoil: { enabled: false, strength: .36, threshold: 3, stiffness: 18, damping: 5.8 },
+    drips: { enabled: false, capture: .12, capacity: 5, delay: .42 },
+    haze: { enabled: false, color: "#293053", strength: .55, start: 0, range: 5 },
+    glints: { enabled: false, color: "#EACBFF", strength: .9, threshold: 5, speed: 2.4, lifetime: .65 },
+    gravityTilt: { enabled: false, angle: 16, swing: false, amplitude: 15, frequency: .16 }
   };
 
   const jadeFoundry = {
@@ -217,6 +101,8 @@
   };
 
   const classicEffects = {
+    pulse: { ...settings.pulse, enabled: false },
+    lighting: { ...settings.lighting, intensity: 1, azimuth: 0, elevation: 0 },
     secondary: { ...settings.secondary, enabled: false },
     speedColor: { ...settings.speedColor, enabled: false, fast: "#FF8FC8" },
     refraction: { enabled: false, strength: 11 },
@@ -245,6 +131,19 @@
 
   const presets = {
     "Preferred settings": settings,
+    "Violet Spectacle": {
+      ...settings,
+      caustics: { ...settings.caustics, enabled: true },
+      iridescence: { ...settings.iridescence, enabled: true },
+      bridges: { ...settings.bridges, enabled: true },
+      recoil: { ...settings.recoil, enabled: true },
+      pulse: { ...settings.pulse, secondaryPhase: .5 },
+      drips: { ...settings.drips, enabled: true },
+      trails: { ...settings.trails, enabled: true, path: "history", minSpeed: 4 },
+      refraction: { ...settings.refraction, dispersion: .28 },
+      haze: { ...settings.haze, enabled: true },
+      glints: { ...settings.glints, enabled: true }
+    },
     "All effects": {
       ...settings,
       scene: { ...settings.scene, motionPath: "weave" },
@@ -395,7 +294,9 @@
         toggle("pulse.enabled", "Pulsed emitter"),
         range("pulse.frequency", "Pulse frequency", .1, 5, .1, { when: c => c.pulse.enabled, unit: " Hz" }),
         range("pulse.duty", "Burst fraction", .05, .95, .01, { when: c => c.pulse.enabled }),
-        range("pulse.minimum", "Minimum flow fraction", 0, 1, .01, { when: c => c.pulse.enabled })
+        range("pulse.minimum", "Minimum flow fraction", 0, 1, .01, { when: c => c.pulse.enabled }),
+        range("pulse.secondaryPhase", "Second emitter pulse offset", 0, 1, .01,
+          { when: c => c.pulse.enabled && c.secondary.enabled, help: "A value of 0.5 staggers the emitters by half a cycle." })
       ]),
       group("Two-tone streams", [
         toggle("secondary.enabled", "Second emitter"),
@@ -428,7 +329,10 @@
       group("Liquid ribbons", [
         toggle("trails.enabled", "Liquid ribbons"),
         range("trails.length", "Ribbon length", .02, .35, .01, { when: c => c.trails.enabled, unit: " s" }),
-        range("trails.fade", "Ribbon fade strength", .05, 1, .01, { when: c => c.trails.enabled })
+        range("trails.fade", "Ribbon fade strength", .05, 1, .01, { when: c => c.trails.enabled }),
+        choice("trails.path", "Ribbon path", { straight: "Straight", history: "Curved position history" },
+          { when: c => c.trails.enabled }),
+        range("trails.minSpeed", "Minimum ribbon speed", 0, 20, .1, { when: c => c.trails.enabled })
       ]),
       group("Speed-based color", [
         toggle("speedColor.enabled", "Speed-based color"),
@@ -438,7 +342,8 @@
       ]),
       group("Glass-like refraction", [
         toggle("refraction.enabled", "Glass-like refraction"),
-        range("refraction.strength", "Refraction strength", 0, 35, .5, { when: c => c.refraction.enabled, unit: " px" })
+        range("refraction.strength", "Refraction strength", 0, 35, .5, { when: c => c.refraction.enabled, unit: " px" }),
+        range("refraction.dispersion", "Chromatic dispersion", 0, 1, .01, { when: c => c.refraction.enabled })
       ]),
       group("Tilted gravity", [
         toggle("gravityTilt.enabled", "Tilted gravity"),
@@ -448,6 +353,54 @@
           { when: c => c.gravityTilt.enabled && c.gravityTilt.swing, unit: "°" }),
         range("gravityTilt.frequency", "Gravity oscillation frequency", .02, 2, .01,
           { when: c => c.gravityTilt.enabled && c.gravityTilt.swing, unit: " Hz" })
+      ])
+    ]),
+    section("Cinematic effects", [
+      group("Moving caustics", [
+        toggle("caustics.enabled", "Moving caustics"),
+        range("caustics.strength", "Caustic brightness", 0, 1.5, .05, { when: c => c.caustics.enabled }),
+        range("caustics.reach", "Caustic projection reach", 12, 160, 1, { when: c => c.caustics.enabled, unit: " px" }),
+        range("caustics.scale", "Caustic pattern scale", 1, 12, .1, { when: c => c.caustics.enabled })
+      ]),
+      group("Thin-film iridescence", [
+        toggle("iridescence.enabled", "Thin-film iridescence"),
+        range("iridescence.strength", "Iridescence strength", 0, 1, .01, { when: c => c.iridescence.enabled }),
+        range("iridescence.shift", "Iridescence hue shift", 0, 1, .01, { when: c => c.iridescence.enabled })
+      ]),
+      group("Elastic liquid bridges", [
+        toggle("bridges.enabled", "Elastic liquid bridges"),
+        range("bridges.strength", "Bridge elasticity", 0, 2, .05, { when: c => c.bridges.enabled }),
+        range("bridges.length", "Bridge breakup length", .4, 1.4, .05, { when: c => c.bridges.enabled }),
+        range("bridges.lifetime", "Bridge lifetime", .05, .8, .01, { when: c => c.bridges.enabled, unit: " s" }),
+        range("bridges.width", "Bridge thickness", .1, .65, .01, { when: c => c.bridges.enabled })
+      ]),
+      group("Capsule recoil", [
+        toggle("recoil.enabled", "Obstacle recoil", { when: hasObstacles }),
+        range("recoil.strength", "Recoil strength", 0, 1.5, .05, { when: c => hasObstacles(c) && c.recoil.enabled }),
+        range("recoil.threshold", "Recoil impact threshold", .5, 15, .1, { when: c => hasObstacles(c) && c.recoil.enabled }),
+        range("recoil.stiffness", "Return spring", 4, 50, 1, { when: c => hasObstacles(c) && c.recoil.enabled }),
+        range("recoil.damping", "Recoil damping", 1, 16, .1, { when: c => hasObstacles(c) && c.recoil.enabled })
+      ]),
+      group("Under-edge drips", [
+        toggle("drips.enabled", "Under-edge drips", { when: hasObstacles }),
+        range("drips.capture", "Drip capture fraction", 0, .6, .01, { when: c => hasObstacles(c) && c.drips.enabled }),
+        range("drips.capacity", "Drops before release", 1, 12, 1, { when: c => hasObstacles(c) && c.drips.enabled }),
+        range("drips.delay", "Drip release interval", .05, 2, .01, { when: c => hasObstacles(c) && c.drips.enabled, unit: " s" })
+      ]),
+      group("Depth haze", [
+        toggle("haze.enabled", "Depth haze"),
+        color("haze.color", "Haze color", { when: c => c.haze.enabled }),
+        range("haze.strength", "Haze strength", 0, 1, .01, { when: c => c.haze.enabled }),
+        range("haze.start", "Haze near depth", -5, 6, .1, { when: c => c.haze.enabled }),
+        range("haze.range", "Haze depth range", .5, 12, .1, { when: c => c.haze.enabled })
+      ]),
+      group("Traveling impact glints", [
+        toggle("glints.enabled", "Traveling impact glints"),
+        color("glints.color", "Glint color", { when: c => c.glints.enabled }),
+        range("glints.strength", "Glint brightness", 0, 2, .05, { when: c => c.glints.enabled }),
+        range("glints.threshold", "Glint impact threshold", .5, 15, .1, { when: c => c.glints.enabled }),
+        range("glints.speed", "Glint travel speed", .25, 8, .05, { when: c => c.glints.enabled }),
+        range("glints.lifetime", "Glint lifetime", .1, 1.5, .05, { when: c => c.glints.enabled, unit: " s" })
       ])
     ]),
     section("Performance", [group("", [
@@ -520,7 +473,11 @@
   const shapeTypes = ["box", "round", "capsule", "wedge", "diamond"];
   const radians = Math.PI / 180;
   const maxMist = 1200;
+  const particleCapacity = 6000;
+  const maxDripBeads = 12;
+  const historySamples = 8;
   let movingCount = 0;
+  let ledgeCount = 0;
   let solidsDirty = false;
 
   function obstacleOutline(type, width, height) {
@@ -558,8 +515,12 @@
   }
 
   function updateObstacleMotion(time, dt = 0) {
-    const { motionDistance, motionSpeed, motionTurn, motionPath, motionPhase } = config.scene;
-    for (let i = 0; i < movingCount; i++) {
+    const { motionSpeed, motionPath, motionPhase } = config.scene;
+    const motionDistance = movingCount ? config.scene.motionDistance : 0;
+    const motionTurn = movingCount ? config.scene.motionTurn : 0;
+    const recoil = config.recoil;
+    const activeCount = recoil.enabled ? ledgeCount : movingCount;
+    for (let i = 0; i < activeCount; i++) {
       const solid = solids[i];
       const { baseX, baseY, baseZ, angle, phaseX, phaseY, phaseTurn, pace } = solid;
       const ordered = motionPath !== "wander";
@@ -580,8 +541,22 @@
       solid.vy = motionDistance * .48 * speed * verticalRate * Math.cos(y);
       solid.vz = weave ? motionDistance * speed * Math.cos(z) : 0;
       solid.angularVelocity = rocking * speed * 1.17 * Math.cos(turn);
-      setObstaclePose(solid, angle + rocking * Math.sin(turn));
-      if (config.wake.enabled) {
+      if (recoil.enabled) {
+        const decay = Math.exp(-recoil.damping * dt);
+        solid.recoilVX = (solid.recoilVX - solid.recoilX * recoil.stiffness * dt) * decay;
+        solid.recoilVY = (solid.recoilVY - solid.recoilY * recoil.stiffness * dt) * decay;
+        solid.recoilSpin = (solid.recoilSpin - solid.recoilAngle * recoil.stiffness * dt) * decay;
+        solid.recoilX = clamp(solid.recoilX + solid.recoilVX * dt, -.6, .6);
+        solid.recoilY = clamp(solid.recoilY + solid.recoilVY * dt, -.6, .6);
+        solid.recoilAngle = clamp(solid.recoilAngle + solid.recoilSpin * dt, -.45, .45);
+        solid.x += solid.recoilX;
+        solid.y += solid.recoilY;
+        solid.vx += solid.recoilVX;
+        solid.vy += solid.recoilVY;
+        solid.angularVelocity += solid.recoilSpin;
+      }
+      setObstaclePose(solid, angle + rocking * Math.sin(turn) + (recoil.enabled ? solid.recoilAngle : 0));
+      if (config.wake.enabled && movingCount) {
         const blend = dt ? -Math.expm1(-dt / config.wake.fade) : 1;
         solid.wakeX += (solid.x - solid.wakeX) * blend;
         solid.wakeY += (solid.y - solid.wakeY) * blend;
@@ -590,7 +565,7 @@
         solid.wakePower += (Math.min(1, speedXY) - solid.wakePower) * blend;
       }
     }
-    solidsDirty ||= movingCount > 0;
+    solidsDirty ||= activeCount > 0;
   }
 
   function buildSolids() {
@@ -602,7 +577,8 @@
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
       return seed / 4294967296;
     };
-    movingCount = obstacleMotion ? ledges.length : 0;
+    ledgeCount = ledges.length;
+    movingCount = obstacleMotion ? ledgeCount : 0;
     solids = [...ledges, ...pool].map(([x, y, z, w, h, d, degrees], i) => {
       const type = i >= ledges.length ? "box"
         : obstacleType === "mixed" ? shapeTypes[i % shapeTypes.length] : obstacleType;
@@ -620,18 +596,21 @@
         phaseX: phase(), phaseY: phase(), phaseTurn: phase(), pace: .6 + random() * .85,
         vx: 0, vy: 0, vz: 0, angularVelocity: 0,
         wakeX: x, wakeY: y, wakeZ: z, wakePower: 0,
-        wetX: 0, wetY: 0, wetZ: 0, wetness: 0 };
+        wetX: 0, wetY: 0, wetZ: 0, wetness: 0, ledge: i < ledgeCount,
+        recoilX: 0, recoilY: 0, recoilVX: 0, recoilVY: 0, recoilAngle: 0, recoilSpin: 0,
+        dripCount: 0, dripDye: 0, dripX: 0, dripZ: 0, dripTimer: 0, dripping: false,
+        glintX: 0, glintY: 0, glintZ: 0, glintAge: 0, glintPower: 0 };
       setObstaclePose(solid, solid.angle);
       return solid;
     });
     updateObstacleMotion(elapsed);
-    renderer.setSolids(solids, movingCount > 0 || config.wet.enabled);
+    renderer.setSolids(solids, movingCount > 0 || config.wet.enabled || config.recoil.enabled || config.glints.enabled);
     solidsDirty = false;
   }
 
   class Fluid {
     constructor() {
-      const capacity = 6000;
+      const capacity = particleCapacity;
       this.p = new Float32Array(capacity * 3);
       this.v = new Float32Array(capacity * 3);
       this.base = new Float32Array(capacity * 3);
@@ -643,7 +622,15 @@
       this.cells = new Int32Array(capacity);
       this.dye = new Float32Array(capacity);
       this.dyeDelta = new Float32Array(capacity);
-      this.vertexData = new Float32Array((capacity + maxMist) * 8);
+      this.vertexData = new Float32Array((capacity + maxMist + maxDripBeads) * 8);
+      this.links = new Int32Array(capacity).fill(-1);
+      this.linkLife = new Float32Array(capacity);
+      this.capture = new Uint8Array(capacity);
+      this.historyCount = new Uint8Array(capacity);
+      this.historyHead = 0;
+      this.historyClock = 0;
+      this.historyLength = 0;
+      this.beadCount = 0;
       // Mist uses position, velocity, remaining life, initial life and dye.
       this.mist = new Float32Array(maxMist * 9);
       this.mistCount = 0;
@@ -673,13 +660,15 @@
       const center = flow.nozzleX + (flow.sway ? Math.sin(elapsed * flow.swaySpeed) * flow.swayWidth : 0);
       const phase = (elapsed * pulse.frequency) % 1;
       const pulseScale = pulse.enabled && phase >= pulse.duty ? pulse.minimum : 1;
-      const scale = (.5 + .5 * qualityFactor) * pulseScale * dt;
-      this.carry += flow.rate * scale;
+      const scale = (.5 + .5 * qualityFactor) * dt;
+      this.carry += flow.rate * scale * pulseScale;
       const due = Math.floor(this.carry);
       this.carry -= due;
       this.spawn(due, center, 0, flow.nozzle, 0);
       if (secondary.enabled) {
-        this.secondaryCarry += secondary.rate * scale;
+        const secondPhase = (phase + pulse.secondaryPhase) % 1;
+        const secondPulse = pulse.enabled && secondPhase >= pulse.duty ? pulse.minimum : 1;
+        this.secondaryCarry += secondary.rate * scale * secondPulse;
         const secondDue = Math.floor(this.secondaryCarry);
         this.secondaryCarry -= secondDue;
         this.spawn(secondDue, secondary.x, secondary.z, secondary.width, 1);
@@ -700,9 +689,45 @@
         this.v[k] = (this.random() - .5) * .55;
         this.v[k + 1] = -f.speed * (.85 + .3 * this.random());
         this.v[k + 2] = is3D ? (this.random() - .5) * .45 : 0;
-        this.impact[i] = 0;
-        this.wet[i] = 0;
-        this.dye[i] = dye;
+        this.initParticle(i,dye);
+      }
+    }
+
+    initParticle(i,dye) {
+      this.impact[i] = 0;
+      this.wet[i] = 0;
+      this.dye[i] = dye;
+      this.links[i] = -1;
+      this.linkLife[i] = 0;
+      this.capture[i] = 0;
+      this.historyCount[i] = 0;
+    }
+
+    dripOutlet(solid) {
+      return [solid.x + clamp(solid.dripX,-solid.w*.7,solid.w*.7)*solid.c,
+        solid.y - solid.boundY - .12, solid.z + solid.dripZ];
+    }
+
+    releaseDrips(dt) {
+      for (let j = 0; j < ledgeCount; j++) {
+        const solid = solids[j];
+        if (!solid.dripCount) continue;
+        const { capacity, delay } = config.drips;
+        solid.dripTimer += dt;
+        if (solid.dripCount >= capacity || solid.dripTimer >= delay * 2) solid.dripping = true;
+        if ((!solid.dripping && config.drips.enabled) || solid.dripTimer < delay ||
+          this.count >= config.quality.maxParticles) continue;
+        const i = this.count++, k = i * 3;
+        this.p.set(this.dripOutlet(solid),k);
+        this.v[k] = solid.vx*.65;
+        this.v[k+1] = Math.min(-.55,solid.vy-.55);
+        this.v[k+2] = solid.vz*.65;
+        const dye = solid.dripDye / solid.dripCount;
+        this.initParticle(i,dye);
+        solid.dripDye -= dye;
+        solid.dripCount--;
+        solid.dripTimer = 0;
+        if (!solid.dripCount) solid.dripping = false;
       }
     }
 
@@ -766,13 +791,112 @@
 
     remove(i) {
       const end = --this.count;
+      this.breakLink(i);
       if (end === i) return;
+      const partner = this.links[end];
+      this.links[i] = partner;
+      this.linkLife[i] = this.linkLife[end];
+      if (partner >= 0) this.links[partner] = i;
+      this.capture[i] = this.capture[end];
+      this.historyCount[i] = this.historyCount[end];
+      if (this.history && this.historyCount[i]) {
+        const stride = historySamples * 3;
+        this.history.copyWithin(i*stride,end*stride,(end+1)*stride);
+      }
       const k = i * 3;
       this.p.copyWithin(k, end * 3, end * 3 + 3);
       this.v.copyWithin(k, end * 3, end * 3 + 3);
       this.impact[i] = this.impact[end];
       this.wet[i] = this.wet[end];
       this.dye[i] = this.dye[end];
+    }
+
+    breakLink(i) {
+      const partner = this.links[i];
+      if (partner >= 0) this.links[partner] = -1;
+      this.links[i] = -1;
+    }
+
+    updateLinks(dt) {
+      const { length, strength } = config.bridges;
+      for (let i = 0; i < this.count; i++) {
+        const j = this.links[i];
+        if (j <= i) continue;
+        const a = i*3, b = j*3;
+        const dx = this.p[b]-this.p[a], dy = this.p[b+1]-this.p[a+1], dz = this.p[b+2]-this.p[a+2];
+        const distance = Math.hypot(dx,dy,dz);
+        const life = Math.min(this.linkLife[i],this.linkLife[j])-dt;
+        if (!config.bridges.enabled || life <= 0 || distance > length) {
+          this.breakLink(i);
+          continue;
+        }
+        this.linkLife[i] = this.linkLife[j] = life;
+        const impulse = distance > .22 ? Math.min(.22,(distance-.22)*strength*dt*28)/distance : 0;
+        this.v[a] += dx*impulse;
+        this.v[a+1] += dy*impulse;
+        this.v[a+2] += dz*impulse;
+        this.v[b] -= dx*impulse;
+        this.v[b+1] -= dy*impulse;
+        this.v[b+2] -= dz*impulse;
+      }
+    }
+
+    recordHistory(dt) {
+      const enabled = config.trails.enabled && config.trails.path === "history";
+      if (!enabled || config.trails.length !== this.historyLength) {
+        if (this.historyLength) this.historyCount.fill(0);
+        this.historyLength = enabled ? config.trails.length : 0;
+        this.historyClock = 0;
+      }
+      if (!enabled) return;
+      this.history ??= new Float32Array(particleCapacity * historySamples * 3);
+      this.historyClock += dt;
+      const interval = Math.max(dt,this.historyLength / historySamples);
+      if (this.historyClock < interval) return;
+      this.historyClock %= interval;
+      this.historyHead = (this.historyHead + 1) % historySamples;
+      for (let i = 0, k = 0; i < this.count; i++, k += 3) {
+        const offset = (i*historySamples + this.historyHead)*3;
+        this.history[offset] = this.p[k];
+        this.history[offset+1] = this.p[k+1];
+        this.history[offset+2] = this.p[k+2];
+        this.historyCount[i] = Math.min(historySamples,this.historyCount[i]+1);
+      }
+    }
+
+    packSegments(bridges) {
+      this.segments ??= new Float32Array(particleCapacity * historySamples * 12);
+      const out = this.segments;
+      let offset = 0;
+      const minSpeed = config.trails.minSpeed;
+      const write = (x,y,z,tx,ty,tz,k,i,fade,dye) => {
+        out[offset++] = x; out[offset++] = y; out[offset++] = z; out[offset++] = this.impact[i];
+        out[offset++] = this.v[k]; out[offset++] = this.v[k+1]; out[offset++] = this.v[k+2]; out[offset++] = dye;
+        out[offset++] = tx; out[offset++] = ty; out[offset++] = tz; out[offset++] = fade;
+      };
+      for (let i = 0, k = 0; i < this.count; i++, k += 3) {
+        const x = this.p[k], y = this.p[k+1], z = this.p[k+2];
+        if (bridges) {
+          const j = this.links[i];
+          if (j <= i) continue;
+          const q = j*3, dx = this.p[q]-x, dy = this.p[q+1]-y, dz = this.p[q+2]-z;
+          const distance = Math.hypot(dx,dy,dz);
+          if (distance < .26 || distance > config.bridges.length) continue;
+          const fade = Math.min(1,this.linkLife[i]/Math.max(.04,config.bridges.lifetime*.45));
+          write(x,y,z,this.p[q],this.p[q+1],this.p[q+2],k,i,fade,(this.dye[i]+this.dye[j])*.5);
+          continue;
+        }
+        const vx=this.v[k], vy=this.v[k+1], vz=this.v[k+2];
+        if (vx*vx+vy*vy+vz*vz < minSpeed*minSpeed) continue;
+        let hx = x, hy = y, hz = z;
+        for (let j = 0; j < this.historyCount[i]; j++) {
+          const h = (i*historySamples+(this.historyHead-j+historySamples)%historySamples)*3;
+          const tx=this.history[h], ty=this.history[h+1], tz=this.history[h+2];
+          write(hx,hy,hz,tx,ty,tz,k,i,1-(j+1)/historySamples,this.dye[i]);
+          hx=tx; hy=ty; hz=tz;
+        }
+      }
+      return offset / 12;
     }
 
     hash() {
@@ -795,6 +919,7 @@
       const h2 = h * h;
       const { tension, viscosity } = config.flow;
       const dyeMix = config.secondary.enabled ? config.secondary.mix : 0;
+      const bridges = config.bridges;
       const targetDensity = is3D ? 3.2 : 4.5;
       const pressureScale = is3D ? 1 : .62;
       for (let i = 0, a = 0; i < this.count; i++, a += 3) {
@@ -829,6 +954,12 @@
                   const core = .055 * q * q * q;
                   const repel = pressureScale * Math.min(.047, .008 * excess * q + core);
                   const cohesion = tension * .029 * q * (1 - q);
+                  if (bridges.enabled && r > .20 && r < .32 && this.links[i] < 0 && this.links[j] < 0
+                    && (v[b]-v[a])*dx + (v[b+1]-v[a+1])*dy + (v[b+2]-v[a+2])*dz > .12) {
+                    this.links[i] = j;
+                    this.links[j] = i;
+                    this.linkLife[i] = this.linkLife[j] = bridges.lifetime;
+                  }
                   const force = (repel - cohesion) / r;
                   fx = r2 < 1e-10 ? .012 : dx * force;
                   fy = dy * force;
@@ -874,6 +1005,7 @@
       this.v[k] = surfaceX + (vx - normalSpeed * nx) * friction + reflected * nx;
       this.v[k + 1] = surfaceY + (vy - normalSpeed * ny) * friction + reflected * ny;
       this.v[k + 2] = surfaceZ + (vz - normalSpeed * nz) * friction + reflected * nz;
+      if (solid?.ledge) this.obstacleImpact(solid,i,nx,ny,-normalSpeed);
       if (solid && config.wet.enabled) {
         const dx = this.p[k] - solid.x, dy = this.p[k + 1] - solid.y;
         const deposit = Math.min(.6, -normalSpeed * .09);
@@ -888,6 +1020,38 @@
         this.emitMist(i, nx, ny, nz, -normalSpeed);
       }
       this.impact[i] = Math.max(this.impact[i], Math.min(1, -normalSpeed * .085));
+    }
+
+    obstacleImpact(solid,i,nx,ny,speed) {
+      const { recoil, drips, glints } = config;
+      if (!recoil.enabled && !drips.enabled && !glints.enabled) return;
+      const k = i*3, dx = this.p[k]-solid.x, dy = this.p[k+1]-solid.y;
+      const localX = solid.c*dx+solid.s*dy;
+      if (recoil.enabled && speed >= recoil.threshold) {
+        const impulse = Math.min(.65,(speed-recoil.threshold)*recoil.strength*.055);
+        solid.recoilVX = clamp(solid.recoilVX-nx*impulse,-3,3);
+        solid.recoilVY = clamp(solid.recoilVY-ny*impulse,-3,3);
+        solid.recoilSpin = clamp(solid.recoilSpin-(dx*ny-dy*nx)*impulse,-3,3);
+      }
+      if (glints.enabled && speed >= glints.threshold) {
+        const power = Math.min(1,speed/12);
+        if (power >= solid.glintPower * Math.max(0,1-solid.glintAge/glints.lifetime)) {
+          solid.glintX = localX;
+          solid.glintY = -solid.s*dx+solid.c*dy;
+          solid.glintZ = this.p[k+2]-solid.z;
+          solid.glintAge = 0;
+          solid.glintPower = power;
+          solidsDirty = true;
+        }
+      }
+      if (drips.enabled && !this.capture[i] && speed >= .85 && solid.dripCount < drips.capacity*2
+        && this.random() < drips.capture) {
+        this.capture[i] = 1;
+        const weight = 1 / ++solid.dripCount;
+        solid.dripX += (localX-solid.dripX)*weight;
+        solid.dripZ += (this.p[k+2]-solid.z-solid.dripZ)*weight;
+        solid.dripDye += this.dye[i];
+      }
     }
 
     collide(i, respond) {
@@ -932,7 +1096,16 @@
     }
 
     step(dt) {
-      if (movingCount) updateObstacleMotion(elapsed, dt);
+      if (movingCount || config.recoil.enabled) updateObstacleMotion(elapsed, dt);
+      if (config.glints.enabled) {
+        for (let j = 0; j < ledgeCount; j++) {
+          const solid = solids[j];
+          if (!solid.glintPower) continue;
+          solid.glintAge += dt;
+          if (solid.glintAge >= config.glints.lifetime) solid.glintPower = 0;
+          solidsDirty = true;
+        }
+      }
       const { p, v, base, delta, density, impact, wet } = this;
       const { gravity, viscosity } = config.flow;
       const { retention, basin: hasBasin } = config.scene;
@@ -944,6 +1117,7 @@
         if (p[k + 1] < -7.15 || p[k + 1] > 7.6 || Math.abs(p[k]) > 11.6 || Math.abs(p[k + 2]) > 4.7
           || wet[i] > retention || this.count > config.quality.maxParticles) this.remove(i);
       }
+      this.releaseDrips(dt);
       this.emit(dt);
       const tilt = config.gravityTilt;
       const angle = tilt.enabled ? (tilt.angle + (tilt.swing
@@ -985,6 +1159,9 @@
         this.collide(i, true);
       }
       pointer.impulse = false;
+      if (config.drips.enabled) {
+        for (let i = this.count-1; i >= 0; i--) if (this.capture[i]) this.remove(i);
+      }
       const active = this.count * 3;
       for (let k = 0; k < active; k++) base[k] = p[k];
       for (let iteration = 0; iteration < config.quality.iterations; iteration++) {
@@ -1011,10 +1188,13 @@
         for (let k = 0; k < active; k++) v[k] += delta[k];
         if (mixDye) for (let i = 0; i < this.count; i++) this.dye[i] = clamp(this.dye[i] + this.dyeDelta[i], 0, 1);
       }
+      this.updateLinks(dt);
+      this.recordHistory(dt);
     }
 
     pack() {
       const out = this.vertexData;
+      const visibleMist = config.mist.enabled ? this.mistCount : 0;
       for (let i = 0, a = 0, b = 0; i < this.count; i++, a += 3, b += 8) {
         out[b] = this.p[a];
         out[b + 1] = this.p[a + 1];
@@ -1025,7 +1205,7 @@
         out[b + 6] = this.v[a + 2];
         out[b + 7] = this.dye[i];
       }
-      for (let i = 0, a = 0, b = this.count * 8; i < this.mistCount; i++, a += 9, b += 8) {
+      for (let i = 0, a = 0, b = this.count * 8; i < visibleMist; i++, a += 9, b += 8) {
         out[b] = this.mist[a];
         out[b + 1] = this.mist[a + 1];
         out[b + 2] = this.mist[a + 2];
@@ -1034,6 +1214,22 @@
         out[b + 5] = this.mist[a + 4];
         out[b + 6] = this.mist[a + 5];
         out[b + 7] = this.mist[a + 8];
+      }
+      this.beadCount = 0;
+      if (config.drips.enabled) {
+        for (let i = 0; i < ledgeCount; i++) {
+          const solid = solids[i];
+          if (!solid.dripCount) continue;
+          const offset = (this.count + visibleMist + this.beadCount++)*8;
+          const outlet = this.dripOutlet(solid);
+          out.set(outlet,offset);
+          out[offset+1] += .045;
+          out[offset+3] = -(.45+.5*Math.min(1,solid.dripCount/config.drips.capacity));
+          out[offset+4] = solid.vx;
+          out[offset+5] = solid.vy;
+          out[offset+6] = solid.vz;
+          out[offset+7] = solid.dripDye/solid.dripCount;
+        }
       }
       return out;
     }
@@ -1111,14 +1307,22 @@
     layout(location=1) in vec3 normal;
     layout(location=2) in vec2 tile;
     layout(location=3) in vec4 wet;
+    layout(location=4) in vec4 hit;
+    layout(location=5) in float hitAge;
     out vec3 n;
     out vec2 face;
     out vec4 film;
+    out vec4 glint;
+    flat out float glintAge;
+    out float viewDepth;
     ${project}
     void main() {
       n = normal;
       face = tile;
       film = wet;
+      glint = hit;
+      glintAge = hitAge;
+      viewDepth = -dot(point,uAxis);
       gl_Position = project(point);
     }`;
   const solidFS = `#version 300 es
@@ -1126,6 +1330,12 @@
     in vec3 n;
     in vec2 face;
     in vec4 film;
+    in vec4 glint;
+    flat in float glintAge;
+    in float viewDepth;
+    uniform vec3 uHazeColor,uGlintColor;
+    uniform vec3 uHaze;
+    uniform vec2 uGlint;
     uniform vec3 uColor, uWetColor, uLightDir, uKeyColor, uRimColor, uEye;
     uniform vec4 uLight;
     uniform float uGloss;
@@ -1146,15 +1356,23 @@
         vec3 stain = surface*.58 + uWetColor*(.29+.34*pow(light,5.0));
         surface = mix(surface,stain,coverage);
       }
+      if (uGlint.x > 0.0 && glint.w > 0.0) {
+        float travel = abs(abs(glint.x)-glintAge*uGlint.y);
+        float stripe = exp(-travel*travel*46.0-dot(glint.yz,glint.yz)*18.0);
+        surface += uGlintColor * (stripe * glint.w * uGlint.x);
+      }
+      surface = mix(surface,uHazeColor,uHaze.x*smoothstep(uHaze.y,uHaze.z,viewDepth));
       result = vec4(surface,1.0);
     }`;
   const fluidVS = `#version 300 es
     layout(location=0) in vec4 particle;
     layout(location=1) in vec4 velocityDye;
-    uniform float uRadius, uTrailLength;
+    layout(location=2) in vec4 endpoint;
+    uniform float uRadius, uTrailLength, uSegmentMode, uTrailMin;
     uniform vec2 uSpeedRange;
     out vec2 local;
     out float depthCenter;
+    out float ribbonFade;
     flat out vec4 traits;
     ${project}
     void main() {
@@ -1164,8 +1382,13 @@
       float tint = smoothstep(uSpeedRange.x,uSpeedRange.y,speed);
       float mist = max(0.0,-particle.w);
       traits = vec4(max(0.0,particle.w), velocityDye.w, tint, mist);
-      if (uTrailLength > 0.0) {
-        vec4 tail = project(particle.xyz - velocityDye.xyz * uTrailLength);
+      ribbonFade = 1.0;
+      if (uTrailLength > 0.0 || uSegmentMode > 0.0) {
+        if (uSegmentMode < .5 && speed < uTrailMin) {
+          gl_Position = vec4(2.0,2.0,2.0,1.0);
+          return;
+        }
+        vec4 tail = project(uSegmentMode > .5 ? endpoint.xyz : particle.xyz - velocityDye.xyz * uTrailLength);
         vec2 axis = (clip.xy/clip.w - tail.xy/tail.w) * uExtent;
         if (length(axis) < .05) {
           gl_Position = vec4(2.0,2.0,2.0,1.0);
@@ -1174,7 +1397,10 @@
         vec2 side = normalize(vec2(-axis.y,axis.x));
         float t = local.y*.5+.5;
         clip = mix(tail,clip,t);
-        clip.xy += side * local.x * uRadius * mix(.11,.8,t) / uExtent;
+        float age = uSegmentMode > .5 ? clamp(endpoint.w+t*.125,0.0,1.0) : t;
+        float taper = uSegmentMode > 1.5 ? mix(.48,1.0,abs(local.y)) : mix(.11,.8,age);
+        ribbonFade = uSegmentMode > 1.5 ? endpoint.w : smoothstep(0.0,.92,age);
+        clip.xy += side * local.x * uRadius * taper / uExtent;
       } else {
         clip.xy += local * uRadius * (mist > 0.0 ? .37 : 1.0) / uExtent;
       }
@@ -1185,13 +1411,16 @@
     precision highp float;
     in vec2 local;
     in float depthCenter;
+    in float ribbonFade;
     flat in vec4 traits;
     uniform sampler2D uSolidDepth;
     uniform vec2 uSize;
-    uniform float uRadius, uParticles, uHasSolids, uTrailLength, uTrailFade, uUseSpeed;
-    out vec4 result;
+    uniform float uRadius, uParticles, uHasSolids, uTrailLength, uTrailFade, uUseSpeed, uSegmentMode;
+    uniform vec3 uHaze;
+    layout(location=0) out vec4 result;
+    layout(location=1) out vec4 hazeResult;
     void main() {
-      bool ribbon = uTrailLength > 0.0;
+      bool ribbon = uTrailLength > 0.0 || uSegmentMode > 0.0;
       float r2 = ribbon ? local.x*local.x : dot(local,local);
       if (r2 >= 1.0) discard;
       float front = depthCenter - sqrt(1.0-r2)*uRadius/28.0;
@@ -1199,14 +1428,19 @@
       float kernel = (1.0-r2)*(1.0-r2);
       float weight = mix(.37,.82,uParticles)*kernel;
       if (traits.w > 0.0) weight *= traits.w*.8;
-      if (ribbon) weight *= uTrailFade * smoothstep(0.0,.92,local.y*.5+.5);
+      if (ribbon) weight *= uTrailFade * ribbonFade;
       float gleam = smoothstep(.37,.96,1.0-length(local+vec2(.26,-.31)));
       result = vec4(weight, weight*traits.x, weight*mix(gleam,traits.z,uUseSpeed), weight*traits.y);
+      float fog = smoothstep(uHaze.y,uHaze.z,(depthCenter-.5)*28.0);
+      hazeResult = vec4(weight*fog,0.0,0.0,1.0);
     }`;
   const finishFS = `#version 300 es
     precision highp float;
     in vec2 uv;
-    uniform sampler2D uScene, uFluid;
+    uniform sampler2D uScene, uFluid, uFluidHaze;
+    uniform vec3 uCaustics, uHazeColor;
+    uniform vec2 uIridescence;
+    uniform float uTime,uDispersion,uHazeStrength;
     uniform vec2 uPixel, uViewport, uPointer;
     uniform vec4 uBackground;
     uniform vec3 uBody, uEdge, uHighlight, uDyeColor, uFastColor, uLightDir, uKeyColor, uRimColor;
@@ -1231,6 +1465,18 @@
       bg += uBackdrop*(vec3(.012,.03,.035)*halo+vec3(.025,.041,.046)*grid);
       vec4 base = vec4(bg*uBackground.a,uBackground.a);
       vec4 scene = texture(uScene,point);
+      if (uCaustics.x > 0.0 && scene.a > .01) {
+        vec2 lift = vec2(uLightDir.x*.42,max(.38,uLightDir.y))*uCaustics.y/uViewport;
+        vec4 liquidAbove = texture(uFluid,point+lift*.24)*.48
+          + texture(uFluid,point+lift*.61)*.33 + texture(uFluid,point+lift)*.19;
+        float dye = clamp(liquidAbove.a/max(.01,liquidAbove.r),0.0,1.0)*uUseDye;
+        vec2 p = point*uViewport*(uCaustics.z*.027);
+        float crossA = sin(p.x+sin(p.y*.73+uTime*2.4)*1.8-uTime*2.1);
+        float crossB = sin(p.y*.86+cos(p.x*.56-uTime*1.7)*1.5+uTime*2.5);
+        float focus = pow(clamp(1.0-abs(crossA+crossB)*.56,0.0,1.0),8.0);
+        vec3 tint = mix(mix(uBody,uDyeColor,dye),vec3(.86,.72,1.0),.42);
+        scene.rgb += tint*focus*liquidAbove.r*uCaustics.x;
+      }
       layer(base,scene.rgb,scene.a);
       return base;
     }
@@ -1243,7 +1489,13 @@
       float d = sampleData.r;
       float alpha = uParticles > .5 ? smoothstep(.035,.54,d) : smoothstep(.065,.22,d);
       vec2 grad = alpha > .001 && (uParticles < .5 || uRefraction > 0.0) ? gradient() : vec2(0.0);
-      vec4 mixed = backdrop(uv + grad*uRefraction*alpha/uViewport);
+      vec2 bend = grad*uRefraction*alpha/uViewport;
+      vec4 mixed = backdrop(uv+bend);
+      if (uDispersion > 0.0 && dot(bend,bend) > 1e-12) {
+        vec4 red = backdrop(uv+bend*(1.0+uDispersion));
+        vec4 blue = backdrop(uv+bend*(1.0-uDispersion));
+        mixed = vec4(red.r,mixed.g,blue.b,max(mixed.a,max(red.a,blue.a)));
+      }
       if (uGlow > .001) {
         float glow = (density(vec2(4.,0.))+density(vec2(-4.,0.))
           +density(vec2(0.,4.))+density(vec2(0.,-4.))
@@ -1266,10 +1518,21 @@
           color = mix(color,edgeTint,edge*.68);
           color += uRimColor*uLight.w*edge;
           color = mix(color,uHighlight*uKeyColor,clamp(spec*uLight.z+heat*.46,0.0,.92));
+          if (uIridescence.x > 0.0) {
+            float thin = 1.0-smoothstep(.21,.86,d);
+            float angle = clamp(abs(dot(n,uLightDir)),0.0,1.0);
+            vec3 spectrum = .58+.42*cos(6.2831853*(vec3(.04,.33,.69)
+              + uIridescence.y + angle*.69 + n.z*.26 + d*.46));
+            color = mix(color,spectrum,clamp(uIridescence.x*thin*(.18+edge),0.0,.85));
+          }
         } else {
           color *= uLight.x + uKeyColor*uLight.y*.63;
           color = mix(color,uHighlight*uKeyColor,
             clamp(sampleData.b/max(d,.01)*uLight.z*.76*(1.0-uUseSpeed)+heat*.55,0.,.9));
+        }
+        if (uHazeStrength > 0.0) {
+          float fog = clamp(texture(uFluidHaze,uv).r/max(.01,d),0.0,1.0);
+          color = mix(color,uHazeColor,fog*uHazeStrength);
         }
         layer(mixed,color,alpha*uOpacity);
       }
@@ -1350,16 +1613,16 @@
       this.solidBuffer = gl.createBuffer();
       gl.bindVertexArray(this.solidsVAO);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.solidBuffer);
-      const solidAttributes = [[3, 0], [3, 12], [2, 24], [4, 32]];
+      const solidAttributes = [[3, 0], [3, 12], [2, 24], [4, 32], [4, 48], [1, 64]];
       for (const [i, [size, offset]] of solidAttributes.entries()) {
         gl.enableVertexAttribArray(i);
-        gl.vertexAttribPointer(i, size, gl.FLOAT, false, 48, offset);
+        gl.vertexAttribPointer(i, size, gl.FLOAT, false, 68, offset);
       }
       this.particlesVAO = gl.createVertexArray();
       this.particleBuffer = gl.createBuffer();
       gl.bindVertexArray(this.particlesVAO);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, (6000 + maxMist) * 32, gl.DYNAMIC_DRAW);
+      gl.bufferData(gl.ARRAY_BUFFER, (particleCapacity + maxMist + maxDripBeads) * 32, gl.DYNAMIC_DRAW);
       for (let i = 0; i < 2; i++) {
         gl.enableVertexAttribArray(i);
         gl.vertexAttribPointer(i, 4, gl.FLOAT, false, 32, i * 16);
@@ -1367,7 +1630,7 @@
       }
       gl.bindVertexArray(null);
       this.sceneTarget = this.target(true);
-      this.fluidTarget = this.target(false);
+      this.fluidTarget = this.target(false,true);
       this.maxSize = Math.min(4096, gl.getParameter(gl.MAX_TEXTURE_SIZE));
       gl.disable(gl.DITHER);
     }
@@ -1397,7 +1660,7 @@
       return { handle, u };
     }
 
-    target(withDepth) {
+    target(withDepth, withHaze = false) {
       const texture = filter => {
         const id = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, id);
@@ -1409,7 +1672,7 @@
       };
       return {
         fb: gl.createFramebuffer(), color: texture(gl.LINEAR),
-        depth: withDepth ? texture(gl.NEAREST) : null, w: 0, h: 0
+        depth: withDepth ? texture(gl.NEAREST) : null, haze: withHaze ? texture(gl.LINEAR) : null, w: 0, h: 0
       };
     }
 
@@ -1421,6 +1684,11 @@
       gl.bindTexture(gl.TEXTURE_2D, target.color);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target.color, 0);
+      if (target.haze) {
+        gl.bindTexture(gl.TEXTURE_2D,target.haze);
+        gl.texImage2D(gl.TEXTURE_2D,0,gl.R8,w,h,0,gl.RED,gl.UNSIGNED_BYTE,null);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT1,gl.TEXTURE_2D,target.haze,0);
+      }
       if (target.depth) {
         gl.bindTexture(gl.TEXTURE_2D, target.depth);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, w, h, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
@@ -1433,7 +1701,7 @@
 
     setSolids(obstacles, dynamic) {
       const vertices = obstacles.reduce((count, solid) => count + solid.outline.length * 12 - 12, 0);
-      if (this.solidVertices?.length !== vertices * 12) this.solidVertices = new Float32Array(vertices * 12);
+      if (this.solidVertices?.length !== vertices * 17) this.solidVertices = new Float32Array(vertices * 17);
       const points = this.solidVertices;
       let offset = 0;
       for (const solid of obstacles) {
@@ -1452,6 +1720,11 @@
           points[offset++] = y - solid.wetY;
           points[offset++] = is3D ? z - solid.wetZ : 0;
           points[offset++] = solid.wetness;
+          points[offset++] = x-solid.glintX;
+          points[offset++] = y-solid.glintY;
+          points[offset++] = is3D ? z-solid.glintZ : 0;
+          points[offset++] = solid.glintPower * Math.max(0,1-solid.glintAge/config.glints.lifetime);
+          points[offset++] = solid.glintAge;
         };
         const cap = (point, sign) => vertex(point, sign * depth, 0, 0, sign,
           .5 + .5 * point[0] / w, .5 + .5 * point[1] / h);
@@ -1548,12 +1821,41 @@
       gl.drawArrays(gl.TRIANGLES,0,3);
     }
 
+    drawSegments(u,bridges,radius) {
+      const count = simulation.packSegments(bridges);
+      if (!count) return;
+      if (!this.segmentsVAO) {
+        this.segmentsVAO = gl.createVertexArray();
+        this.segmentsBuffer = gl.createBuffer();
+        gl.bindVertexArray(this.segmentsVAO);
+        gl.bindBuffer(gl.ARRAY_BUFFER,this.segmentsBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER,particleCapacity*historySamples*48,gl.DYNAMIC_DRAW);
+        for (let i = 0; i < 3; i++) {
+          gl.enableVertexAttribArray(i);
+          gl.vertexAttribPointer(i,4,gl.FLOAT,false,48,i*16);
+          gl.vertexAttribDivisor(i,1);
+        }
+      }
+      gl.bindVertexArray(this.segmentsVAO);
+      gl.bindBuffer(gl.ARRAY_BUFFER,this.segmentsBuffer);
+      gl.bufferSubData(gl.ARRAY_BUFFER,0,simulation.segments,0,count*12);
+      gl.uniform1f(u.uSegmentMode,bridges ? 2 : 1);
+      gl.uniform1f(u.uRadius,radius*(bridges ? config.bridges.width : 1));
+      gl.uniform1f(u.uTrailFade,bridges ? .84 : config.trails.fade);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP,0,4,count);
+      gl.uniform1f(u.uSegmentMode,0);
+      gl.uniform1f(u.uRadius,radius);
+      gl.uniform1f(u.uTrailFade,config.trails.fade);
+    }
+
     draw() {
       const { quality, scene, liquid, interaction, bloom } = config;
       const light = lightRig(config.lighting);
+      const { haze, glints, caustics, iridescence, refraction } = config;
+      const fog = haze.enabled ? haze.strength : 0;
       const applyBloom = bloom.enabled && bloom.intensity > 0;
       if (solidsDirty && scene.showSolids) {
-        this.setSolids(solids, movingCount > 0 || config.wet.enabled);
+        this.setSolids(solids, movingCount > 0 || config.wet.enabled || config.recoil.enabled || config.glints.enabled);
         solidsDirty = false;
       }
       const ratio = Math.min(devicePixelRatio || 1, quality.pixelRatio,
@@ -1579,6 +1881,10 @@
         this.cameraUniforms(u);
         this.lightUniforms(u,light,light.direction);
         gl.uniform3fv(u.uEye,camera.axis);
+        gl.uniform3fv(u.uHazeColor,hex(haze.color));
+        gl.uniform3f(u.uHaze,fog,haze.start,haze.start+haze.range);
+        gl.uniform3fv(u.uGlintColor,hex(glints.color));
+        gl.uniform2f(u.uGlint,glints.enabled ? glints.strength : 0,glints.speed);
         gl.uniform3fv(u.uColor, hex(scene.solid));
         gl.uniform3fv(u.uWetColor, hex(liquid.body));
         gl.uniform1f(u.uWetRadius, config.wet.radius);
@@ -1588,6 +1894,7 @@
       }
 
       this.bind(this.fluidTarget);
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0,fog > 0 ? gl.COLOR_ATTACHMENT1 : gl.NONE]);
       gl.disable(gl.DEPTH_TEST);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.enable(gl.BLEND);
@@ -1598,24 +1905,32 @@
         this.cameraUniforms(u);
         this.texture(0, this.sceneTarget.depth, u.uSolidDepth);
         gl.uniform2f(u.uSize, this.fluidTarget.w, this.fluidTarget.h);
-        gl.uniform1f(u.uRadius, (liquid.style === "particles" ? .145 : .24) * liquid.thickness);
+        const radius = (liquid.style === "particles" ? .145 : .24) * liquid.thickness;
+        gl.uniform1f(u.uRadius,radius);
+        gl.uniform3f(u.uHaze,fog,haze.start,haze.start+haze.range);
+        gl.uniform1f(u.uTrailMin,config.trails.minSpeed);
+        gl.uniform1f(u.uTrailLength,0);
+        gl.uniform1f(u.uSegmentMode,0);
         gl.uniform1f(u.uParticles, Number(liquid.style === "particles"));
         gl.uniform1f(u.uHasSolids, Number(show));
         gl.bindVertexArray(this.particlesVAO);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffer);
-        const total = simulation.count + (config.mist.enabled ? simulation.mistCount : 0);
+        const data = simulation.pack();
+        const total = simulation.count + (config.mist.enabled ? simulation.mistCount : 0) + simulation.beadCount;
         const { low, high } = config.speedColor;
         gl.uniform2f(u.uSpeedRange, low, Math.max(low + .01, high));
         gl.uniform1f(u.uUseSpeed, Number(config.speedColor.enabled));
         gl.uniform1f(u.uTrailFade, config.trails.fade);
         if (total) {
-          gl.bufferSubData(gl.ARRAY_BUFFER, 0, simulation.pack(), 0, total * 8);
-          if (config.trails.enabled && simulation.count) {
+          gl.bufferSubData(gl.ARRAY_BUFFER, 0, data, 0, total * 8);
+          if (config.trails.enabled && config.trails.path === "straight" && simulation.count) {
             gl.uniform1f(u.uTrailLength, config.trails.length);
             gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, simulation.count);
           }
           gl.uniform1f(u.uTrailLength, 0);
           gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, total);
+          if (config.bridges.enabled) this.drawSegments(u,true,radius);
+          if (config.trails.enabled && config.trails.path === "history") this.drawSegments(u,false,radius);
         }
       }
       gl.disable(gl.BLEND);
@@ -1630,6 +1945,13 @@
       this.lightUniforms(u,light,light.screen);
       this.texture(0, this.sceneTarget.color, u.uScene);
       this.texture(1, this.fluidTarget.color, u.uFluid);
+      this.texture(2, this.fluidTarget.haze, u.uFluidHaze);
+      gl.uniform3fv(u.uHazeColor,hex(haze.color));
+      gl.uniform1f(u.uHazeStrength,fog);
+      gl.uniform3f(u.uCaustics,caustics.enabled ? caustics.strength : 0,caustics.reach*ratio,caustics.scale/ratio);
+      gl.uniform2f(u.uIridescence,iridescence.enabled ? iridescence.strength : 0,iridescence.shift);
+      gl.uniform1f(u.uDispersion,refraction.enabled ? refraction.dispersion : 0);
+      gl.uniform1f(u.uTime,elapsed);
       gl.uniform2f(u.uPixel, 1 / this.fluidTarget.w, 1 / this.fluidTarget.h);
       gl.uniform2f(u.uViewport, w, h);
       gl.uniform4fv(u.uBackground, hex(scene.background, true));
@@ -1682,7 +2004,15 @@
 
   function restart(warm = true) {
     elapsed = 0;
-    if (movingCount) updateObstacleMotion(elapsed);
+    for (const solid of solids) {
+      solid.dripCount = solid.dripDye = solid.dripTimer = 0;
+      solid.dripping = false;
+      solid.glintPower = solid.glintAge = 0;
+      solid.recoilX = solid.recoilY = solid.recoilVX = solid.recoilVY = 0;
+      solid.recoilAngle = solid.recoilSpin = 0;
+    }
+    solidsDirty = true;
+    if (movingCount || config.recoil.enabled) updateObstacleMotion(elapsed);
     pointer.impulse = false;
     simulation = new Fluid();
     const valid = pointer.valid;
@@ -1762,7 +2092,7 @@
     if (!config.quality.stats) editor?.setStats("");
     if (path === "quality.fps") resetClock();
     if (!renderer || contextLost) return;
-    if (!path || changedMode || path.startsWith("scene.")) buildSolids();
+    if (!path || changedMode || path.startsWith("scene.") || path === "recoil.enabled") buildSolids();
     if (path === "wet.enabled" && !config.wet.enabled) {
       for (const solid of solids) solid.wetness = 0;
       solidsDirty = true;
