@@ -54,29 +54,152 @@
 
   // Edit these values to configure the background without the settings editor.
   const settings = {
-    editor: { enabled: true },
-    view: { mode: "3d", perspective: true, yaw: 30, tilt: 21, zoom: 0.8274788351319514, orbit: true, orbitSpeed: 8 },
-    flow: { gravity: 10, viscosity: .24, tension: .5, rebound: .25, adhesion: .15,
-      rate: 180, nozzle: .2, nozzleX: .8, depth: 1, speed: 1, sway: true, swayWidth: 2.75, swaySpeed: .3 },
-    scene: { obstacles: true, layout: "cascade", obstacleCount: 12, obstacleType: "capsule",
-      obstacleMotion: true, motionDistance: .45, motionSpeed: 1, motionTurn: 12, motionSeed: 7,
-      motionPath: "wander", motionPhase: 57, basin: false, retention: 2.8, showSolids: true,
-      solid: "#243F4A", background: "#07131E", backdrop: true, grid: true },
-    liquid: { style: "surface", body: "#584CAE", edge: "#1E1849", highlight: "#FFFFFF", opacity: .68,
-      thickness: 1.01, detail: 2, bloom: false, glow: 1.02, impact: true, impactLight: 1.5 },
-    interaction: { enabled: true, radius: 1, bounce: .05, show: true, burst: true, force: 7 },
-    quality: { maxParticles: 6000, iterations: 1, renderScale: .68, pixelRatio: 1.4, fps: "display", adaptive: true, stats: false },
-    lighting: { preset: "studio", intensity: 1, azimuth: 0, elevation: 0 },
-    bloom: { enabled: true, intensity: .65, threshold: .52, radius: 16, knee: .16 },
-    pulse: { enabled: false, frequency: 1.2, duty: .38, minimum: .2 },
-    secondary: { enabled: true, x: -2.4, z: .35, rate: 95, width: .28, color: "#F09B5D", mix: .25 },
-    wake: { enabled: false, strength: 3.6, reach: 1.25, fade: .8 },
-    wet: { enabled: false, radius: 1.5, fade: 4.4, strength: .63 },
-    mist: { enabled: false, threshold: 15, amount: 6, budget: 1200, lifetime: .75 },
-    trails: { enabled: false, length: .28, fade: .41 },
-    speedColor: { enabled: true, fast: "#A5AAF3", low: 2, high: 12 },
-    refraction: { enabled: true, strength: 35 },
-    gravityTilt: { enabled: false, angle: 16, swing: false, amplitude: 15, frequency: .16 }
+    "editor": {
+      "enabled": true
+    },
+    "view": {
+      "mode": "3d",
+      "perspective": true,
+      "yaw": -13,
+      "tilt": 24,
+      "zoom": 0.8274788351319514,
+      "orbit": true,
+      "orbitSpeed": 8
+    },
+    "flow": {
+      "gravity": 10,
+      "viscosity": 0.24,
+      "tension": 0.5,
+      "rebound": 0.25,
+      "adhesion": 0.15,
+      "rate": 180,
+      "nozzle": 0.2,
+      "nozzleX": 0.8,
+      "depth": 1,
+      "speed": 1,
+      "sway": true,
+      "swayWidth": 2.75,
+      "swaySpeed": 0.3
+    },
+    "scene": {
+      "obstacles": true,
+      "layout": "cascade",
+      "obstacleCount": 12,
+      "obstacleType": "capsule",
+      "obstacleMotion": true,
+      "motionDistance": 0.45,
+      "motionSpeed": 1,
+      "motionTurn": 12,
+      "motionSeed": 7,
+      "motionPath": "wander",
+      "motionPhase": 57,
+      "basin": false,
+      "retention": 2.8,
+      "showSolids": true,
+      "solid": "#243F4A",
+      "background": "#07131E",
+      "backdrop": true,
+      "grid": true
+    },
+    "liquid": {
+      "style": "surface",
+      "body": "#584CAE",
+      "edge": "#1E1849",
+      "highlight": "#FFFFFF",
+      "opacity": 0.68,
+      "thickness": 1.01,
+      "detail": 2,
+      "bloom": false,
+      "glow": 1.02,
+      "impact": true,
+      "impactLight": 1.5
+    },
+    "interaction": {
+      "enabled": true,
+      "radius": 1,
+      "bounce": 0.05,
+      "show": true,
+      "burst": true,
+      "force": 7
+    },
+    "quality": {
+      "maxParticles": 6000,
+      "iterations": 1,
+      "renderScale": 0.68,
+      "pixelRatio": 1.4,
+      "fps": "display",
+      "adaptive": true,
+      "stats": false
+    },
+    "lighting": {
+      "preset": "studio",
+      "intensity": 0.85,
+      "azimuth": 102,
+      "elevation": 33
+    },
+    "bloom": {
+      "enabled": true,
+      "intensity": 1.5,
+      "threshold": 0.45,
+      "radius": 8,
+      "knee": 0.06
+    },
+    "pulse": {
+      "enabled": true,
+      "frequency": 0.8,
+      "duty": 0.38,
+      "minimum": 0.2
+    },
+    "secondary": {
+      "enabled": true,
+      "x": -2.4,
+      "z": 0.35,
+      "rate": 95,
+      "width": 0.28,
+      "color": "#71117E",
+      "mix": 0
+    },
+    "wake": {
+      "enabled": false,
+      "strength": 3.6,
+      "reach": 1.25,
+      "fade": 0.8
+    },
+    "wet": {
+      "enabled": false,
+      "radius": 1.5,
+      "fade": 4.4,
+      "strength": 0.63
+    },
+    "mist": {
+      "enabled": false,
+      "threshold": 15,
+      "amount": 6,
+      "budget": 1200,
+      "lifetime": 0.75
+    },
+    "trails": {
+      "enabled": false,
+      "length": 0.28,
+      "fade": 0.41
+    },
+    "speedColor": {
+      "enabled": true,
+      "fast": "#A5AAF3",
+      "low": 2,
+      "high": 12
+    },
+    "refraction": {
+      "enabled": true,
+      "strength": 35
+    },
+    "gravityTilt": {
+      "enabled": false,
+      "angle": 16,
+      "swing": false,
+      "amplitude": 15,
+      "frequency": 0.16
+    }
   };
 
   const jadeFoundry = {
