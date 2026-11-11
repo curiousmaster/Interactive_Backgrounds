@@ -14,7 +14,7 @@ export const backgrounds = [
     {
         name: "Aurora Ribbons",
         folder: "aurora-ribbons",
-        tags: ["colorful", "nature", "space"],
+        tags: ["colorful", "nature", "space", "ribbons"],
         description:
             "Curtains of luminous color drift through the darkness " +
             "like an abstract northern sky.",
