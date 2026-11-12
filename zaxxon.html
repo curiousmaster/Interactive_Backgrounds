@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Zaxxon</title>
+</head>
+<body>
+
+    <div id="zaxxon"></div>
+
+    <script>
+        async function includeHTML(id, file) {
+            const response = await fetch(file);
+            if (!response.ok) {
+                throw new Error(`Failed to load ${file}`);
+            }
+
+            document.getElementById(id).innerHTML =
+                await response.text();
+        }
+
+        includeHTML("zaxxon", "zaxxon/index.html");
+    </script>
+
+</body>
+</html>
