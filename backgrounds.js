@@ -86,7 +86,7 @@ export const backgrounds = [
     {
         name: "Echo Architecture",
         folder: "echo-architecture",
-        tags: ["architecture", "geometric"],
+        tags: ["architecture", "geometric", "3d"],
         description:
             "Wireframe structures unfold and dissolve, " +
             "suggesting impossible buildings suspended in darkness.",
@@ -110,7 +110,7 @@ export const backgrounds = [
     {
         name: "Floating Tesserae",
         folder: "floating-tesserae",
-        tags: ["colorful", "geometric", "interactive"],
+        tags: ["colorful", "geometric", "interactive", "3d"],
         description:
             "Translucent mosaic tiles drift apart and reassemble into flowing " +
             "patches of color. Your pointer opens a gap that gently closes behind it.",
@@ -246,7 +246,7 @@ export const backgrounds = [
     {
         name: "Pacman",
         folder: "pacman",
-        tags: ["colorful", "games", "interactive"],
+        tags: ["colorful", "games", "interactive", "3d"],
         description:
             "Pac-Man munches glowing pellets as ghosts close in through a neon maze. " +
             "Drop a power pellet into a cleared corridor and watch the chase reverse.",
@@ -359,7 +359,7 @@ export const backgrounds = [
     {
         name: "Viscous Flow",
         folder: "viscous-flow",
-        tags: ["fluid", "particles", "interactive", "3d"],
+        tags: ["fluids", "particles", "interactive", "3d"],
         description:
             "A stream of viscous liquid breaks into glossy droplets as it strikes a series of obstacles. " +
             "Move your pointer to divert the flow, click to splash, or drag to rotate the 3D view.",
