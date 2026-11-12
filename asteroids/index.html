@@ -1,0 +1,1141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Asteroids — Deep Field</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;color:#e0f8ff;font:13px system-ui,sans-serif}body{background:#050816}body.clear{background:transparent}canvas{position:fixed;inset:0;width:100%;height:100%}
+#hud{position:fixed;top:22px;left:24px;right:24px;display:flex;flex-wrap:wrap;gap:14px 28px;pointer-events:none;text-shadow:0 1px 5px #030714,0 0 16px #030714}#hud small{display:block;color:#a4c7dc;font:10px monospace;letter-spacing:.16em}#hud b{font:600 22px monospace;letter-spacing:.08em}
+#controls{position:fixed;bottom:20px;left:20px;right:20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}button,select,input{accent-color:#8de8ff}button,select,input[type=search]{font:inherit;color:inherit;background:#121c32;border:1px solid #41617a;border-radius:6px;padding:8px}button{cursor:pointer}button:hover{background:#233852}#hint{color:#b8d8ea;text-shadow:0 1px 4px #000}
+  .settings-open,.settings-panel { position:fixed; bottom:max(66px,env(safe-area-inset-bottom)); right:max(14px,env(safe-area-inset-right)); z-index:1; }
+  .settings-panel { width:min(345px,calc(100% - 28px)); max-height:calc(100dvh - 150px); overflow:auto; overscroll-behavior:contain;
+    background:rgba(11,21,29,.94); border:1px solid #30444e; border-radius:17px; padding:15px; box-shadow:0 12px 45px #0007; }
+  .settings-panel header,.settings-line,.settings-preset { display:flex; align-items:center; justify-content:space-between; gap:9px; }
+  .settings-panel h1 { margin:2px 0 9px; font-size:21px; font-weight:650; letter-spacing:-.03em; }
+  .settings-panel header small { color:#87c6c7; font-size:9px; font-weight:700; letter-spacing:.19em; }
+  button,select,input[type=search],input[type=text],textarea { font:inherit; color:inherit; border:1px solid #34505b;
+    border-radius:7px; background:#142631; padding:6px 8px; }
+  button { cursor:pointer; }
+  button:hover { background:#254450; }
+  :focus-visible { outline:2px solid #8df4e7; outline-offset:2px; }
+  input[type=search],textarea { width:100%; }
+  textarea { margin-top:8px; resize:vertical; font:11px/1.4 ui-monospace,monospace; }
+  input[type=range] { display:block; width:100%; margin:4px 0; accent-color:#75d9ca; }
+  input[type=checkbox] { accent-color:#75d9ca; }
+  input[type=color] { width:24px; height:24px; padding:0; border:0; background:transparent; cursor:pointer; }
+  .settings-color,.settings-actions { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+  .settings-color input[type=text] { font:11px ui-monospace,monospace; width:83px; }
+  .settings-preset,.settings-actions,.settings-stats { margin-top:9px; }
+  .settings-preset select { flex:1; }
+  .settings-actions button { font-size:12px; }
+  .settings-panel details { border-top:1px solid #30444e; margin-top:9px; }
+  .settings-panel summary { padding:8px 0 1px; cursor:pointer; font-weight:650; }
+  .settings-group { padding-top:4px; }
+  .settings-group h2 { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#94c7cb; margin:9px 0 1px; }
+  .settings-row { padding:5px 0; }
+  .settings-row small,.settings-status,.settings-stats { color:#a1b6c0; font-size:11px; }
+  .settings-stats { display:block; font-variant-numeric:tabular-nums; }
+  .settings-row output { color:#a6e6df; font-size:11px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .settings-status { margin:7px 0 0; }
+#error{position:fixed;top:42%;left:10%;right:10%;text-align:center}#touch{position:fixed;bottom:74px;left:20px;gap:8px;display:none;touch-action:none}@media(pointer:coarse){#touch.active{display:flex}}[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<canvas id="space" tabindex="0" aria-label="Animated asteroid field"></canvas>
+<div id="hud" aria-label="Scoreboard"></div>
+<div id="error" role="alert" hidden></div>
+<div id="touch"><button data-key="ArrowLeft" aria-label="Turn left">◀</button><button data-key="ArrowRight" aria-label="Turn right">▶</button><button data-key="ArrowUp" aria-label="Thrust">▲</button><button data-key="Space">Fire</button><button id="jump">Jump</button></div>
+<div id="controls"><button id="pilot">Take control</button><button id="pause">Pause</button><span id="hint"></span></div>
+<div id="editor"></div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const TAU = Math.PI * 2;
+const rand = (a,b) => a + Math.random() * (b-a);
+const clamp = (v,a,b) => Math.min(b,Math.max(a,v));
+const wrap = (v,size) => ((v % size) + size) % size;
+const delta = (v,size) => wrap(v + size/2,size) - size/2;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+const read = (key, fallback) => {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+};
+const save = (key,value) => {
+  try { localStorage.setItem(key,JSON.stringify(value)); } catch {}
+};
+const settings = {
+  "editor": {
+    "enabled": true
+  },
+  "view": {
+    "mode": "2D",
+    "tilt": 32,
+    "zoom": 1,
+    "orbit": true
+  },
+  "graphics": {
+    "style": "Advanced",
+    "transparent": false,
+    "nebula": true,
+    "nebulaSpeed": 1,
+    "glow": true,
+    "trails": true,
+    "quiet": false,
+    "quality": 1
+  },
+  "scoreboard": {
+    "enabled": true,
+    "align": "left",
+    "opacity": 1,
+    "scale": 1,
+    "color": "#E0F8FF",
+    "showScore": true,
+    "showBest": true,
+    "showWave": true,
+    "showLives": true,
+    "showPilot": true,
+    "radar": true
+  },
+  "features": {
+    "shadows": { "enabled": true, "amount": 0.72 },
+    "bloom": { "enabled": true, "amount": 0.85, "radius": 14, "threshold": 0.48 },
+    "explosions": { "enabled": true, "amount": 0.8 },
+    "aurora": {
+      "enabled": true,
+      "amount": 0.48
+    },
+    "meteors": {
+      "enabled": true,
+      "amount": 0.42
+    },
+    "eclipse": {
+      "enabled": false,
+      "amount": 0.65
+    },
+    "grid": {
+      "enabled": false,
+      "amount": 0.26
+    },
+    "shield": {
+      "enabled": true,
+      "amount": 0.55
+    },
+    "tracers": {
+      "enabled": true,
+      "amount": 0.6
+    },
+    "fissures": {
+      "enabled": true,
+      "amount": 0.75
+    },
+    "shockwaves": {
+      "enabled": false,
+      "amount": 0.56
+    },
+    "cometTail": {
+      "enabled": true,
+      "amount": 0.66
+    },
+    "targeting": {
+      "enabled": false,
+      "amount": 0.47
+    }
+  },
+  "gameplay": {
+    "director": true,
+    "ufo": true,
+    "idle": 25
+  }
+};
+
+const presets = {
+  "Deep Field": settings,
+  "Retro CRT": { ...settings, graphics: { ...settings.graphics, style: "Vector" }, scoreboard: { ...settings.scoreboard, radar: false } },
+  "Orbital Flyby": { ...settings, view: { ...settings.view, mode: "3D", tilt: 42 }, scoreboard: { ...settings.scoreboard, align: "center" } },
+  "Transparent Overlay": { ...settings, graphics: { ...settings.graphics, transparent: true, quiet: true }, scoreboard: { ...settings.scoreboard, enabled: false } },
+};
+
+const sections = [
+  { label: "View", open: true, groups: [{ fields: [
+    { path: "view.mode", label: "Projection", type: "select", options: {"2D": "2D", "3D": "3D"} },
+    { path: "view.tilt", label: "Tilt", type: "range", min: 0, max: 55, step: 1, unit: "\u00b0", when: s => s.view.mode === "3D" },
+    { path: "view.zoom", label: "Zoom", type: "range", min: 0.7, max: 1.4, step: 0.01, when: s => s.view.mode === "3D" },
+    { path: "view.orbit", label: "Camera orbit", type: "boolean", when: s => s.view.mode === "3D" },
+  ] }] },
+  { label: "Graphics", open: true, groups: [{ fields: [
+    { path: "graphics.style", label: "Style", type: "select", options: {"Vector": "Vector", "Advanced": "Advanced"} },
+    { path: "graphics.transparent", label: "Transparent canvas", type: "boolean" },
+    { path: "graphics.nebula", label: "Nebula and ringed planet", type: "boolean", when: s => s.graphics.style === "Advanced" && !s.graphics.transparent },
+    { path: "graphics.nebulaSpeed", label: "Nebula animation speed", type: "range", min: 0, max: 3, step: 0.05, unit: "×", help: "Set to zero to hold the clouds still.", when: s => s.graphics.nebula && s.graphics.style === "Advanced" && !s.graphics.transparent },
+    { path: "graphics.glow", label: "Engine and impact glow", type: "boolean" },
+    { path: "graphics.trails", label: "Engine trails", type: "boolean" },
+    { path: "graphics.quiet", label: "Quiet region in center", type: "boolean" },
+    { path: "graphics.quality", label: "Render scale", type: "range", min: 0.5, max: 1, step: 0.05 },
+  ] }] },
+  { label: "Scoreboard", open: false, groups: [{ fields: [
+    { path: "scoreboard.enabled", label: "Show scoreboard", type: "boolean" },
+    { path: "scoreboard.align", label: "Alignment", type: "select", options: {"left": "Left", "center": "Center", "right": "Right"}, when: s => s.scoreboard.enabled },
+    { path: "scoreboard.opacity", label: "Opacity", type: "range", min: 0.2, max: 1, step: 0.05, when: s => s.scoreboard.enabled },
+    { path: "scoreboard.scale", label: "Scale", type: "range", min: 0.65, max: 1.5, step: 0.05, when: s => s.scoreboard.enabled },
+    { path: "scoreboard.color", label: "Color", type: "color", when: s => s.scoreboard.enabled },
+    { path: "scoreboard.showScore", label: "Score", type: "boolean", when: s => s.scoreboard.enabled },
+    { path: "scoreboard.showBest", label: "Best", type: "boolean", when: s => s.scoreboard.enabled },
+    { path: "scoreboard.showWave", label: "Wave", type: "boolean", when: s => s.scoreboard.enabled },
+    { path: "scoreboard.showLives", label: "Lives", type: "boolean", when: s => s.scoreboard.enabled },
+    { path: "scoreboard.showPilot", label: "Pilot", type: "boolean", when: s => s.scoreboard.enabled },
+    { path: "scoreboard.radar", label: "Radar", type: "boolean", when: s => s.scoreboard.enabled },
+  ] }] },
+  { label: "Features", open: false, groups: [
+    { label: "Asteroid shadows", fields: [
+      { path: "features.shadows.enabled", label: "Cast asteroid shadows", type: "boolean", help: "Nearby asteroids block directional light. Shaded surfaces are visible in Advanced style." },
+      { path: "features.shadows.amount", label: "Shadow strength", type: "range", min: 0, max: 1, step: 0.01, when: s => s.features.shadows.enabled },
+    ] },
+    { label: "Bloom", fields: [
+      { path: "features.bloom.enabled", label: "Enable bloom", type: "boolean" },
+      { path: "features.bloom.amount", label: "Intensity", type: "range", min: 0, max: 2, step: 0.01, when: s => s.features.bloom.enabled },
+      { path: "features.bloom.radius", label: "Radius", type: "range", min: 2, max: 32, step: 1, unit: " px", when: s => s.features.bloom.enabled },
+      { path: "features.bloom.threshold", label: "Brightness threshold", type: "range", min: 0.1, max: 0.95, step: 0.01, when: s => s.features.bloom.enabled },
+    ] },
+    { label: "Impact explosions", fields: [
+      { path: "features.explosions.enabled", label: "Enable impact explosions", type: "boolean", help: "Adds a bright core, layered blast rings, and fast debris to asteroid hits." },
+      { path: "features.explosions.amount", label: "Explosion intensity", type: "range", min: 0.1, max: 1, step: 0.01, when: s => s.features.explosions.enabled },
+    ] },
+    { label: "Aurora ribbons", fields: [
+      { path: "features.aurora.enabled", label: "Enable aurora ribbons", type: "boolean", help: "Layered, moving curtains of ionized gas. Visible with the opaque sky." },
+      { path: "features.aurora.amount", label: "Brightness", type: "range", min: 0.1, max: 1, step: 0.01, when: s => s.features.aurora.enabled },
+    ] },
+    { label: "Meteor showers", fields: [
+      { path: "features.meteors.enabled", label: "Enable meteor showers", type: "boolean", help: "Distant streaks cross the opaque sky in short bursts." },
+      { path: "features.meteors.amount", label: "Density", type: "range", min: 0.1, max: 1, step: 0.01, when: s => s.features.meteors.enabled },
+    ] },
+    { label: "Eclipsed star", fields: [
+      { path: "features.eclipse.enabled", label: "Enable eclipsed star", type: "boolean", help: "A dark stellar disc edged by a hot corona. Visible with the opaque sky." },
+      { path: "features.eclipse.amount", label: "Corona intensity", type: "range", min: 0.1, max: 1, step: 0.01, when: s => s.features.eclipse.enabled },
+    ] },
+    { label: "Navigation grid", fields: [
+      { path: "features.grid.enabled", label: "Enable navigation grid", type: "boolean", help: "A projected coordinate grid tracks the playfield in 2D and 3D." },
+      { path: "features.grid.amount", label: "Opacity", type: "range", min: 0.1, max: 1, step: 0.01, when: s => s.features.grid.enabled },
+    ] },
+    { label: "Shield shimmer", fields: [
+      { path: "features.shield.enabled", label: "Enable shield shimmer", type: "boolean", help: "Animated arcs surround the ship during respawn or hyperspace protection." },
+      { path: "features.shield.amount", label: "Brightness", type: "range", min: 0.1, max: 1, step: 0.01, when: s => s.features.shield.enabled },
+    ] },
+    { label: "Plasma tracers", fields: [
+      { path: "features.tracers.enabled", label: "Enable plasma tracers", type: "boolean", help: "Shots leave a fading, color-matched plasma wake." },
+      { path: "features.tracers.amount", label: "Length", type: "range", min: 0.1, max: 1, step: 0.01, when: s => s.features.tracers.enabled },
+    ] },
+    { label: "Impact fissures", fields: [
+      { path: "features.fissures.enabled", label: "Enable impact fissures", type: "boolean", help: "Freshly split asteroid fragments cool from bright fracture lines." },
+      { path: "features.fissures.amount", label: "Brightness", type: "range", min: 0.1, max: 1, step: 0.01, when: s => s.features.fissures.enabled },
+    ] },
+    { label: "Double shockwaves", fields: [
+      { path: "features.shockwaves.enabled", label: "Enable double shockwaves", type: "boolean", help: "A second expanding wave follows impacts, jumps, and ship destruction." },
+      { path: "features.shockwaves.amount", label: "Brightness", type: "range", min: 0.1, max: 1, step: 0.01, when: s => s.features.shockwaves.enabled },
+    ] },
+    { label: "Comet ion tail", fields: [
+      { path: "features.cometTail.enabled", label: "Enable comet ion tail", type: "boolean", help: "A tapered blue wake follows the attract-mode comet." },
+      { path: "features.cometTail.amount", label: "Length", type: "range", min: 0.1, max: 1, step: 0.01, when: s => s.features.cometTail.enabled },
+    ] },
+    { label: "Target lock", fields: [
+      { path: "features.targeting.enabled", label: "Enable target lock", type: "boolean", help: "A dashed reticle marks the autopilot target and leads moving rocks." },
+      { path: "features.targeting.amount", label: "Opacity", type: "range", min: 0.1, max: 1, step: 0.01, when: s => s.features.targeting.enabled },
+    ] },
+  ] },
+  { label: "Gameplay", open: false, groups: [{ fields: [
+    { path: "gameplay.director", label: "Attract-mode comet events", type: "boolean" },
+    { path: "gameplay.ufo", label: "UFO rival", type: "boolean" },
+    { path: "gameplay.idle", label: "Resume autopilot after", type: "range", min: 0, max: 120, step: 1, unit: " s", help: "Set to 0 to keep manual control until you switch pilots." },
+  ] }] },
+];
+
+const legacyPaths = {
+  "view": "view.mode",
+  "graphics": "graphics.style",
+  "hud": "scoreboard.enabled",
+  "tilt": "view.tilt",
+  "zoom": "view.zoom",
+  "orbit": "view.orbit",
+  "transparent": "graphics.transparent",
+  "nebula": "graphics.nebula",
+  "glow": "graphics.glow",
+  "trails": "graphics.trails",
+  "quiet": "graphics.quiet",
+  "quality": "graphics.quality",
+  "align": "scoreboard.align",
+  "opacity": "scoreboard.opacity",
+  "scale": "scoreboard.scale",
+  "color": "scoreboard.color",
+  "showScore": "scoreboard.showScore",
+  "showBest": "scoreboard.showBest",
+  "showWave": "scoreboard.showWave",
+  "showLives": "scoreboard.showLives",
+  "showPilot": "scoreboard.showPilot",
+  "radar": "scoreboard.radar",
+  "director": "gameplay.director",
+  "ufo": "gameplay.ufo",
+  "idle": "gameplay.idle"
+};
+
+function migrateSettings(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
+  const migrated = { ...input };
+  for (const [key, path] of Object.entries(legacyPaths)) {
+    const value = input[key];
+    if (!Object.hasOwn(input, key) || value === null || typeof value === 'object') continue;
+    const [section, field] = path.split('.');
+    if (migrated[section] === input[section]) {
+      migrated[section] = typeof input[section] === 'object' ? { ...input[section] } : {};
+    }
+    if (!Object.hasOwn(migrated[section], field)) migrated[section][field] = value;
+  }
+  return migrated;
+}
+
+let config = settings;
+
+function featureAmount(name) {
+  const feature = config.features[name];
+  return feature.enabled ? feature.amount : 0;
+}
+let editor;
+
+function applySettings(next) {
+  config = next;
+  document.body.classList.toggle('clear', config.graphics.transparent);
+}
+
+function loadSettingsEditor() {
+  const script = document.createElement('script');
+  script.src = './settings-editor.js';
+  script.addEventListener('load', () => {
+    editor = window.createSettingsEditor({
+      root: $('editor'),
+      title: 'Asteroids — Deep Field',
+      restartLabel: 'Restart game',
+      defaults: settings,
+      presets,
+      sections,
+      storageKey: 'deep-field-settings',
+      migrate: migrateSettings,
+      initiallyPaused: paused,
+      initiallyOpen: false,
+      onChange: applySettings,
+      onRestart: resetRound,
+      onPause: setPause
+    });
+    applySettings(editor.config);
+  }, { once: true });
+  document.head.append(script);
+}
+
+applySettings(settings);
+
+const canvas=$('space');
+const gl=canvas.getContext('webgl',{alpha:true,premultipliedAlpha:true,antialias:true});
+function fail(message) { $('error').textContent=message; $('error').hidden=false; }
+function program(vertex,fragment) {
+  const p=gl.createProgram();
+  for(const [type,source] of [[gl.VERTEX_SHADER,vertex],[gl.FRAGMENT_SHADER,fragment]]) {
+    const shader=gl.createShader(type);
+    gl.shaderSource(shader,source); gl.compileShader(shader);
+    if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS)) throw Error(gl.getShaderInfoLog(shader));
+    gl.attachShader(p,shader); gl.deleteShader(shader);
+  }
+  gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw Error(gl.getProgramInfoLog(p));
+  return p;
+}
+const skyVertex=`
+attribute vec2 position;
+varying vec2 uv;
+void main(){uv=position*.5+.5;gl_Position=vec4(position,0.,1.);}
+`;
+const skyFragment=`
+precision highp float;
+varying vec2 uv;
+uniform float aspect,time,advanced,quiet,nebula,nebulaPhase,aurora,meteors,eclipse;
+float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float noise(vec2 p){
+ vec2 i=floor(p),f=fract(p); f=f*f*(3.-2.*f);
+ return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+1.),f.x),f.y);
+}
+float cloud(vec2 p){
+ float n=0.,a=.5;
+ for(int i=0;i<5;i++){n+=noise(p)*a;p=mat2(1.7,-1.1,1.1,1.7)*p+5.;a*=.5;}
+ return n;
+}
+vec3 stars(vec2 p,float grid,float seed){
+ vec2 g=p*grid,i=floor(g),f=fract(g);
+ float r=hash(i+seed), g2=hash(i+seed+83.);
+ vec2 d=f-mix(vec2(.25),vec2(.75),vec2(r,g2));
+ float glow=exp(-dot(d,d)*510.)*step(.72,r);
+ float core=exp(-dot(d,d)*2500.);
+ float flare=(exp(-abs(d.x)*145.-abs(d.y)*14.)+exp(-abs(d.y)*145.-abs(d.x)*14.))*step(.985,r);
+ return mix(vec3(.34,.66,1.),vec3(1.,.69,.48),g2)*(glow*.37+core*glow*.65+flare*.35)*(.84+.16*sin(time*.85+r*34.));
+}
+void main(){
+ vec2 p=(uv-.5)*vec2(aspect,1.);
+ vec3 color=mix(vec3(.006,.011,.028),vec3(.004,.008,.018),1.-advanced);
+ color+=stars(p+vec2(time*.00065,0),63.,6.)*.75+stars(p-vec2(time*.0012,0),117.,47.)*.52;
+ if(nebula>.5){
+   // Offset the broad cloud flow and fine filaments along separate paths.
+   vec2 drift=vec2(sin(nebulaPhase),cos(nebulaPhase)-1.);
+   vec2 curl=vec2(cos(2.*nebulaPhase)-1.,sin(2.*nebulaPhase));
+   vec2 q=p*3.5+vec2(1.7,-.4);
+   vec2 warp=vec2(cloud(q+7.+drift*.72),cloud(q-11.-curl*.49));
+   float fil=cloud(q*1.8+warp*2.9+drift*.65+curl*.28);
+   float sway=.055*sin(p.x*2.8+nebulaPhase)*sin(nebulaPhase);
+   float offset=(p.y-p.x*.29+.17+warp.x*.21+sway)*3.6;
+   float ridge=exp(-offset*offset);
+   vec3 gas=mix(vec3(.035,.22,.36),vec3(.44,.075,.24),smoothstep(-.58,.45,p.x+fil*.4));
+   color+=gas*pow(fil,2.1)*ridge*.88;
+   color+=vec3(.25,.38,.51)*pow(max(0.,fil-.38)*1.6,2.)*ridge;
+   vec2 center=vec2(aspect*.31,.20);
+   vec2 dp=p-center;
+   float radius=.12;
+   vec2 ring=mat2(.91,.414,-.414,.91)*dp;
+   float rr=length(ring*vec2(1.,3.15))/radius;
+   float ringMask=smoothstep(1.28,1.34,rr)*(1.-smoothstep(2.03,2.1,rr));
+   vec3 ringColor=vec3(.73,.46,.35)*ringMask*(.22+.23*sin(rr*73.)+.35*noise(vec2(rr*23.,2.)));
+   color+=ringColor*.54;
+   float d=length(dp)/radius;
+   color+=vec3(.08,.29,.5)*exp(-abs(d-1.)*36.)*.57;
+   if(d<1.){
+     vec3 n=vec3(dp/radius,sqrt(max(0.,1.-d*d)));
+     float light=max(0.,dot(n,normalize(vec3(-.65,.72,.38))));
+     float band=.64+.22*sin(n.y*28.+cloud(n.xy*8.)*6.)+.12*noise(n.xy*42.);
+     color=mix(vec3(.013,.017,.037),vec3(.34,.20,.27)*band,light);
+     color+=vec3(.14,.32,.57)*pow(d,13.)*light;
+     if(ring.y<0.)color+=ringColor*.53;
+   }
+ }
+ if(aurora>0.){
+   for(int i=0;i<3;i++){
+     float k=float(i);
+     float ridge=.32-k*.095+.055*sin(p.x*4.1+time*.22+k)+.025*sin(p.x*10.4-time*.31);
+     float distance=p.y-ridge;
+     float curtains=.50+.50*noise(vec2(p.x*27.+k*9.,time*.16));
+     float band=exp(-abs(distance)*(distance>0.?18.:63.));
+     vec3 ion=mix(vec3(.08,.72,.57),vec3(.27,.28,.86),k*.43);
+     color+=ion*band*curtains*aurora*.29*smoothstep(.08,.5,1.-abs(p.x)/aspect);
+   }
+ }
+ if(meteors>0.){
+   for(int i=0;i<6;i++){
+     float id=float(i);
+     if(id<1.+meteors*5.){
+       float clock=time*.27+id*.381;
+       float phase=fract(clock);
+       float seed=hash(vec2(floor(clock),id+52.));
+       vec2 start=vec2((seed-.5)*aspect,.50-hash(vec2(id+17.,floor(clock)))*.40);
+       vec2 heading=normalize(vec2(.81,-.58));
+       vec2 ray=p-start-heading*phase*2.3;
+       float along=dot(ray,heading);
+       float across=dot(ray,vec2(-heading.y,heading.x));
+       float streak=exp(-abs(across)*675.)*smoothstep(-.25,0.,along)*(1.-smoothstep(0.,.012,along));
+       color+=vec3(.45,.67,1.)*streak*sin(phase*3.141593)*meteors;
+     }
+   }
+ }
+ if(eclipse>0.){
+   vec2 d=p-vec2(-aspect*.31,.19);
+   float radius=.079, r=length(d), a=atan(d.y,d.x);
+   float fil=.62+.22*sin(a*13.+time*.22)+.16*sin(a*27.-time*.14);
+   float corona=exp(-max(0.,r-radius)*69.)*fil;
+   float outside=smoothstep(radius-.001,radius+.002,r);
+   color=mix(vec3(.009,.009,.022),color,outside);
+   color+=vec3(.92,.37,.14)*corona*outside*eclipse;
+   color+=vec3(1.,.71,.38)*exp(-abs(r-radius)*680.)*eclipse*.75;
+ }
+ float vignette=1.-.55*smoothstep(.36,.74,length(uv-.5));
+ float dim=1.-quiet*.65*exp(-dot(p,p)*11.);
+ gl_FragColor=vec4(color*vignette*dim,1.);
+}
+`;
+const meshVertex=`
+attribute vec2 position;
+attribute vec4 color;
+varying vec4 tint;
+void main(){gl_Position=vec4(position,0.,1.);tint=color;}
+`;
+const meshFragment=`
+precision mediump float;
+varying vec4 tint;
+void main(){gl_FragColor=vec4(tint.rgb*tint.a,tint.a);}
+`;
+const W=1180;
+let nebulaPhase=0;
+let H=690, time=0, previous=0, accumulator=0, paused=reduced.matches;
+const bloomFragment=`
+precision mediump float;
+varying vec2 uv;
+uniform sampler2D image;
+uniform vec2 stride;
+uniform float threshold, strength;
+vec4 bright(vec2 p){
+  vec4 c=texture2D(image,p);
+  float peak=max(max(c.r,c.g),c.b);
+  return c*smoothstep(threshold,threshold+.10,peak);
+}
+void main(){
+    vec4 scene=texture2D(image,uv);
+    vec4 glow=bright(uv)*.23;
+    for(int x=-2;x<=2;x++){
+      for(int y=-2;y<=2;y++){
+        if(x!=0||y!=0){
+          vec2 offset=vec2(float(x),float(y));
+          glow+=bright(uv+offset*stride)*exp(-dot(offset,offset)*.40)*.13;
+        }
+      }
+    }
+    vec3 rgb=clamp(scene.rgb+glow.rgb*strength,0.,1.);
+    float alpha=max(scene.a,max(max(rgb.r,rgb.g),rgb.b));
+    gl_FragColor=vec4(rgb,alpha);
+}
+`;
+const bloomTarget={width:0,height:0,ready:false};
+let bloomProgram;
+let blasts=[];
+let sky, mesh, screenBuffer, meshBuffer;
+let rocks=[], shots=[], dust=[], ship, rival=null, score=0, wave=1, lives=3;
+let manual=false, lastInput=0, nextComet=14, nextRival=19, nextWave=0, hudCache='';
+const records={auto:Math.max(0,Number(read('deep-field-auto-best',0))||0),player:Math.max(0,Number(read('deep-field-player-best',0))||0)};
+const keys=new Set();
+function rock(x,y,r,vx,vy,comet=false) {
+  const ring=Array.from({length:11},(_,i)=>{
+    const a=i*TAU/11, distance=rand(.73,1.18);
+    return [Math.cos(a)*distance,Math.sin(a)*distance,rand(.03,.31)];
+  });
+  const craters=Array.from({length:4},()=>[rand(-.44,.44),rand(-.44,.44),rand(.10,.23)]);
+  return {x,y,r,vx,vy,comet,ring,craters,a:rand(0,TAU),spin:rand(-1,1),phase:rand(0,TAU)};
+}
+function spawnWave() {
+  for(let i=0;i<Math.min(4+wave,12);i++) {
+    const a=rand(0,TAU);
+    const x=wrap(ship.x+Math.cos(a)*W*.38,W);
+    const y=wrap(ship.y+Math.sin(a)*H*.40,H);
+    rocks.push(rock(x,y,rand(29,57),rand(-43,43),rand(-43,43)));
+  }
+}
+function newShip() {
+  return {x:W*.5,y:H*.5,vx:0,vy:0,a:-Math.PI/2,cool:0,safe:2,dead:0,jump:0};
+}
+function resetRound() {
+  score=0;wave=1;lives=3;rocks=[];shots=[];dust=[];blasts=[];rival=null;nextWave=0;
+  nextComet=time+14;nextRival=time+19;ship=newShip();spawnWave();
+}
+function resize() {
+  const w=Math.max(1,canvas.clientWidth),h=Math.max(1,canvas.clientHeight);
+  const height=clamp(W*h/w,490,1600);
+  if(height!==H) {
+    for(const obj of [ship,rival,...rocks,...shots,...dust,...blasts]) if(obj) obj.y*=height/H;
+    H=height;
+  }
+  const scale=Math.min(devicePixelRatio||1,1.65)*config.graphics.quality;
+  const pw=Math.max(1,Math.round(w*scale)),ph=Math.max(1,Math.round(h*scale));
+  if(canvas.width!==pw||canvas.height!==ph){canvas.width=pw;canvas.height=ph;}
+  gl.viewport(0,0,pw,ph);
+}
+function move(o,dt) { o.x=wrap(o.x+o.vx*dt,W);o.y=wrap(o.y+o.vy*dt,H); }
+function particles(x,y,vx,vy,count,color,energy) {
+  if(reduced.matches)count=Math.min(count,5);
+  for(let i=0;i<count&&dust.length<650;i++){
+    const a=rand(0,TAU),s=rand(10,energy);
+    const life=rand(.25,1.15);
+    dust.push({x,y,vx:vx+Math.cos(a)*s,vy:vy+Math.sin(a)*s,life,max:life,color,size:rand(1,3.3)});
+  }
+}
+function ringEffect(x,y,color) {
+  if(!reduced.matches&&dust.length<650)dust.push({x,y,vx:0,vy:0,life:.6,max:.6,color,ring:true});
+}
+function fire(o,owner) {
+  if(o.cool>0||shots.length>=80)return;
+  o.cool=owner==='rival'?.48:.15;
+  const dx=Math.cos(o.a),dy=Math.sin(o.a);
+  shots.push({x:wrap(o.x+dx*18,W),y:wrap(o.y+dy*18,H),vx:o.vx+dx*510,vy:o.vy+dy*510,life:1,owner});
+}
+function aim(o,target,lead=0) {
+  return Math.atan2(delta(target.y-o.y+target.vy*lead,H),delta(target.x-o.x+target.vx*lead,W));
+}
+function nearest(o,predict=0) {
+  let result=null,dist=Infinity;
+  for(const r of rocks) {
+    const dx=delta(r.x-o.x+(r.vx-o.vx)*predict,W),dy=delta(r.y-o.y+(r.vy-o.vy)*predict,H);
+    const d=Math.hypot(dx,dy)-r.r;
+    if(d<dist){dist=d;result=r;}
+  }
+  return [result,dist];
+}
+function burst(r,b) {
+  const color=r.comet?[.42,.91,1]:[1,.57,.32];
+  particles(b.x,b.y,r.vx*.45,r.vy*.45,r.comet?62:Math.round(r.r*.8),color,175);
+  ringEffect(b.x,b.y,color);
+  const intensity=featureAmount('explosions');
+  if(intensity&&!reduced.matches){
+    if(blasts.length>=20)blasts.shift();
+    blasts.push({x:b.x,y:b.y,radius:35+r.r*1.9,color,started:time,angle:Math.atan2(b.vy,b.vx)});
+    particles(b.x,b.y,r.vx*.2,r.vy*.2,Math.round(58*intensity),[1,.85,.57],280+170*intensity);
+  }
+  if(r.r>22){
+    const impact=aim(r,{...b,vx:0,vy:0});
+    for(const side of [-1,1]){
+      const angle=impact+side*Math.PI*.5,dx=Math.cos(angle),dy=Math.sin(angle);
+      const piece=rock(wrap(r.x+dx*r.r*.43,W),wrap(r.y+dy*r.r*.43,H),r.r*.58,r.vx+dx*47,r.vy+dy*47);
+      piece.spin=r.spin+side*.63;
+      piece.fracturedAt=time;
+      rocks.push(piece);
+    }
+  }
+  if(b.owner==='ship'){
+    score+=r.comet?300:r.r>38?50:r.r>22?100:150;
+    const mode=manual?'player':'auto';
+    if(score>records[mode]){records[mode]=score;save('deep-field-'+mode+'-best',score);}
+  }
+}
+function jump() {
+  if(!manual||paused||ship.dead||ship.jump>0)return;
+  const color=[.45,.75,1];
+  ringEffect(ship.x,ship.y,color);
+  particles(ship.x,ship.y,0,0,36,color,160);
+  for(let i=0;i<16;i++) {
+    const candidate={x:rand(0,W),y:rand(0,H),vx:0,vy:0};
+    if(nearest(candidate,.25)[1]>90){Object.assign(ship,candidate);break;}
+  }
+  ringEffect(ship.x,ship.y,color);ship.safe=1.1;ship.jump=5;
+}
+function setPilot(on) {
+  if(manual!==on){score=0;shots=shots.filter(shot=>shot.owner!=='ship');}
+  manual=on;lastInput=time;keys.clear();
+  if(on){
+    setPause(false);
+    canvas.focus({preventScroll:true});
+  }
+  $('pilot').textContent=on?'Resume autopilot':'Take control';
+  $('touch').classList.toggle('active',on);
+  $('hint').textContent=on?'Arrows or WASD · Space to fire · H to jump':'';
+}
+function setPause(on) {
+  paused=on;editor?.setPaused(on);keys.clear();$('pause').textContent=on?'Resume':'Pause';
+}
+$('pilot').onclick=()=>setPilot(!manual);
+$('pause').onclick=()=>setPause(!paused);
+$('jump').onclick=jump;
+setPause(paused);
+const playKeys=new Set(['ArrowLeft','ArrowRight','ArrowUp','KeyA','KeyD','KeyW','Space','KeyH']);
+addEventListener('keydown',e=>{
+  if(e.defaultPrevented||e.target.closest?.('input,textarea,select,[contenteditable]')||e.ctrlKey||e.metaKey||e.altKey)return;
+  if(e.code==='Space'&&e.target.closest?.('button,summary'))return;
+  if(e.code==='KeyP'&&!e.repeat){setPilot(!manual);return;}
+  if(!manual||!playKeys.has(e.code))return;
+  e.preventDefault();keys.add(e.code);lastInput=time;
+  if(e.code==='KeyH'&&!e.repeat)jump();
+});
+addEventListener('keyup',e=>keys.delete(e.code));
+addEventListener('blur',()=>keys.clear());
+document.addEventListener('visibilitychange',()=>{if(document.hidden)keys.clear();});
+reduced.addEventListener('change',e=>{if(e.matches)setPause(true);});
+for(const button of $('touch').querySelectorAll('[data-key]')) {
+  button.onpointerdown=e=>{
+    e.preventDefault();
+    button.setPointerCapture(e.pointerId);keys.add(button.dataset.key);lastInput=time;
+  };
+  button.onpointerup=button.onpointercancel=button.onlostpointercapture=()=>keys.delete(button.dataset.key);
+}
+function step(dt) {
+  time+=dt;
+  if(!reduced.matches) nebulaPhase=(nebulaPhase+dt*.19*config.graphics.nebulaSpeed)%TAU;
+  if(manual&&keys.size)lastInput=time;
+  if(manual&&config.gameplay.idle&&time-lastInput>config.gameplay.idle)setPilot(false);
+  ship.safe-=dt;ship.cool-=dt;ship.jump-=dt;
+  if(ship.dead>0){
+    ship.dead-=dt;
+    if(ship.dead<=0){if(lives<=0)resetRound();else ship=newShip();}
+  } else {
+    let turn=0,thrust=false,shoot=false;
+    if(manual) {
+      turn=Number(keys.has('ArrowRight')||keys.has('KeyD'))-Number(keys.has('ArrowLeft')||keys.has('KeyA'));
+      thrust=keys.has('ArrowUp')||keys.has('KeyW');shoot=keys.has('Space');
+    } else {
+      const [target]=nearest(ship),[threat,distance]=nearest(ship,.75);
+      let angle=time*.65;
+      if(threat&&distance<95)angle=aim(ship,threat,.2)+Math.PI;
+      else if(target)angle=aim(ship,target,.24);
+      const error=delta(angle-ship.a,TAU);
+      turn=clamp(error*2.7,-1,1);
+      thrust=Math.abs(error)<1.3&&(distance<150||Math.sin(time*1.7)>.1);
+      shoot=target&&Math.abs(delta(aim(ship,target,.2)-ship.a,TAU))<.23&&Math.sin(time*4.6)>-.43;
+    }
+    ship.a+=turn*3.65*dt;
+    if(thrust){
+      const x=Math.cos(ship.a),y=Math.sin(ship.a);
+      ship.vx+=x*145*dt;ship.vy+=y*145*dt;
+      if(config.graphics.trails&&Math.random()<dt*52)
+        particles(wrap(ship.x-x*13,W),wrap(ship.y-y*13,H),ship.vx-x*95,ship.vy-y*95,2,[.24,.79,1],28);
+    }
+    ship.thrust=thrust;
+    const drag=Math.exp(-dt*.38);
+    ship.vx*=drag;ship.vy*=drag;
+    move(ship,dt);
+    if(shoot)fire(ship,'ship');
+  }
+  if(config.gameplay.director&&time>nextComet&&rocks.length) {
+    const comet=rock(0,rand(H*.16,H*.84),23,rand(170,220),rand(-38,38),true);
+    comet.expire=time+W/comet.vx;
+    rocks.push(comet);nextComet=time+rand(23,38);
+  }
+  if(!config.gameplay.ufo)rival=null;
+  if(config.gameplay.ufo&&time>nextRival&&rocks.length) {
+    rival={x:W-1,y:H*.27,vx:-86,vy:0,a:Math.PI,cool:1,expire:time+12};
+    nextRival=time+rand(26,38);
+  }
+  if(rival){
+    if(rival.expire<time)rival=null;
+    else {
+      rival.vy=45*Math.sin(time*1.2);move(rival,dt);rival.cool-=dt;
+      const [target,d]=nearest(rival);
+      if(d<0){particles(rival.x,rival.y,0,0,24,[1,.44,.69],120);rival=null;}
+      else if(target){rival.a=aim(rival,target,.2);fire(rival,'rival');}
+    }
+  }
+  rocks=rocks.filter(r=>!r.comet||r.expire>time);
+  for(const r of rocks){
+    move(r,dt);r.a+=r.spin*dt;
+    if(r.comet&&config.graphics.trails&&Math.random()<dt*38)particles(r.x,r.y,r.vx*.48,0,2,[.34,.85,1],45);
+  }
+  for(const b of shots){
+    b.life-=dt;move(b,dt);
+    if(b.life<=0)continue;
+    const hit=rocks.findIndex(r=>Math.hypot(delta(b.x-r.x,W),delta(b.y-r.y,H))<r.r*.86);
+    if(hit>=0){const [r]=rocks.splice(hit,1);burst(r,b);b.life=0;}
+  }
+  shots=shots.filter(b=>b.life>0);
+  if(ship.dead<=0&&ship.safe<=0&&nearest(ship)[1]<5){
+    lives--;ship.dead=lives?1.45:2.4;
+    particles(ship.x,ship.y,ship.vx*.4,ship.vy*.4,58,[.45,.86,1],190);
+    ringEffect(ship.x,ship.y,[.47,.83,1]);
+  }
+  if(rocks.length)nextWave=0;
+  else if(!nextWave)nextWave=time+2;
+  else if(time>nextWave){wave++;spawnWave();}
+  for(const d of dust){move(d,dt);d.life-=dt;}
+  dust=dust.filter(d=>d.life>0);
+  blasts=blasts.filter(blast=>time-blast.started<.9);
+}
+const vertices=[];
+const cyan=[.48,.88,1], amber=[1,.57,.33], pink=[1,.39,.67];
+const advanced=()=>config.graphics.style==='Advanced';
+function project(x,y,z=0) {
+  let px=(x-W*.5),py=(y-H*.5);
+  if(config.view.mode==='3D') {
+    const tilt=config.view.tilt*Math.PI/180;
+    const yaw=config.view.orbit&&!reduced.matches?.15*Math.sin(time*.24):0;
+    [px,py]=[px*Math.cos(yaw)-py*Math.sin(yaw),px*Math.sin(yaw)+py*Math.cos(yaw)];
+    const depth=py*Math.sin(tilt)-z*Math.cos(tilt);
+    py=py*Math.cos(tilt)+z*Math.sin(tilt);
+    const p=config.view.zoom*1.07/(1+depth/1450);
+    px*=p;py*=p;
+  }
+  return [px*2/W,-py*2/H];
+}
+function vertex(p,color,alpha) {
+  const dim=config.graphics.quiet?1-.68*Math.exp(-5*(p[0]**2+p[1]**2)):1;
+  vertices.push(p[0],p[1],...color,alpha*dim);
+}
+function triangle(a,b,c,color,alpha=1) {
+  vertex(a,color,alpha);vertex(b,color,alpha);vertex(c,color,alpha);
+}
+function line(a,b,color,alpha=1,width=1.25) {
+  const w=canvas.clientWidth,h=canvas.clientHeight;
+  const dx=(b[0]-a[0])*w,dy=(b[1]-a[1])*h,length=Math.hypot(dx,dy);
+  if(length<.001)return;
+  const x=-dy*width/(w*length),y=dx*width/(h*length);
+  const c=[a[0]+x,a[1]+y],d=[a[0]-x,a[1]-y];
+  const e=[b[0]+x,b[1]+y],f=[b[0]-x,b[1]-y];
+  triangle(c,d,e,color,alpha);triangle(e,d,f,color,alpha);
+}
+function loop(points,color,alpha,width) {
+  points.forEach((p,i)=>line(p,points[(i+1)%points.length],color,alpha,width));
+}
+function halo(p,size,color,alpha,impact=false) {
+  if((!config.graphics.glow&&!impact)||reduced.matches)return;
+  const x=size*2/canvas.clientWidth,y=size*2/canvas.clientHeight;
+  for(let i=0;i<12;i++){
+    const a=i*TAU/12,b=(i+1)*TAU/12;
+    vertex(p,color,alpha);
+    vertex([p[0]+Math.cos(a)*x,p[1]+Math.sin(a)*y],color,0);
+    vertex([p[0]+Math.cos(b)*x,p[1]+Math.sin(b)*y],color,0);
+  }
+}
+function tiles(o,r,draw) {
+  const xx=o.x<r?W:o.x>W-r?-W:0;
+  const yy=o.y<r?H:o.y>H-r?-H:0;
+  for(const ox of xx?[0,xx]:[0])for(const oy of yy?[0,yy]:[0])draw(o.x+ox,o.y+oy);
+}
+// Direction toward the light, in world coordinates.
+const lightDirection=[-.67,-.54,.51];
+function rockLight(receiver,x,y,z,amount) {
+  if(!amount)return 1;
+  let blocked=0;
+  for(const caster of rocks){
+    if(caster===receiver)continue;
+    const dx=delta(caster.x-x,W),dy=delta(caster.y-y,H),dz=caster.r*.18-z;
+    const along=dx*lightDirection[0]+dy*lightDirection[1]+dz*lightDirection[2];
+    if(along<=0||along>caster.r*2.6)continue;
+    const distance=Math.sqrt(Math.max(0,dx*dx+dy*dy+dz*dz-along*along));
+    const edge=clamp((caster.r*.76-distance)/(caster.r*.30),0,1);
+    blocked=Math.max(blocked,edge*edge*(3-2*edge)*(1-along/(caster.r*3.3)));
+  }
+  return 1-amount*blocked;
+}
+function drawRock(r,x,y) {
+  const cos=Math.cos(r.a),sin=Math.sin(r.a);
+  const local=(a,b,z=0)=>project(x+r.r*(a*cos-b*sin),y+r.r*(a*sin+b*cos),z*r.r);
+  const edge=r.ring.map(([a,b,z])=>local(a,b,z));
+  const color=r.comet?cyan:[.57,.66,.83];
+  const fracture=featureAmount('fissures')*clamp(1-(time-(r.fracturedAt??-9))/2.6,0,1);
+  if(!advanced()){
+    loop(edge,color,.9,1.35);
+    if(fracture)drawFissures(local,fracture);
+    return;
+  }
+  const shadow=featureAmount('shadows');
+  const light=(a,b,z)=>rockLight(r,x+r.r*(a*cos-b*sin),y+r.r*(a*sin+b*cos),z*r.r,shadow);
+  const edgeLight=r.ring.map(([a,b,z])=>light(a,b,z));
+  const innerLight=r.ring.map(([a,b,z])=>light(a*.54,b*.54,.48+z*.43));
+  const peakLight=light(-.09,-.11,.64);
+  const shaded=(a,b,c,color,l1,l2,l3)=>{
+    vertex(a,color.map(v=>v*l1),1);
+    vertex(b,color.map(v=>v*l2),1);
+    vertex(c,color.map(v=>v*l3),1);
+  };
+  const inner=r.ring.map(([a,b,z])=>local(a*.54,b*.54,.48+z*.43));
+  const peak=local(-.09,-.11,.64);
+  for(let i=0;i<edge.length;i++){
+    const j=(i+1)%edge.length;
+    const a=i*TAU/edge.length+r.a;
+    const lit=.5+.5*Math.cos(a+2.25);
+    const irregular=.86+.14*Math.sin(i*8.7+r.phase);
+    const surface=[.095+lit*.27,.12+lit*.24,.18+lit*.25].map(c=>c*irregular);
+    const top=surface.map(c=>c*1.24);
+    shaded(edge[i],edge[j],inner[j],surface,edgeLight[i],edgeLight[j],innerLight[j]);
+    shaded(edge[i],inner[j],inner[i],surface.map(c=>c*.78),edgeLight[i],innerLight[j],innerLight[i]);
+    shaded(inner[i],inner[j],peak,top,innerLight[i],innerLight[j],peakLight);
+    if(lit>.61)line(edge[i],edge[j],r.comet?cyan:[.81,.66,.63],lit*.62*Math.min(edgeLight[i],edgeLight[j]),1.4);
+    if(i%3===0)line(inner[i],peak,[.62,.52,.64],.25,.8);
+  }
+  for(const [a,b,d] of r.craters){
+    const contour=Array.from({length:7},(_,i)=>local(a+Math.cos(i*TAU/7)*d,b+Math.sin(i*TAU/7)*d,.61));
+    const center=local(a,b,.61);
+    contour.forEach((p,i)=>triangle(p,contour[(i+1)%7],center,[.045,.049,.088],.48));
+    loop(contour,[.68,.60,.68],.27,.8);
+  }
+  if(fracture)drawFissures(local,fracture);
+  if(r.comet)halo(project(x,y),38,cyan,.37);
+}
+function drawShip(x,y) {
+  const a=ship.a,dx=Math.cos(a),dy=Math.sin(a);
+  const local=(f,s,z=0)=>project(x+dx*f-dy*s,y+dy*f+dx*s,z);
+  const nose=local(21,0,2),left=local(-13,-12),right=local(-13,12);
+  const tail=local(-8,0),ridge=local(-3,0,8);
+  halo(tail,ship.thrust?30:16,cyan,ship.thrust?.36:.16);
+  if(advanced()){
+    triangle(nose,left,ridge,[.20,.57,.74]);
+    triangle(nose,right,ridge,[.10,.23,.42]);
+    triangle(left,ridge,tail,[.12,.35,.51]);
+    triangle(right,ridge,tail,[.07,.16,.28]);
+    line(local(9,0,5),ridge,[.75,.97,1],.96,2.3);
+  }
+  loop([nose,left,tail,right],cyan,.97,1.6);
+  if(ship.thrust)loop([local(-9,-4),local(-23-5*Math.sin(time*31),0),local(-9,4)],amber,.89,1.35);
+  const shield=featureAmount('shield');
+  if(ship.safe>0&&shield){
+    const spin=reduced.matches?0:time*2.4;
+    for(let i=0;i<3;i++){
+      const arc=spin+i*TAU/3;
+      for(let j=0;j<8;j++){
+        const a=arc+j*.16,b=a+.16;
+        line(local(29*Math.cos(a),29*Math.sin(a),2),local(29*Math.cos(b),29*Math.sin(b),2),cyan,shield*(j+1)/8,1.45);
+      }
+    }
+  }
+  if(ship.safe>0&&advanced()){
+    const points=Array.from({length:24},(_,i)=>local(27*Math.cos(i*TAU/24),27*Math.sin(i*TAU/24)));
+    loop(points,cyan,.23,1);
+  }
+}
+function drawUfo(x,y) {
+  const points=Array.from({length:16},(_,i)=>project(x+Math.cos(i*TAU/16)*23,y+Math.sin(i*TAU/16)*8,3));
+  const center=project(x,y,3);
+  if(advanced())points.forEach((p,i)=>triangle(center,p,points[(i+1)%16],[.35,.12,.28],.95));
+  loop(points,pink,.9,1.3);
+  line(project(x-12,y,7),project(x+12,y,7),pink,.92,2);
+  halo(center,29,pink,.26);
+}
+function locations(p,attributes,uniforms) {
+  return {
+    p,
+    ...Object.fromEntries(attributes.map(key=>[key,gl.getAttribLocation(p,key)])),
+    ...Object.fromEntries(uniforms.map(key=>[key,gl.getUniformLocation(p,key)]))
+  };
+}
+function drawFissures(local,amount) {
+  const crack=[[-.64,.32],[-.29,.12],[-.19,-.11],[.07,.02],[.22,-.21],[.55,-.38]];
+  const points=crack.map(([x,y])=>local(x,y,.68));
+  points.slice(1).forEach((p,i)=>line(points[i],p,amber,amount,1.55));
+  line(points[2],local(-.47,-.38,.61),amber,amount*.65,1.1);
+}
+
+function drawGrid(amount) {
+  if(!amount)return;
+  const color=[.24,.55,.72];
+  for(let i=0;i<=12;i++){
+    const x=i*W/12;
+    line(project(x,0,-8),project(x,H,-8),color,amount*(i===6?.51:.27),1);
+  }
+  for(let i=0;i<=8;i++){
+    const y=i*H/8;
+    line(project(0,y,-8),project(W,y,-8),color,amount*(i===4?.51:.27),1);
+  }
+}
+
+function drawCometTail(r,x,y,amount) {
+  const speed=Math.hypot(r.vx,r.vy);
+  const dx=r.vx/speed,dy=r.vy/speed;
+  const end=95+amount*170;
+  const head=project(x,y,0);
+  for(let i=0;i<5;i++){
+    const spread=(i-2)*8;
+    const tip=project(x-dx*end-dy*spread,y-dy*end+dx*spread,-3);
+    const shoulder=project(x-dx*45+dy*spread,y-dy*45-dx*spread,0);
+    vertex(head,cyan,amount*.37);
+    vertex(shoulder,[.18,.56,1],amount*.14);
+    vertex(tip,cyan,0);
+  }
+}
+
+function drawTargetLock(amount) {
+  if(!amount||manual||ship.dead>0)return;
+  const [target]=nearest(ship);
+  if(!target)return;
+  const radius=target.r*1.28+7;
+  tiles(target,radius,(x,y)=>{
+    for(let i=0;i<8;i++){
+      const a=i*TAU/8,b=a+.39;
+      line(project(x+Math.cos(a)*radius,y+Math.sin(a)*radius),
+           project(x+Math.cos(b)*radius,y+Math.sin(b)*radius),amber,amount,1.25);
+    }
+    const tx=x+target.vx*.24,ty=y+target.vy*.24;
+    line(project(tx-5,ty),project(tx+5,ty),amber,amount,1.1);
+    line(project(tx,ty-5),project(tx,ty+5),amber,amount,1.1);
+  });
+}
+
+function drawBlasts() {
+  const amount=featureAmount('explosions');
+  if(!amount||reduced.matches)return;
+  for(const blast of blasts)tiles(blast,blast.radius*1.6,(x,y)=>{
+    const age=time-blast.started;
+    const flash=Math.max(0,1-age/.19);
+    const scale=canvas.clientWidth/W;
+    const center=project(x,y);
+    halo(center,(blast.radius*.60+age*80)*scale,blast.color,flash*amount*.85,true);
+    halo(center,(12+age*29)*scale,[1,.97,.82],flash*amount,true);
+    for(let layer=0;layer<3;layer++){
+      const progress=(age-layer*.058)/(.70-layer*.10);
+      if(progress<0||progress>=1)continue;
+      const radius=blast.radius*(.12+progress*(1.45-layer*.24));
+      const ring=Array.from({length:36},(_,i)=>{
+        const a=i*TAU/36;
+        const ripple=radius*(1+.035*Math.sin(a*7+blast.angle+layer));
+        return project(x+Math.cos(a)*ripple,y+Math.sin(a)*ripple,layer*3);
+      });
+      loop(ring,layer===0?[1,.87,.63]:blast.color,amount*(1-progress)**2,layer===0?2.1:1.1);
+    }
+  });
+}
+
+function bindBloomTarget() {
+  if(!featureAmount('bloom'))return false;
+  const width=canvas.width,height=canvas.height;
+  if(width!==bloomTarget.width||height!==bloomTarget.height){
+    Object.assign(bloomTarget,{width,height});
+    gl.bindTexture(gl.TEXTURE_2D,bloomTarget.texture);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,width,height,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER,bloomTarget.framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,bloomTarget.texture,0);
+    bloomTarget.ready=gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE;
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER,bloomTarget.ready?bloomTarget.framebuffer:null);
+  return bloomTarget.ready;
+}
+
+function compositeBloom() {
+  const options=config.features.bloom;
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  gl.disable(gl.BLEND);
+  gl.useProgram(bloomProgram.p);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D,bloomTarget.texture);
+  gl.uniform1i(bloomProgram.image,0);
+  gl.uniform2f(bloomProgram.stride,options.radius/(2*canvas.clientWidth),options.radius/(2*canvas.clientHeight));
+  gl.uniform1f(bloomProgram.threshold,options.threshold);
+  gl.uniform1f(bloomProgram.strength,options.amount);
+  gl.bindBuffer(gl.ARRAY_BUFFER,screenBuffer);
+  gl.enableVertexAttribArray(bloomProgram.position);
+  gl.vertexAttribPointer(bloomProgram.position,2,gl.FLOAT,false,0,0);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+  gl.disableVertexAttribArray(bloomProgram.position);
+}
+
+function draw() {
+  const bloom=bindBloomTarget();
+  gl.disable(gl.BLEND);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+  if(!config.graphics.transparent){
+    gl.useProgram(sky.p);gl.bindBuffer(gl.ARRAY_BUFFER,screenBuffer);
+    gl.enableVertexAttribArray(sky.position);gl.vertexAttribPointer(sky.position,2,gl.FLOAT,false,0,0);
+    gl.uniform1f(sky.aspect,canvas.width/canvas.height);
+    gl.uniform1f(sky.time,reduced.matches?0:time);
+    gl.uniform1f(sky.advanced,Number(advanced()));
+    gl.uniform1f(sky.nebulaPhase,nebulaPhase);
+    gl.uniform1f(sky.nebula,Number(advanced()&&config.graphics.nebula));
+    gl.uniform1f(sky.quiet,Number(config.graphics.quiet));
+    gl.uniform1f(sky.aurora,featureAmount('aurora'));
+    gl.uniform1f(sky.meteors,reduced.matches?0:featureAmount('meteors'));
+    gl.uniform1f(sky.eclipse,featureAmount('eclipse'));
+    gl.drawArrays(gl.TRIANGLES,0,3);
+    gl.disableVertexAttribArray(sky.position);
+  }
+  vertices.length=0;
+  drawGrid(featureAmount('grid'));
+  for(const d of dust)tiles(d,d.ring?90:12,(x,y)=>{
+    const alpha=d.life/d.max;
+    if(d.ring){
+      const size=12+(1-alpha)*66;
+      const ring=Array.from({length:24},(_,i)=>project(x+size*Math.cos(i*TAU/24),y+size*Math.sin(i*TAU/24)));
+      loop(ring,d.color,alpha*.43,1.2);
+      const echo=featureAmount('shockwaves');
+      if(echo&&alpha<.78){
+        const radius=size*.68;
+        const ripple=Array.from({length:24},(_,i)=>project(x+radius*Math.cos(i*TAU/24),y+radius*Math.sin(i*TAU/24)));
+        loop(ripple,d.color,Math.sin(alpha/.78*Math.PI)*echo*.62,1.7);
+      }
+    }else{
+      const p=project(x,y);
+      line(p,project(x-d.vx*.033-d.size,y-d.vy*.033),d.color,alpha*.83,d.size);
+    }
+  });
+  const tail=featureAmount('cometTail');
+  for(const r of rocks){
+    if(r.comet&&tail)tiles(r,100+tail*170,(x,y)=>drawCometTail(r,x,y,tail));
+    tiles(r,r.r*1.3,(x,y)=>drawRock(r,x,y));
+  }
+  drawBlasts();
+  drawTargetLock(featureAmount('targeting'));
+  if(rival)tiles(rival,30,drawUfo);
+  if(ship.dead<=0)tiles(ship,36,drawShip);
+  const tracer=featureAmount('tracers');
+  for(const b of shots)tiles(b,34+tracer*84,(x,y)=>{
+    const color=b.owner==='rival'?pink:cyan;
+    const p=project(x,y);
+    halo(p,12,color,.62);
+    if(tracer){
+      const speed=Math.hypot(b.vx,b.vy);
+      const ux=b.vx/speed,uy=b.vy/speed;
+      const length=24+tracer*82;
+      vertex(project(x-uy*4,y+ux*4),color,tracer*.54);
+      vertex(project(x+uy*4,y-ux*4),color,tracer*.54);
+      vertex(project(x-ux*length,y-uy*length),color,0);
+    }
+    line(p,project(x-b.vx*.035,y-b.vy*.035),color,.93,2);
+  });
+  gl.useProgram(mesh.p);
+  gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+  gl.bindBuffer(gl.ARRAY_BUFFER,meshBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(vertices),gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(mesh.position);gl.vertexAttribPointer(mesh.position,2,gl.FLOAT,false,24,0);
+  gl.enableVertexAttribArray(mesh.color);gl.vertexAttribPointer(mesh.color,4,gl.FLOAT,false,24,8);
+  gl.drawArrays(gl.TRIANGLES,0,vertices.length/6);
+  gl.disableVertexAttribArray(mesh.position);gl.disableVertexAttribArray(mesh.color);
+  if(bloom)compositeBloom();
+}
+function updateHud() {
+  const hud=$('hud');
+  hud.hidden=!config.scoreboard.enabled;
+  if(hud.hidden)return;
+  hud.style.opacity=config.scoreboard.opacity;
+  hud.style.color=config.scoreboard.color;
+  hud.style.justifyContent={left:'flex-start',center:'center',right:'flex-end'}[config.scoreboard.align];
+  hud.style.transformOrigin=config.scoreboard.align+' top';
+  hud.style.transform='scale('+config.scoreboard.scale+')';
+  const data={Score:String(score).padStart(5,'0'),Best:String(records[manual?'player':'auto']).padStart(5,'0'),Wave:String(wave).padStart(2,'0'),Lives:lives,Pilot:manual?'PLAYER':'AUTO'};
+  const metrics=Object.entries(data).filter(([key])=>config.scoreboard['show'+key]);
+  const cache=JSON.stringify([metrics,config.scoreboard.radar]);
+  if(cache!==hudCache){
+    hudCache=cache;hud.replaceChildren();
+    for(const [name,value] of metrics){
+      const block=document.createElement('div'),label=document.createElement('small'),number=document.createElement('b');
+      label.textContent=name.toUpperCase();number.textContent=value;
+      block.append(label,number);hud.append(block);
+    }
+    if(config.scoreboard.radar){
+      const radar=document.createElement('canvas');
+      radar.id='radar';radar.width=112;radar.height=62;
+      radar.style.cssText='position:static;width:112px;height:62px;border:1px solid #456980;border-radius:6px;background:#070e21aa';
+      radar.setAttribute('aria-label','Nearby asteroid radar');hud.append(radar);
+    }
+  }
+  const radar=$('radar');
+  if(!radar)return;
+  const ctx=radar.getContext('2d');
+  if(!ctx)return;
+  ctx.clearRect(0,0,112,62);
+  ctx.strokeStyle='#456980';ctx.beginPath();ctx.ellipse(56,31,38,23,0,0,TAU);ctx.stroke();
+  const [threat]=nearest(ship,.4);
+  for(const r of rocks){
+    const dx=delta(r.x-ship.x,W)*.145,dy=delta(r.y-ship.y,H)*.145;
+    if(Math.abs(dx)>53||Math.abs(dy)>29)continue;
+    ctx.fillStyle=r===threat?'#ff9679':'#83c7ea';ctx.fillRect(56+dx,31+dy,3,3);
+    if(r===threat){
+      ctx.strokeStyle='#ff967999';ctx.beginPath();ctx.moveTo(57+dx,32+dy);
+      ctx.lineTo(57+dx+(r.vx-ship.vx)*.12,32+dy+(r.vy-ship.vy)*.12);ctx.stroke();
+    }
+  }
+  ctx.strokeStyle='#fff';ctx.beginPath();ctx.moveTo(56,31);
+  ctx.lineTo(56+Math.cos(ship.a)*10,31+Math.sin(ship.a)*10);ctx.stroke();
+}
+function frame(now) {
+  resize();
+  if(!paused&&previous){
+    accumulator+=Math.min(.05,(now-previous)/1000);
+    while(accumulator>=1/120){step(1/120);accumulator-=1/120;}
+  }
+  previous=now;
+  draw();updateHud();
+  requestAnimationFrame(frame);
+}
+try {
+  if(!gl)throw Error('WebGL is unavailable. Enable hardware acceleration or try another browser.');
+  sky=locations(program(skyVertex,skyFragment),['position'],['aspect','time','advanced','quiet','nebula','nebulaPhase','aurora','meteors','eclipse']);
+  mesh=locations(program(meshVertex,meshFragment),['position','color'],[]);
+  bloomProgram=locations(program(skyVertex,bloomFragment),['position'],['image','stride','threshold','strength']);
+  bloomTarget.framebuffer=gl.createFramebuffer();
+  bloomTarget.texture=gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D,bloomTarget.texture);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  screenBuffer=gl.createBuffer();meshBuffer=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,screenBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();fail('WebGL rendering was interrupted. Reload to resume.');});
+  resetRound();
+  if (settings.editor.enabled) loadSettingsEditor();
+  requestAnimationFrame(frame);
+} catch(error) {
+  console.error(error);
+  fail(error.message);
+}
+</script>
+</body>
+</html>

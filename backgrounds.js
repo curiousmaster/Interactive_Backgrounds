@@ -12,6 +12,14 @@ export const backgrounds = [
             "Move your pointer to pluck the fabric; click or tap to release a larger wave.",
     },
     {
+        name: "Asteroids — Deep Field",
+        folder: "asteroids",
+        tags: ["space", "games", "interactive", "3d"],
+        description:
+            "A drifting nebula frames a glowing asteroid field with explosive impacts. " +
+            "Watch the autopilot weave through debris, or take control and blast your way through.",
+    },
+    {
         name: "Aurora Ribbons",
         folder: "aurora-ribbons",
         tags: ["colorful", "nature", "space", "ribbons"],
