@@ -1,0 +1,2240 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zaxxon • Fortress Run</title>
+<style>
+  * { box-sizing: border-box }
+  body { margin: 0; background: #070b1d; color: #e5f4ff; font: 15px system-ui }
+  canvas { display: block; width: 100vw; height: 100vh; touch-action: none }
+  header, footer, details, #message { position: fixed; padding: 12px; background: #080f24ed; border: 1px solid #42708b; border-radius: 8px }
+  header { top: 12px; left: 12px; line-height: 1.7 }
+  footer { bottom: 12px; left: 12px; max-width: calc(100vw - 24px) }
+  #settings { top: 12px; right: 12px; width: min(280px, 50vw); max-height: 85vh; overflow: auto }
+  #settings details { position: static; margin: 8px 0; padding: 8px }
+  label { display: grid; grid-template-columns: 1fr minmax(0, 46%); align-items: center; margin: 8px 0; gap: 6px }
+  input, select, button, textarea { font: inherit; color: inherit; background: #142748; border: 1px solid #52788e; border-radius: 4px; padding: 4px }
+  #settings > input, textarea { width: 100%; margin-top: 8px }
+  summary, button { cursor: pointer }
+  #clearance { position: fixed; left: 16px; top: 100px; width: 10px; height: 100px;
+    border: 1px solid #98c9e8; border-radius: 4px; background: #10172e }
+  #clearance span { position: absolute; inset: auto 0 0; background: #dc644f; border-radius: 3px }
+  #clearance i { position: absolute; width: 18px; left: -5px; height: 2px; background: #73edff }
+  #message { top: 45%; left: 50%; transform: translate(-50%, -50%); text-align: center }
+</style>
+<header><strong>ZAXXON / FORTRESS RUN</strong><div id="hud">Loading WebGL…</div></header>
+<details id="settings"><summary>Settings</summary></details>
+<footer>←/→ steer · ↑/↓ altitude · Space fire · A autopilot · Hold S to shield · C camera · Right-drag orbit · Wheel zoom · F recenter · R restart</footer>
+<div id="message" hidden></div>
+<div id="clearance" hidden><span></span><i></i></div>
+<script src="./settings-editor.js"></script>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}
+</script>
+<!-- Meshes adapted from Kenney Space Kit (CC0), https://opengameart.org/content/space-kit -->
+<script type="text/plain" id="obj-fighter">
+v -8.8875 0.7 2.25
+v -9.875 0.7 2.25
+v -8.8875 1.575 2.25
+v -9.875 1.575 2.25
+v 3.95 1.575 -1.7
+v 3.95 0.7 -1.7
+v 3.95 1.575 2.25
+v 3.95 0.7 2.25
+v 8.8875 1.575 -0.7125
+v 8.8875 0.7 -0.7125
+v 8.8875 1.575 2.25
+v 8.8875 0.7 2.25
+v 9.875 0.7 2.25
+v 9.875 1.575 2.25
+v 1.975 -0.50001 -0.31795
+v 1.975 9.4175e-06 -1.7
+v -1.975 -0.50001 -0.31795
+v -1.975 9.4175e-06 -1.7
+v 3.95 9.4175e-06 2.25
+v 3.95 9.4175e-06 -3.675
+v 1.975 9.4175e-06 2.25
+v 1.975 9.4175e-06 -3.675
+v -1.975 1.975 -1.7
+v -1.975 9.4175e-06 2.25
+v -1.975 1.975 0.275
+v -1.975 1.975 2.25
+v 1.975 1.975 -1.7
+v 1.975 1.975 0.275
+v 1.975 1.975 2.25
+v 1.975 -0.50001 4.225
+v -1.975 -0.50001 4.225
+v 1.975 9.4175e-06 4.225
+v -1.975 9.4175e-06 4.225
+v 9.875 0.7 0.275
+v -8.8875 0.7 -0.7125
+v -9.875 0.7 0.275
+v 1.975 1.975 4.225
+v -8.8875 1.575 -0.7125
+v 9.875 1.575 0.275
+v -3.95 0.7 -1.7
+v -3.95 1.575 -1.7
+v -3.95 0.7 2.25
+v -3.95 1.575 2.25
+v -9.875 1.575 0.275
+v 3.95 1.975 2.25
+v 0.97501 2.95 -1.7
+v -0.97501 2.95 -1.7
+v 0.97501 3.95 -1.7
+v 1.975 2.95 -1.7
+v -1.975 2.95 -1.7
+v -0.97501 3.95 -1.7
+v 1.6955 0.27945 5.8
+v 1.6955 3.6706 5.8
+v 1.6955 0.27945 6.9
+v 1.6955 3.6706 6.9
+v 1.975 3.95 2.25
+v 1.975 4.25 2.25
+v 1.975 3.95 4.225
+v 1.975 4.25 4.225
+v -4.4634 1.575 0.78839
+v -4.4634 1.575 2.25
+v -7.9 1.575 0.78839
+v -7.9 1.575 2.25
+v -1.6955 0.27945 5.8
+v -1.6955 0.27945 6.9
+v -1.6955 3.6706 5.8
+v -1.6955 3.6706 6.9
+v 3.95 3.95 2.25
+v 3.95 4.25 2.25
+v 3.95 4.25 4.225
+v 7.9 1.575 0.78839
+v 7.9 1.575 2.25
+v 4.4634 1.575 0.78839
+v 4.4634 1.575 2.25
+v -1.975 2.9625 0.275
+v -1.975 3.95 2.25
+v -3.95 2.9625 0.275
+v -3.95 3.95 2.25
+v -1.975 1.975 4.225
+v -1.975 3.95 4.225
+v -3.95 4.25 2.25
+v -1.975 4.25 2.25
+v -1.975 4.25 4.225
+v -3.95 9.4175e-06 2.25
+v -3.95 1.975 2.25
+v 2.2515 -0.27651 6.9
+v 2.2515 -0.27651 5.489
+v -2.2515 -0.27651 6.9
+v -2.2515 -0.27651 5.489
+v -3.5585 1.5835 -3.675
+v -3.5585 0.39148 -3.675
+v -3.5585 1.5835 -2.975
+v -3.5585 0.39148 -3.275
+v -3.95 4.25 4.225
+v -3.95 1.975 0.275
+v -3.95 1.975 4.225
+v 1.975 2.9625 0.275
+v 2.3665 1.5835 -3.675
+v 2.3665 0.39148 -3.675
+v 2.3665 1.5835 -2.975
+v 2.3665 0.39148 -3.275
+v -2.3665 1.5835 -2.975
+v -2.3665 1.5835 -3.675
+v -2.3665 0.39148 -3.675
+v -2.3665 0.39148 -3.275
+v 3.95 1.975 0.275
+v 3.95 1.975 -3.675
+v 1.975 1.975 -3.675
+v -3.95 1.975 -3.675
+v -3.95 9.4175e-06 -3.675
+v 3.5585 1.5835 -2.975
+v 3.5585 1.5835 -3.675
+v 3.5585 0.39148 -3.675
+v 3.5585 0.39148 -3.275
+v 3.95 2.9625 0.275
+v -1.975 1.975 -3.675
+v -1.975 9.4175e-06 -3.675
+v 3.95 1.975 4.225
+v -2.2515 4.2265 5.489
+v -2.2515 4.2265 6.9
+v 2.2515 4.2265 5.489
+v 2.2515 4.2265 6.9
+v 1.3035 9.4175e-06 -9.6
+v -1.3035 9.4175e-06 -9.6
+v 7.9 1.575 -1.7
+v -7.9 0.7 -1.7
+v -7.9 1.575 -1.7
+v -1.975 3.95 0.275
+v 1.975 3.95 0.275
+v -1.3035 1.264 -9.6
+v 1.3035 1.264 -9.6
+v 7.9 0.7 -1.7
+f 2 1 3
+f 3 4 2
+f 6 5 7
+f 7 8 6
+f 10 9 11
+f 11 12 10
+f 12 13 14
+f 14 11 12
+f 16 15 17
+f 17 18 16
+f 20 19 21
+f 21 22 20
+f 21 16 22
+f 23 18 24
+f 24 25 23
+f 24 26 25
+f 27 16 21
+f 21 28 27
+f 21 29 28
+f 15 30 31
+f 31 17 15
+f 31 30 32
+f 32 33 31
+f 34 13 12
+f 12 10 34
+f 36 35 1
+f 1 2 36
+f 21 29 37
+f 15 16 21
+f 21 30 15
+f 21 37 30
+f 37 32 30
+f 38 35 1
+f 1 3 38
+f 10 9 39
+f 39 34 10
+f 41 40 42
+f 42 43 41
+f 3 38 44
+f 44 4 3
+f 21 19 8
+f 8 29 21
+f 8 7 29
+f 7 45 29
+f 47 46 48
+f 49 46 50
+f 49 50 23
+f 27 49 23
+f 27 23 18
+f 46 47 50
+f 48 51 47
+f 18 16 27
+f 53 52 54
+f 54 55 53
+f 57 56 58
+f 58 59 57
+f 61 60 62
+f 62 63 61
+f 54 52 64
+f 64 65 54
+f 64 66 67
+f 67 65 64
+f 14 39 9
+f 9 11 14
+f 68 56 57
+f 57 69 68
+f 70 69 57
+f 57 59 70
+f 50 47 51
+f 53 55 67
+f 67 66 53
+f 72 71 73
+f 73 74 72
+f 44 36 2
+f 2 4 44
+f 76 75 77
+f 77 78 76
+f 75 25 26
+f 26 76 75
+f 26 79 76
+f 79 80 76
+f 76 78 81
+f 81 82 76
+f 76 82 83
+f 83 80 76
+f 84 24 26
+f 26 42 84
+f 26 43 42
+f 26 85 43
+f 87 86 88
+f 88 89 87
+f 91 90 92
+f 92 93 91
+f 94 83 82
+f 82 81 94
+f 77 95 85
+f 85 78 77
+f 85 96 78
+f 96 81 78
+f 96 94 81
+f 28 97 56
+f 56 29 28
+f 56 58 29
+f 58 37 29
+f 26 25 95
+f 95 85 26
+f 99 98 100
+f 100 101 99
+f 103 102 92
+f 92 90 103
+f 103 104 105
+f 105 102 103
+f 28 106 107
+f 107 108 28
+f 108 27 28
+f 40 109 110
+f 110 84 40
+f 84 42 40
+f 41 95 109
+f 109 40 41
+f 41 43 95
+f 43 85 95
+f 112 111 100
+f 100 98 112
+f 114 113 99
+f 99 101 114
+f 5 20 107
+f 107 106 5
+f 106 7 5
+f 106 45 7
+f 6 19 20
+f 20 5 6
+f 6 8 19
+f 68 115 97
+f 97 56 68
+f 105 104 91
+f 91 93 105
+f 23 116 109
+f 109 25 23
+f 109 95 25
+f 18 24 84
+f 84 117 18
+f 84 110 117
+f 112 113 114
+f 114 111 112
+f 68 69 70
+f 70 45 68
+f 70 118 45
+f 106 115 68
+f 68 45 106
+f 119 89 88
+f 88 120 119
+f 26 79 96
+f 96 85 26
+f 37 58 121
+f 121 32 37
+f 121 87 32
+f 96 79 80
+f 80 94 96
+f 80 83 94
+f 106 28 97
+f 97 115 106
+f 122 121 119
+f 119 120 122
+f 123 16 18
+f 18 124 123
+f 45 118 37
+f 37 29 45
+f 33 32 37
+f 37 79 33
+f 37 58 79
+f 58 80 79
+f 35 36 44
+f 44 38 35
+f 99 20 22
+f 22 108 99
+f 108 98 99
+f 108 112 98
+f 113 107 20
+f 20 99 113
+f 113 112 107
+f 112 108 107
+f 46 49 48
+f 25 95 77
+f 77 75 25
+f 91 117 110
+f 110 109 91
+f 109 90 91
+f 109 103 90
+f 104 116 117
+f 117 91 104
+f 104 103 116
+f 103 109 116
+f 119 121 58
+f 58 80 119
+f 24 18 17
+f 17 31 24
+f 31 26 24
+f 31 33 26
+f 33 79 26
+f 45 106 28
+f 28 29 45
+f 79 33 89
+f 89 80 79
+f 89 119 80
+f 54 88 86
+f 86 122 54
+f 122 55 54
+f 122 67 55
+f 65 120 88
+f 88 54 65
+f 65 67 120
+f 67 122 120
+f 117 116 23
+f 23 18 117
+f 87 121 122
+f 122 86 87
+f 32 87 89
+f 89 33 32
+f 34 39 14
+f 14 13 34
+f 108 22 16
+f 16 27 108
+f 37 118 70
+f 70 58 37
+f 70 59 58
+f 8 12 11
+f 11 7 8
+f 11 72 7
+f 72 74 7
+f 71 125 5
+f 5 73 71
+f 5 74 73
+f 5 7 74
+f 125 71 72
+f 125 72 11
+f 11 9 125
+f 127 126 35
+f 35 38 127
+f 1 42 43
+f 43 3 1
+f 43 61 3
+f 61 63 3
+f 51 50 128
+f 58 56 129
+f 129 48 58
+f 48 80 58
+f 48 51 80
+f 51 128 80
+f 128 76 80
+f 49 48 129
+f 130 124 18
+f 18 50 130
+f 18 23 50
+f 97 129 56
+f 129 97 28
+f 129 28 27
+f 27 49 129
+f 123 131 49
+f 49 16 123
+f 49 27 16
+f 40 42 1
+f 1 126 40
+f 1 35 126
+f 132 6 5
+f 5 125 132
+f 60 43 41
+f 41 127 60
+f 127 62 60
+f 127 38 62
+f 38 63 62
+f 38 3 63
+f 43 60 61
+f 10 12 8
+f 8 132 10
+f 8 6 132
+f 10 132 125
+f 125 9 10
+f 40 126 127
+f 127 41 40
+f 128 50 23
+f 23 25 128
+f 25 75 128
+f 75 76 128
+f 123 124 130
+f 130 131 123
+f 64 52 53
+f 53 66 64
+f 51 130 50
+f 48 131 130
+f 130 51 48
+f 131 48 49
+f 105 93 92
+f 92 102 105
+f 114 101 100
+f 100 111 114
+</script>
+<script type="text/plain" id="obj-interceptor">
+v -4.4778 0.15809 5.625
+v -5.7132 0.15809 5.625
+v -4.4778 1.8169 5.625
+v -5.7132 1.8169 5.625
+v 1.6404 0.33463 6.8
+v -1.6404 0.33463 6.8
+v 1.6404 3.6154 6.8
+v -1.6404 3.6154 6.8
+v -1.3035 0.632 -8.5
+v 1.3035 0.632 -8.5
+v -1.3035 1.264 -8.5
+v 1.3035 1.264 -8.5
+v 1.9015 3.656 -1.4647
+v -1.9015 3.656 -1.4647
+v -1.6392 0.632 -4.55
+v -1.6392 1.7973 -4.55
+v -1.9015 2.7074 -1.4647
+v 1.6392 1.7973 -4.55
+v 1.9015 2.7074 -1.4647
+v 1.6392 0.632 -4.55
+v 5.7132 0.15809 5.625
+v 4.4778 0.15809 5.625
+v 5.7132 1.8169 5.625
+v 4.4778 1.8169 5.625
+v 5.925 0.9875 -8.5
+v 5.925 0.9875 -6.4034
+v 4.266 0.9875 -8.5
+v 4.266 0.9875 -6.4034
+v -1.6404 3.6154 7.3
+v -1.6404 0.33463 7.3
+v 6.207 2.3108 5.325
+v 6.207 2.3108 6.225
+v 3.984 2.3108 5.325
+v 3.984 2.3108 6.225
+v 6.207 -0.33574 5.325
+v 6.207 -0.33574 6.225
+v -1.3035 -8.242e-06 -8.5
+v 1.3035 -8.242e-06 -8.5
+v 3.984 -0.33574 6.225
+v 5.7132 0.15809 6.225
+v 5.7132 1.8169 6.225
+v 4.4778 1.8169 6.225
+v 4.4778 0.15809 6.225
+v 1.975 3.95 -0.6
+v 1.975 -8.242e-06 -0.6
+v 1.975 1.975 -0.6
+v 4.266 -8.242e-06 3.35
+v 2.575 -8.242e-06 3.35
+v 4.266 1.975 3.35
+v 2.575 1.975 3.35
+v -4.266 1.975 -12.45
+v -4.266 1.975 -9.5262
+v -5.925 1.975 -12.45
+v -5.925 1.975 -9.5262
+v -1.975 3.95 -0.6
+v 5.925 -8.242e-06 -6.4034
+v 5.925 -8.242e-06 -11.463
+v 4.266 -8.242e-06 -6.4034
+v 4.266 -8.242e-06 -11.463
+v 5.925 1.975 3.35
+v 5.925 -8.242e-06 3.35
+v 5.925 0.9875 -2.8059
+v 5.925 0.9875 -0.6
+v 4.266 0.9875 -2.8059
+v 4.266 0.9875 -0.6
+v 3.984 -0.33574 5.325
+v 4.266 0.9875 -12.45
+v 5.925 0.9875 -12.45
+v 4.266 1.975 -12.45
+v 5.925 1.975 -12.45
+v 4.266 -8.242e-06 -2.8059
+v 4.266 -8.242e-06 -0.6
+v 5.925 -8.242e-06 -2.8059
+v 5.925 -8.242e-06 -0.6
+v 1.6404 3.6154 7.3
+v -4.4778 0.15809 6.225
+v -5.7132 0.15809 6.225
+v -5.925 0.9875 -12.45
+v -4.266 0.9875 -12.45
+v -1.975 -8.242e-06 4.55
+v -1.975 3.175 4.55
+v -1.975 -8.242e-06 5.325
+v -1.975 1.975 -0.6
+v -1.975 1.975 0.85
+v -1.975 3.175 0.85
+v -1.975 3.95 5.325
+v -4.266 -8.242e-06 -11.463
+v -4.266 0.9875 -8.5
+v -4.266 -8.242e-06 -6.4034
+v -4.266 0.9875 -6.4034
+v -1.975 -8.242e-06 -0.6
+v 5.925 1.975 -9.4875
+v 4.266 1.975 -9.4875
+v 1.975 3.95 5.325
+v 0.72388 3.95 0.65112
+v -0.72388 3.95 0.65112
+v -0.72388 3.95 4.0739
+v 0.72388 3.95 4.0739
+v -5.7132 1.8169 6.225
+v -4.4778 1.8169 6.225
+v 1.6404 0.33463 7.3
+v 1.975 -8.242e-06 5.325
+v 1.975 -8.242e-06 4.55
+v 1.975 3.175 0.85
+v 1.975 1.975 0.85
+v 1.975 3.175 4.55
+v -2.575 -8.242e-06 3.35
+v -4.266 -8.242e-06 3.35
+v -2.575 1.975 3.35
+v -4.266 1.975 3.35
+v -4.266 0.9875 -2.8059
+v -4.266 -8.242e-06 -2.8059
+v -4.266 0.9875 -0.6
+v -4.266 -8.242e-06 -0.6
+v -5.925 -8.242e-06 -2.8059
+v -5.925 0.9875 -2.8059
+v -5.925 -8.242e-06 -0.6
+v -5.925 0.9875 -0.6
+v -5.925 0.9875 -8.5
+v -5.925 -8.242e-06 -11.463
+v -2.2515 -0.27651 6.589
+v -2.2515 4.2265 6.589
+v 2.2515 -0.27651 6.589
+v -3.984 2.3108 5.325
+v -3.984 2.3108 6.225
+v -6.207 2.3108 5.325
+v -6.207 2.3108 6.225
+v -3.984 -0.33574 5.325
+v -3.984 -0.33574 6.225
+v -6.207 -0.33574 5.325
+v -5.925 -8.242e-06 3.35
+v -5.925 0.9875 -6.4034
+v 2.2515 4.2265 6.589
+v -5.925 -8.242e-06 -6.4034
+v -2.2515 -0.27651 7.3
+v -2.2515 4.2265 7.3
+v -5.925 1.975 3.35
+v 2.2515 4.2265 7.3
+v 2.2515 -0.27651 7.3
+v -6.207 -0.33574 6.225
+v -2.575 -8.242e-06 4.55
+v -5.925 1.975 1.375
+v -5.925 1.4813 -0.6
+v -5.4313 1.975 -0.6
+v 5.925 1.975 1.375
+v 5.4313 1.975 -0.6
+v 2.575 1.975 0.85
+v 5.925 1.4813 -0.6
+v 2.575 -8.242e-06 4.55
+v -0.72388 4.35 1.018
+v -0.72388 4.35 4.0739
+v 0.72388 4.35 4.0739
+v -2.575 1.975 0.85
+v 0.72388 4.35 1.018
+v -2.575 3.175 4.55
+v 2.575 3.175 0.85
+v 2.575 3.175 4.55
+v -2.575 3.175 0.85
+f 2 1 3
+f 3 4 2
+f 6 5 7
+f 7 8 6
+f 10 9 11
+f 11 12 10
+f 14 13 12
+f 12 11 14
+f 11 9 15
+f 15 16 11
+f 16 14 11
+f 16 17 14
+f 10 12 13
+f 13 18 10
+f 13 19 18
+f 10 18 20
+f 22 21 23
+f 23 24 22
+f 26 25 27
+f 27 28 26
+f 6 8 29
+f 29 30 6
+f 32 31 33
+f 33 34 32
+f 35 31 32
+f 32 36 35
+f 38 37 9
+f 9 10 38
+f 40 39 36
+f 36 32 40
+f 32 41 40
+f 32 42 41
+f 43 34 39
+f 39 40 43
+f 43 42 34
+f 42 32 34
+f 20 18 19
+f 19 13 44
+f 38 10 20
+f 20 45 38
+f 20 19 45
+f 19 44 45
+f 44 46 45
+f 48 47 49
+f 49 50 48
+f 52 51 53
+f 53 54 52
+f 55 44 13
+f 13 14 55
+f 57 56 58
+f 58 59 57
+f 61 60 31
+f 31 35 61
+f 63 62 64
+f 64 65 63
+f 49 47 66
+f 66 33 49
+f 68 67 69
+f 69 70 68
+f 64 71 72
+f 72 65 64
+f 73 62 63
+f 63 74 73
+f 7 75 29
+f 29 8 7
+f 76 1 2
+f 2 77 76
+f 58 56 26
+f 26 28 58
+f 33 66 39
+f 39 34 33
+f 71 73 62
+f 62 64 71
+f 35 36 39
+f 39 66 35
+f 47 61 60
+f 60 49 47
+f 79 78 53
+f 53 51 79
+f 81 80 82
+f 55 83 84
+f 84 85 55
+f 85 86 55
+f 85 81 86
+f 81 82 86
+f 79 51 52
+f 52 87 79
+f 52 88 87
+f 88 89 87
+f 88 90 89
+f 9 37 91
+f 91 15 9
+f 91 16 15
+f 91 14 17
+f 91 83 55
+f 91 17 16
+f 91 55 14
+f 92 70 69
+f 69 93 92
+f 95 94 44
+f 44 55 95
+f 55 96 95
+f 55 97 96
+f 98 86 94
+f 94 95 98
+f 98 97 86
+f 97 55 86
+f 33 31 60
+f 60 49 33
+f 27 25 92
+f 92 93 27
+f 2 4 99
+f 99 77 2
+f 3 1 76
+f 76 100 3
+f 3 100 99
+f 99 4 3
+f 7 5 101
+f 101 75 7
+f 63 74 72
+f 72 65 63
+f 101 5 6
+f 6 30 101
+f 61 35 66
+f 66 47 61
+f 103 102 82
+f 82 45 103
+f 82 38 45
+f 82 37 38
+f 82 91 37
+f 82 80 91
+f 105 104 106
+f 45 46 105
+f 105 103 45
+f 105 106 103
+f 83 91 80
+f 80 84 83
+f 80 81 85
+f 80 85 84
+f 23 41 42
+f 42 24 23
+f 108 107 109
+f 109 110 108
+f 112 111 113
+f 113 114 112
+f 23 21 40
+f 40 41 23
+f 69 67 59
+f 59 93 69
+f 59 27 93
+f 59 58 27
+f 58 28 27
+f 22 24 42
+f 42 43 22
+f 73 74 72
+f 72 71 73
+f 116 115 117
+f 117 118 116
+f 112 114 117
+f 117 115 112
+f 114 117 118
+f 118 113 114
+f 88 52 54
+f 54 119 88
+f 68 70 92
+f 92 57 68
+f 92 25 57
+f 25 56 57
+f 25 26 56
+f 87 120 78
+f 78 79 87
+f 57 59 67
+f 67 68 57
+f 86 82 121
+f 121 122 86
+f 102 123 121
+f 121 82 102
+f 125 124 126
+f 126 127 125
+f 128 124 125
+f 125 129 128
+f 108 128 130
+f 130 131 108
+f 90 88 119
+f 119 132 90
+f 102 94 133
+f 133 123 102
+f 116 115 112
+f 112 111 116
+f 87 89 134
+f 134 120 87
+f 122 121 135
+f 135 136 122
+f 53 78 120
+f 120 54 53
+f 120 119 54
+f 120 134 119
+f 134 132 119
+f 82 102 94
+f 94 86 82
+f 126 124 110
+f 110 137 126
+f 123 133 138
+f 138 139 123
+f 137 131 108
+f 108 110 137
+f 126 130 140
+f 140 127 126
+f 104 46 44
+f 44 94 104
+f 94 106 104
+f 94 103 106
+f 94 102 103
+f 46 104 105
+f 137 131 130
+f 130 126 137
+f 132 134 89
+f 89 90 132
+f 122 133 94
+f 94 86 122
+f 76 140 129
+f 129 125 76
+f 125 100 76
+f 125 99 100
+f 77 127 140
+f 140 76 77
+f 77 99 127
+f 99 125 127
+f 101 135 139
+f 139 138 101
+f 138 75 101
+f 138 29 75
+f 30 136 135
+f 135 101 30
+f 30 29 136
+f 29 138 136
+f 123 139 135
+f 135 121 123
+f 40 21 22
+f 22 43 40
+f 108 110 124
+f 124 128 108
+f 113 111 116
+f 116 118 113
+f 138 133 122
+f 122 136 138
+f 128 129 140
+f 140 130 128
+f 89 112 115
+f 115 134 89
+f 91 80 141
+f 141 107 91
+f 107 114 91
+f 107 108 114
+f 108 131 114
+f 131 117 114
+f 62 26 28
+f 28 64 62
+f 118 117 131
+f 131 142 118
+f 131 137 142
+f 143 118 142
+f 144 143 142
+f 60 145 146
+f 146 49 60
+f 146 46 49
+f 46 147 49
+f 46 105 147
+f 49 147 50
+f 72 45 46
+f 46 65 72
+f 46 63 65
+f 46 148 63
+f 46 146 148
+f 48 149 103
+f 48 103 45
+f 48 45 72
+f 47 48 72
+f 47 72 74
+f 74 61 47
+f 132 134 115
+f 115 116 132
+f 148 146 145
+f 63 148 145
+f 145 74 63
+f 145 61 74
+f 145 60 61
+f 56 26 62
+f 62 73 56
+f 89 90 111
+f 111 112 89
+f 28 58 71
+f 71 64 28
+f 150 96 97
+f 97 151 150
+f 97 98 152
+f 152 151 97
+f 84 83 144
+f 144 153 84
+f 144 109 153
+f 144 110 109
+f 144 137 110
+f 144 142 137
+f 95 96 150
+f 150 154 95
+f 111 90 132
+f 132 116 111
+f 152 154 150
+f 150 151 152
+f 98 95 154
+f 154 152 98
+f 56 73 71
+f 71 58 56
+f 113 118 143
+f 113 143 83
+f 114 113 83
+f 83 91 114
+f 143 144 83
+f 141 80 81
+f 81 155 141
+f 157 156 104
+f 104 106 157
+f 109 107 141
+f 109 141 155
+f 109 155 158
+f 158 153 109
+f 147 105 104
+f 104 156 147
+f 81 85 158
+f 158 155 81
+f 147 156 157
+f 157 50 147
+f 157 48 50
+f 157 149 48
+f 106 103 149
+f 149 157 106
+f 84 153 158
+f 158 85 84
+</script>
+<script type="text/plain" id="obj-station">
+v 0 0 4.9
+v 0 0 0
+v -4.7 0 4.9
+v -3.9038 0 0
+v -4.7 0 0.79621
+v 0 0.4 4.9
+v -0.64654 0.4 1.1465
+v 0 0.4 0
+v -1.55 0.4 0.64654
+v -3.9038 0.4 0
+v -4.0535 0.4 0.64654
+v -4.7 0.4 0.79621
+v -4.0535 0.4 2.35
+v -4.1836 0.4 3.4019
+v -4.1836 0.4 4.305
+v -0.64654 0.4 3.8535
+v -4.7 0.4 4.9
+v -3.3233 0.4 4.305
+v -3.3233 0.4 3.8535
+v -3.7535 0.4 3.4019
+v -3.7535 0.4 2.35
+v -1.55 0.4 1.1465
+v -0.74654 1.9048 2.2602
+v -0.74654 0.80479 2.2602
+v -0.74654 1.9048 2.4602
+v -0.74654 0.80479 2.4602
+v -0.64654 0.80479 2.2602
+v -0.64654 0.80479 2.4602
+v -0.64654 1.9048 2.2602
+v -0.64654 1.9048 2.4602
+v -0.74654 1.9048 1.8602
+v -0.74654 0.80479 1.8602
+v -0.74654 1.9048 2.0602
+v -0.74654 0.80479 2.0602
+v -0.64654 0.80479 1.8602
+v -0.64654 0.80479 2.0602
+v -0.64654 1.9048 1.8602
+v -0.64654 1.9048 2.0602
+v -0.74654 1.9048 1.4602
+v -0.74654 0.80479 1.4602
+v -0.74654 1.9048 1.6602
+v -0.74654 0.80479 1.6602
+v -0.64654 0.80479 1.4602
+v -0.64654 0.80479 1.6602
+v -0.64654 1.9048 1.4602
+v -0.64654 1.9048 1.6602
+v -3.3233 2.2 3.8535
+v -0.64654 2.2 3.8535
+v -0.64654 2.2 1.1465
+v -3.7535 2.2 2.35
+v -3.7535 2.2 3.4019
+v -1.55 2.2 1.1465
+v -1.55 2.2 2.35
+v -3.3233 2.2 3.4019
+v -1.55 2.9 0.64654
+v -4.0535 2.9 0.64654
+v -1.55 2.9 2
+v -4.0535 2.9 2
+v -4.0535 2.55 2.35
+v -1.55 2.55 2.35
+v -4.1836 3.4718 3.4019
+v -4.1836 3.6 3.5301
+v -4.1836 3.6 4.305
+v -3.7535 2.2 3.8535
+v -3.3233 3.6 4.305
+v -3.3233 3.4718 3.4019
+v -3.3233 3.6 3.5301
+v -3.6627 3.6 3.7412
+v -3.8443 3.6 3.7412
+v -3.8443 3.6 3.9657
+v -3.6627 3.6 3.9657
+v -3.7535 0.4 3.8535
+v -3.6627 9.8 3.7412
+v -3.6627 9.8 3.9657
+v -3.8443 9.8 3.7412
+v -3.8443 9.8 3.9657
+f 2 1 3
+f 3 4 2
+f 3 5 4
+f 7 6 8
+f 8 9 7
+f 8 10 9
+f 10 11 9
+f 10 12 11
+f 12 13 11
+f 12 14 13
+f 12 15 14
+f 6 7 16
+f 16 17 6
+f 15 12 17
+f 16 18 17
+f 18 15 17
+f 16 19 18
+f 13 14 20
+f 20 21 13
+f 7 9 22
+f 2 8 6
+f 6 1 2
+f 3 1 6
+f 6 17 3
+f 12 5 3
+f 3 17 12
+f 8 2 4
+f 4 10 8
+f 24 23 25
+f 25 26 24
+f 28 27 24
+f 24 26 28
+f 24 27 29
+f 29 23 24
+f 29 30 25
+f 25 23 29
+f 28 26 25
+f 25 30 28
+f 32 31 33
+f 33 34 32
+f 36 35 32
+f 32 34 36
+f 32 35 37
+f 37 31 32
+f 37 38 33
+f 33 31 37
+f 36 34 33
+f 33 38 36
+f 40 39 41
+f 41 42 40
+f 44 43 40
+f 40 42 44
+f 40 43 45
+f 45 39 40
+f 45 46 41
+f 41 39 45
+f 44 42 41
+f 41 46 44
+f 4 5 12
+f 12 10 4
+f 47 19 16
+f 16 48 47
+f 45 7 49
+f 49 48 45
+f 48 46 45
+f 48 37 46
+f 37 44 46
+f 48 38 37
+f 48 29 38
+f 29 36 38
+f 48 30 29
+f 48 28 30
+f 7 45 43
+f 43 16 7
+f 43 44 16
+f 28 48 16
+f 44 35 16
+f 44 37 35
+f 35 36 16
+f 36 27 16
+f 36 29 27
+f 27 28 16
+f 50 21 20
+f 20 51 50
+f 7 22 52
+f 52 49 7
+f 54 53 50
+f 50 51 54
+f 53 54 47
+f 53 47 48
+f 52 53 48
+f 48 49 52
+f 55 9 11
+f 11 56 55
+f 57 55 56
+f 56 58 57
+f 56 11 13
+f 13 58 56
+f 13 59 58
+f 50 53 60
+f 13 21 50
+f 50 59 13
+f 50 60 59
+f 52 9 55
+f 55 57 52
+f 57 53 52
+f 57 60 53
+f 9 52 22
+f 59 60 57
+f 57 58 59
+f 61 14 15
+f 15 62 61
+f 15 63 62
+f 54 47 64
+f 64 51 54
+f 15 18 65
+f 65 63 15
+f 54 66 67
+f 67 47 54
+f 67 65 47
+f 65 19 47
+f 65 18 19
+f 20 14 61
+f 61 51 20
+f 61 54 51
+f 61 66 54
+f 66 61 62
+f 62 67 66
+f 68 65 67
+f 67 62 68
+f 62 69 68
+f 62 70 69
+f 71 63 65
+f 65 68 71
+f 71 70 63
+f 70 62 63
+f 51 20 72
+f 72 64 51
+f 72 19 47
+f 47 64 72
+f 74 73 75
+f 75 76 74
+f 68 73 74
+f 74 71 68
+f 68 69 75
+f 75 73 68
+f 75 69 70
+f 70 76 75
+f 70 71 74
+f 74 76 70
+</script>
+<script type="text/plain" id="obj-truss">
+v -1.4221 3.4 8.5779
+v -1.4221 3.8 8.5779
+v -8.5779 3.4 8.5779
+v -0.77291 3.4 8.5779
+v -0.77291 0.6 8.5779
+v -8.5779 3.8 8.5779
+v -9.2271 3.4 8.5779
+v -8.5779 0.6 8.5779
+v -8.5779 3.8 1.4221
+v -8.5779 3.4 1.4221
+v -8.5779 0.6 1.4221
+v -8.5779 0.6 0.77291
+v -8.5779 3.4 9.2271
+v -8.5779 3.4 0.77291
+v -1.4221 3.4 0.77291
+v -9.2271 3.4 1.4221
+v -0.77291 3.8 9.2271
+v -1.4221 3.8 1.4221
+v -0.77291 3.8 0.77291
+v -9.2271 3.8 0.77291
+v -9.2271 3.8 9.2271
+v -0.77291 0.6 0.77291
+v -0.77291 3.4 1.4221
+v -0.77291 0.6 1.4221
+v -0.77291 0.6 9.2271
+v -1.4221 3.4 1.4221
+v -1.4221 3.4 9.2271
+v -1.4221 0.6 1.4221
+v -1.4221 0.6 8.5779
+v -1.4221 0.6 9.2271
+v -9.2271 0.6 1.4221
+v -1.4221 0.6 0.77291
+v -8.5779 0.6 9.2271
+v -9.2271 0.6 8.5779
+v -9.2271 0.6 9.2271
+v -9.2271 0.6 0.77291
+v -0.77291 -0.8 1.4221
+v -0.77291 -0.8 0.77291
+v -1.4221 -0.8 1.4221
+v -1.4221 -0.8 0.77291
+v -0.77291 -0.3 0.77291
+v -1.4221 -0.3 0.77291
+v -0.77291 -0.3 1.4221
+v -1.4221 -0.3 1.4221
+v -0.77291 -0.8 9.2271
+v -0.77291 -0.8 8.5779
+v -1.4221 -0.8 9.2271
+v -1.4221 -0.8 8.5779
+v -0.77291 -0.3 8.5779
+v -0.77291 -0.3 9.2271
+v -1.4221 -0.3 9.2271
+v -1.4221 -0.3 8.5779
+v -8.5779 -0.8 9.2271
+v -8.5779 -0.8 8.5779
+v -9.2271 -0.8 9.2271
+v -9.2271 -0.8 8.5779
+v -9.2271 -0.3 8.5779
+v -9.2271 -0.3 9.2271
+v -8.5779 -0.3 8.5779
+v -8.5779 -0.3 9.2271
+v -8.5779 -0.8 1.4221
+v -8.5779 -0.8 0.77291
+v -9.2271 -0.8 1.4221
+v -9.2271 -0.8 0.77291
+v -8.5779 -0.3 0.77291
+v -8.5779 -0.3 1.4221
+v -9.2271 -0.3 1.4221
+v -9.2271 -0.3 0.77291
+f 2 1 3
+f 1 4 5
+f 3 6 2
+f 7 3 8
+f 10 9 6
+f 10 11 12
+f 6 3 10
+f 8 3 13
+f 10 3 7
+f 10 14 15
+f 13 3 1
+f 7 16 10
+f 18 17 19
+f 17 18 2
+f 19 20 18
+f 20 9 18
+f 20 6 9
+f 6 20 21
+f 2 6 21
+f 2 21 17
+f 23 22 19
+f 22 23 24
+f 19 17 23
+f 17 4 23
+f 17 5 4
+f 17 25 5
+f 23 4 1
+f 1 26 23
+f 15 26 10
+f 1 27 13
+f 18 26 1
+f 28 26 15
+f 1 2 18
+f 1 29 30
+f 28 24 23
+f 23 26 28
+f 10 26 18
+f 10 16 31
+f 15 32 28
+f 13 33 8
+f 8 34 7
+f 18 9 10
+f 5 29 1
+f 30 25 17
+f 17 27 30
+f 17 13 27
+f 13 17 21
+f 33 13 21
+f 21 35 33
+f 30 27 1
+f 7 34 35
+f 16 7 21
+f 31 16 20
+f 16 21 20
+f 7 35 21
+f 20 36 31
+f 12 36 20
+f 20 14 12
+f 20 15 14
+f 15 20 19
+f 32 15 19
+f 19 22 32
+f 12 14 10
+f 31 11 10
+f 38 37 39
+f 39 40 38
+f 41 38 40
+f 40 42 41
+f 38 41 43
+f 43 37 38
+f 39 37 43
+f 43 44 39
+f 42 40 39
+f 39 44 42
+f 46 45 47
+f 47 48 46
+f 46 49 50
+f 50 45 46
+f 47 45 50
+f 50 51 47
+f 52 48 47
+f 47 51 52
+f 46 48 52
+f 52 49 46
+f 54 53 55
+f 55 56 54
+f 57 56 55
+f 55 58 57
+f 54 56 57
+f 57 59 54
+f 54 59 60
+f 60 53 54
+f 55 53 60
+f 60 58 55
+f 62 61 63
+f 63 64 62
+f 62 65 66
+f 66 61 62
+f 63 61 66
+f 66 67 63
+f 68 64 63
+f 63 67 68
+f 62 64 68
+f 68 65 62
+f 22 41 42
+f 42 32 22
+f 41 22 24
+f 24 43 41
+f 44 43 24
+f 24 28 44
+f 32 42 44
+f 44 28 32
+f 65 12 11
+f 11 66 65
+f 67 66 11
+f 11 31 67
+f 36 68 67
+f 67 31 36
+f 65 68 36
+f 36 12 65
+f 34 57 58
+f 58 35 34
+f 59 57 34
+f 34 8 59
+f 59 8 33
+f 33 60 59
+f 58 60 33
+f 33 35 58
+f 49 5 25
+f 25 50 49
+f 51 50 25
+f 25 30 51
+f 29 52 51
+f 51 30 29
+f 49 52 29
+f 29 5 49
+</script>
+<script type="text/plain" id="obj-dish">
+v 0.6194 0.70713 0.42701
+v 0.6194 0.70713 0.89843
+v -0.61939 0.70713 0.42701
+v -0.61939 0.70713 0.89843
+v 4.2899 4.2674 -1.9445
+v 3.6194 4.2674 -1.9445
+v 2.145 1.6404 -4.5715
+v 1.8097 2.051 -4.1609
+v -2.145 1.6404 -4.5715
+v -1.8097 2.051 -4.1609
+v -3.6194 4.2674 -1.9445
+v -4.2899 4.2674 -1.9445
+v 2.145 6.8945 0.68252
+v 1.8097 6.4839 0.27189
+v -2.145 6.8945 0.68252
+v -1.8097 6.4839 0.27189
+v 0.6194 1.1 0.89843
+v -0.61939 1.1 0.89843
+v 0.6194 0.94284 -0.81985
+v 0.6194 1.3015 -0.42701
+v -0.61939 0.94284 -0.81985
+v -0.61939 1.3015 -0.42701
+v -0.61939 0.70713 -0.81985
+v 0.6194 0.70713 -0.81985
+v 0.6194 1.7285 0.42701
+v -0.61939 1.7285 0.42701
+v 0.6194 0.70713 -0.42701
+v -0.61939 0.70713 -0.42701
+v -0.61939 2.7499 0.42701
+v -0.61939 1.8959 -0.42701
+v -1.8846 -2.9661e-06 -1.6922
+v -1.8846 0.70713 -1.6922
+v -1.8846 -2.9661e-06 1.6922
+v -1.8846 0.70713 1.6922
+v 0.82498 2.3681 -2.066
+v 0.82498 1.3125 -1.0104
+v 1.65 3.3785 -1.0556
+v 1.65 2.3229 -2.9661e-06
+v 1.2375 1.8177 -0.50519
+v -0.82499 2.3681 -2.066
+v -2.145 1.0848 -4.016
+v -1.65 3.3785 -1.0556
+v -4.2899 3.7119 -1.3889
+v 1.8846 -2.9661e-06 -1.6922
+v 1.8846 -2.9661e-06 1.6922
+v 1.2375 2.8281 0.5052
+v 0.82498 3.3333 1.0104
+v 0.6194 2.7499 0.42701
+v -0.82499 3.3333 1.0104
+v 0.6194 1.8959 -0.42701
+v -0.82499 1.3125 -1.0104
+v -1.2375 2.8281 0.5052
+v -1.2375 1.8177 -0.50519
+v -1.65 2.3229 -2.9661e-06
+v 1.8846 0.70713 -1.6922
+v 2.145 6.3389 1.2381
+v -2.145 6.3389 1.2381
+v 0.82498 4.3889 -0.045197
+v -0.82499 4.3889 -0.045197
+v 1.8846 0.70713 1.6922
+v -0.90485 4.8201 -0.28073
+v 0.90484 4.8201 -0.28073
+v 4.2899 3.7119 -1.3889
+v 2.145 1.0848 -4.016
+v 0.90484 2.6037 -2.4971
+v -0.90485 2.6037 -2.4971
+v 1.8097 3.7119 -1.3889
+v -1.8097 3.7119 -1.3889
+v 1.3489 3.7119 -1.3889
+v 0.67443 4.5379 -0.56293
+v 0.67443 2.8859 -2.2149
+v -0.67444 2.8859 -2.2149
+v -0.67444 4.5379 -0.56293
+v -1.3489 3.7119 -1.3889
+f 2 1 3
+f 3 4 2
+f 6 5 7
+f 7 8 6
+f 7 9 8
+f 9 10 8
+f 9 11 10
+f 9 12 11
+f 13 5 6
+f 6 14 13
+f 14 15 13
+f 11 12 15
+f 14 16 15
+f 16 11 15
+f 4 2 17
+f 17 18 4
+f 20 19 21
+f 21 22 20
+f 24 23 21
+f 21 19 24
+f 18 17 25
+f 25 26 18
+f 27 24 23
+f 23 28 27
+f 26 3 4
+f 4 18 26
+f 3 26 29
+f 3 29 30
+f 3 30 22
+f 28 3 22
+f 28 22 21
+f 21 23 28
+f 32 31 33
+f 33 34 32
+f 36 35 37
+f 37 38 36
+f 38 39 36
+f 41 40 42
+f 42 43 41
+f 45 44 31
+f 31 33 45
+f 39 38 46
+f 46 47 39
+f 47 36 39
+f 47 48 36
+f 47 49 48
+f 49 29 48
+f 49 30 29
+f 36 48 50
+f 50 51 36
+f 50 30 51
+f 30 49 51
+f 49 52 51
+f 52 53 51
+f 52 54 53
+f 55 44 31
+f 31 32 55
+f 57 56 13
+f 13 15 57
+f 59 58 56
+f 56 57 59
+f 44 55 60
+f 60 45 44
+f 34 33 45
+f 45 60 34
+f 38 37 58
+f 58 47 38
+f 47 46 38
+f 62 61 16
+f 16 14 62
+f 64 63 37
+f 37 35 64
+f 65 8 10
+f 10 66 65
+f 67 6 8
+f 8 65 67
+f 64 7 5
+f 5 63 64
+f 63 5 13
+f 13 56 63
+f 64 41 9
+f 9 7 64
+f 61 68 11
+f 11 16 61
+f 42 40 51
+f 51 54 42
+f 51 53 54
+f 68 66 10
+f 10 11 68
+f 70 69 71
+f 71 72 70
+f 72 73 70
+f 72 74 73
+f 58 37 35
+f 35 40 58
+f 40 59 58
+f 40 42 59
+f 36 51 40
+f 40 35 36
+f 43 42 59
+f 59 57 43
+f 41 64 35
+f 35 40 41
+f 58 37 63
+f 63 56 58
+f 6 67 62
+f 62 14 6
+f 20 22 30
+f 30 50 20
+f 20 50 48
+f 48 27 20
+f 48 1 27
+f 48 25 1
+f 25 17 1
+f 17 2 1
+f 24 19 20
+f 20 27 24
+f 49 47 58
+f 58 59 49
+f 3 28 23
+f 23 4 3
+f 24 60 55
+f 55 32 24
+f 32 23 24
+f 2 34 60
+f 60 24 2
+f 24 27 2
+f 27 1 2
+f 2 4 34
+f 4 23 34
+f 23 32 34
+f 12 9 41
+f 41 43 12
+f 15 12 43
+f 43 57 15
+f 59 42 54
+f 54 49 59
+f 54 52 49
+f 50 48 29
+f 29 30 50
+f 26 25 48
+f 48 29 26
+f 69 67 65
+f 65 71 69
+f 65 66 71
+f 66 72 71
+f 66 74 72
+f 66 68 74
+f 62 67 69
+f 69 70 62
+f 70 61 62
+f 74 68 61
+f 70 73 61
+f 73 74 61
+</script>
+<script type="module">
+import * as T from 'three';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const hud = document.querySelector('#hud');
+const clearance = document.querySelector('#clearance');
+const message = document.querySelector('#message');
+const scene = new T.Scene();
+scene.background = new T.Color(0x070b1d);
+scene.fog = new T.FogExp2(0x070b1d, 0.008);
+let renderer;
+try {
+  renderer = new T.WebGLRenderer({ antialias: true });
+} catch (error) {
+  hud.textContent = 'WebGL 2 initialization failed.';
+  throw error;
+}
+document.body.prepend(renderer.domElement);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = T.PCFSoftShadowMap;
+renderer.toneMapping = T.ACESFilmicToneMapping;
+const ortho = new T.OrthographicCamera(-24, 24, 15, -15, 0.1, 260);
+const perspective = new T.PerspectiveCamera(53, 1, 0.1, 260);
+const composer = new EffectComposer(renderer);
+const render = new RenderPass(scene, ortho);
+const bloom = new UnrealBloomPass(new T.Vector2(), 0.8, 0.55, 0.85);
+composer.addPass(render);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+const config = {
+  game: { random: false, seed: 0, ghost: true, spaceSeconds: 9,
+    autopilot: false, idleAutopilot: false, encounters: true, precision: true, shield: true },
+  visual: { camera: 'Classic', scale: 1, clearance: true, damageFx: true, reducedFlash: false },
+  features: { bloom: true, intensity: 0.8, radius: 0.55, threshold: 0.85,
+    nebula: true, trails: true, lighting: true, debris: true }
+};
+const schema = {
+  game: { random: true, seed: [0, 4294967295, 1], ghost: true,
+    spaceSeconds: [3, 60, 1], autopilot: true, idleAutopilot: true,
+    encounters: true, precision: true, shield: true },
+  visual: { camera: ['Classic', '3D'], scale: [0.5, 1, 0.05],
+    clearance: true, damageFx: true, reducedFlash: true },
+  features: { bloom: true, intensity: [0, 2, 0.05], radius: [0, 1, 0.05],
+    threshold: [0, 2, 0.05], nebula: true, trails: true, lighting: true, debris: true }
+};
+const edit = settingsEditor(document.querySelector('#settings'), config, schema, resize, restart);
+const clamp = T.MathUtils.clamp;
+const world = new T.Group();
+scene.add(world, new T.HemisphereLight(0xbddaff, 0x493759, 2));
+const sun = new T.DirectionalLight(0xffffff, 2);
+sun.castShadow = true;
+Object.assign(sun.shadow.camera, { left: -27, right: 27, top: 30, bottom: -30, far: 95 });
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.updateProjectionMatrix();
+sun.shadow.bias = -0.00015;
+sun.shadow.normalBias = 0.04;
+scene.add(sun, sun.target);
+const pulse = new T.PointLight(0x47ffff, 0, 20);
+scene.add(pulse);
+
+const cube = new T.BoxGeometry();
+const tankGeometry = new T.CylinderGeometry(0.5, 0.5, 1, 20);
+const plasma = new T.MeshBasicMaterial({ color: new T.Color(0.25, 3, 4) });
+const hostile = new T.MeshBasicMaterial({ color: new T.Color(4, 0.25, 0.15) });
+const deck = new T.MeshStandardMaterial({ color: 0x273e62, roughness: 0.7, metalness: 0.35 });
+const steel = new T.MeshStandardMaterial({ color: 0x486b96, metalness: 0.45, roughness: 0.45 });
+const fuelMaterial = new T.MeshStandardMaterial({ color: 0xffa63f, emissive: 0x873400 });
+const cyan = new T.MeshBasicMaterial({ color: new T.Color(0.1, 1.7, 2.7) });
+function mesh(parent, geometry, material, x, y, z, w, h, d) {
+  const object = new T.Mesh(geometry, material);
+  if (parent === world && material.isMeshStandardMaterial) object.userData.blocksCamera = true;
+  object.position.set(x, y, z);
+  object.scale.set(w, h, d);
+  object.castShadow = object.receiveShadow = material.isMeshStandardMaterial;
+  parent.add(object);
+  return object;
+}
+const models = {};
+const loader = new OBJLoader();
+for (const name of ['fighter', 'interceptor', 'station', 'truss', 'dish']) {
+  const model = loader.parse(document.getElementById('obj-' + name).textContent);
+  const bounds = new T.Box3().setFromObject(model);
+  const center = bounds.getCenter(new T.Vector3());
+  const size = bounds.getSize(new T.Vector3());
+  for (const child of model.children) {
+    child.geometry.translate(-center.x, -center.y, -center.z);
+    child.geometry.scale(1 / size.x, 1 / size.y, 1 / size.z);
+  }
+  models[name] = model.children[0].geometry;
+}
+const ship = new T.Group();
+scene.add(ship);
+const shipAlloy = new T.MeshStandardMaterial({ color: 0xbccfe4, roughness: 0.27, metalness: 0.52 });
+mesh(ship, models.fighter, shipAlloy, 0, 0, 0, 2.8, 0.8, 2.9);
+const engines = [-0.62, 0.62].map(x => mesh(ship, tankGeometry, cyan, x, -0.09, 0.88, 0.24, 0.38, 0.24));
+for (const engine of engines) engine.rotation.x = Math.PI / 2;
+const shieldBubble = mesh(ship, new T.SphereGeometry(1, 32, 20),
+  new T.MeshBasicMaterial({ color: 0x51caff, transparent: true, opacity: 0.24,
+    depthWrite: false, blending: T.AdditiveBlending }), 0, 0, 0, 1.75, 0.95, 2.05);
+const canopy = mesh(ship, new T.SphereGeometry(1, 20, 12), cyan,
+  0, 0.2, -0.1, 0.29, 0.32, 0.62);
+const ghost = new T.Group();
+scene.add(ghost);
+mesh(ghost, models.fighter, new T.MeshBasicMaterial({
+  color: 0x8dcaff, transparent: true, opacity: 0.33, depthWrite: false
+}), 0, 0, 0, 2.8, 0.8, 2.9);
+
+const sky = new T.Mesh(new T.SphereGeometry(115, 32, 16), new T.ShaderMaterial({
+  side: T.BackSide, depthWrite: false,
+  uniforms: { time: { value: 0 }, clouds: { value: 1 } },
+  vertexShader: `varying vec3 ray;
+    void main(){ray=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+  fragmentShader: `varying vec3 ray;uniform float time,clouds;
+    void main(){
+      vec3 p=normalize(ray);
+      vec2 uv=vec2(atan(p.z,p.x),asin(p.y));
+      vec2 cell=floor(uv*210.);
+      float star=step(.996,fract(sin(dot(cell,vec2(127.1,311.7)))*43758.5453));
+      star*=1.-smoothstep(.04,.32,length(fract(uv*210.)-.5));
+      float fold=sin(7.*p.x+3.*sin(4.*p.z+time*.13))+sin(11.*p.y+6.*p.z-time*.09);
+      float haze=exp(-6.*abs(p.y+.15+.09*fold))*(.55+.22*fold);
+      gl_FragColor=vec4(vec3(.004,.007,.024)+star*vec3(.65,.8,1.)+
+        clouds*haze*mix(vec3(.13,.022,.22),vec3(.02,.15,.23),.5+.5*p.x),1.);
+    }`
+}));
+sky.renderOrder = -1;
+scene.add(sky);
+
+const keys = new Set();
+const recordings = new Map();
+const cameraTarget = new T.Vector3();
+let seed, run, tick, fuel, score, cooldown, damage, trace, replay, watch;
+let level, startZ, spaceUntil, shieldCharge, lastInput, bonusUntil, bonusLabel;
+const speed = 12;
+const controlKeys = ['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'Space', 'KeyS'];
+let yaw = 0, pitch = 0.37, distance = 19, pointer = null;
+const obstacles = [], shots = [], particles = [];
+const beacons = [];
+const searchlight = new T.SpotLight(0x83ccff, 0, 32, 0.24, 0.5);
+scene.add(searchlight, searchlight.target);
+let formationCount = 0, gatesCleared = 0;
+const weakGeometry = new T.SphereGeometry(0.5, 16, 10);
+function random(seedValue) {
+  let state = seedValue >>> 0;
+  return () => {
+    state = (Math.imul(1664525, state) + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+function build() {
+  const rng = random(seed + Math.imul(level - 1, 0x9e3779b9));
+  function box(x, y, z, w, h, d, material = steel) {
+    return mesh(world, cube, material, x, y, z, w, h, d);
+  }
+  function obstacle(kind, x, y, z, w, h, d, material) {
+    const object = box(x, y, z, w, h, d, material);
+    object.geometry = { fuel: tankGeometry, fighter: models.interceptor, boss: models.station,
+      turret: models.dish, gate: models.truss }[kind] ?? cube;
+    const entry = { kind, object, x, y, hp: kind === 'boss' ? 12 : 1 };
+    if (kind === 'boss') {
+      entry.core = mesh(object, weakGeometry, hostile, 0, 0.12, 0.52, 0.3, 0.4, 0.28);
+    }
+    if (kind === 'gate' || kind === 'turret') {
+      entry.beacon = mesh(object, weakGeometry, hostile, 0, 0.55, 0, 0.15, 0.3, 0.4);
+    }
+    obstacles.push(entry);
+    return object;
+  }
+  for (const start of [-startZ]) {
+    for (const z of [-start, -start - 150]) {
+      box(-11, 3, z, 2, 6, 2);
+      box(11, 3, z, 2, 6, 2);
+      box(0, 6.5, z, 24, 1, 2);
+      box(0, 6.45, z + 1.05, 21, 0.18, 0.15, cyan);
+    }
+    box(0, -0.6, -start - 75, 25, 1, 150, deck);
+    for (let i = 0; i < 6; i++) {
+      const z = -start - 14 - 23 * i;
+      mesh(world, models.station, steel, -14.5, 1.6, z, 4.5, 4, 8);
+      mesh(world, models.truss, steel, 14.5, 0.6, z, 5.6, 3.4, 9);
+      const beacon = mesh(world, weakGeometry, cyan, 12.7, 1.3, z, 0.55, 0.25, 0.55);
+      beacons.push(beacon);
+    }
+    for (let i = 0; i < 10; i++) {
+      const z = -start - 12 - 14 * i;
+      const side = rng() < 0.5 ? -1 : 1;
+      const height = 1.6 + rng() * 2.7;
+      box(-12, 0.4, z, 0.35, 0.8, 12, cyan);
+      box(12, 0.4, z, 0.35, 0.8, 12, cyan);
+      obstacle('wall', side * 7, height / 2, z, 9, height, 1.4);
+      box(side * 7, height + 0.06, z, 8.8, 0.08, 0.15, cyan);
+      const duct = mesh(world, tankGeometry, steel, side * 10, 0.68, z - 6, 0.8, 9, 0.8);
+      duct.rotation.x = Math.PI / 2;
+      obstacle(i % 3 === 0 ? 'gate' : 'turret', -side * 5, 2.6, z - 5, 4, 1, 1.6);
+      if (i % 2 === 0) obstacle('fuel', side * 3, 1.6, z - 9, 1.4, 2.1, 1.4, fuelMaterial);
+      if (i % 4 === 2) obstacle('turret', side * 8, 7.6, z - 10, 2, 1.4, 2.5);
+    }
+  }
+  if (level > 1 && config.game.encounters) {
+    const encounter = (level - 2) % 3;
+    const count = [5, 3, 0][encounter];
+    for (let i = 0; i < count; i++) {
+      const z = ship.position.z + (startZ - ship.position.z) * (i + 1) / (count + 1);
+      obstacle(encounter === 0 ? 'fighter' : 'fuel', (rng() - 0.5) * 17,
+        2 + rng() * 5, z, 2, 1, 1.6, fuelMaterial);
+    }
+  }
+  obstacle('boss', 0, 4, startZ - 167, 6, 4, 3, fuelMaterial);
+}
+const cameraRay = new T.Ray();
+const cameraBounds = new T.Box3();
+const cameraHit = new T.Vector3();
+const towardCamera = new T.Vector3();
+const fadedMeshes = new Map();
+
+function clearCameraFades() {
+  for (const [object, fade] of fadedMeshes) {
+    object.material = fade.original;
+    fade.material.dispose();
+  }
+  fadedMeshes.clear();
+}
+
+function fadeCameraObstructions(camera, dt) {
+  const origin = ship.position;
+  if (camera.isOrthographicCamera) camera.getWorldDirection(towardCamera).negate();
+  else towardCamera.subVectors(camera.position, origin).normalize();
+  const maxDistance = camera.position.distanceTo(origin) - camera.near;
+  cameraRay.set(origin, towardCamera);
+  world.updateMatrixWorld();
+  for (const object of world.children) {
+    if (!object.userData.blocksCamera) continue;
+    cameraBounds.setFromObject(object);
+    const hit = cameraRay.intersectBox(cameraBounds, cameraHit);
+    const blocking = hit !== null && cameraHit.distanceTo(origin) < maxDistance;
+    let fade = fadedMeshes.get(object);
+    if (!blocking && !fade) continue;
+    if (!fade) {
+      const original = object.material;
+      const material = original.clone();
+      material.transparent = true;
+      material.depthWrite = false;
+      fade = { original, material };
+      fadedMeshes.set(object, fade);
+      object.material = material;
+    }
+    fade.material.opacity = T.MathUtils.damp(fade.material.opacity, blocking ? 0.16 : 1, 22, dt);
+  }
+  for (const [object, fade] of fadedMeshes) {
+    if (object.parent === world && fade.material.opacity < 0.995) continue;
+    object.material = fade.original;
+    fade.material.dispose();
+    fadedMeshes.delete(object);
+  }
+}
+
+function restart(keepSeed = false, replayRun = null) {
+  if (!keepSeed) seed = config.game.random
+    ? config.game.seed || crypto.getRandomValues(new Uint32Array(1))[0] : 1982;
+  clearCameraFades();
+  world.clear();
+  ghost.visible = false;
+  obstacles.length = shots.length = particles.length = beacons.length = 0;
+  formationCount = gatesCleared = 0;
+  ship.position.set(0, 3, 5);
+  tick = score = cooldown = damage = 0;
+  level = 1;
+  startZ = spaceUntil = bonusUntil = lastInput = 0;
+  shieldCharge = 100;
+  shieldBubble.visible = false;
+  ship.rotation.set(0, 0, 0);
+  fuel = 100;
+  trace = [];
+  replay = replayRun;
+  watch = recordings.get(seed);
+  run = true;
+  message.hidden = true;
+  build();
+}
+function finish(result) {
+  run = false;
+  if (!replay && (!watch || score > watch.score || (score === watch.score && trace.length > watch.frames.length))) {
+    recordings.set(seed, { score, frames: trace });
+  }
+  message.replaceChildren(document.createTextNode(result + ' '));
+  const retry = document.createElement('button');
+  retry.textContent = 'Restart';
+  retry.onclick = () => restart();
+  const play = document.createElement('button');
+  play.textContent = 'Watch best run';
+  play.onclick = () => restart(true, recordings.get(seed));
+  play.disabled = !recordings.has(seed);
+  message.append(retry, ' ', play);
+  message.hidden = false;
+}
+function shot(position, friendly) {
+  const object = mesh(world, cube, friendly ? plasma : hostile,
+    position.x, position.y, position.z, 0.16, 0.16, 0.65);
+  shots.push({ object, friendly, ttl: 2 });
+}
+function emit(position, count, material) {
+  for (let i = 0; i < count; i++) {
+    const object = mesh(world, cube, material, position.x, position.y, position.z, 0.16, 0.16, 0.16);
+    particles.push({ object, ttl: 0.55, velocity: new T.Vector3(
+      (Math.random() - 0.5) * count, (Math.random() - 0.5) * count, 2 + Math.random() * count
+    ) });
+  }
+}
+function hit(a, b, padding) {
+  return Math.abs(a.x - b.position.x) < b.scale.x / 2 + padding
+    && Math.abs(a.y - b.position.y) < b.scale.y / 2 + padding
+    && Math.abs(a.z - b.position.z) < b.scale.z / 2 + padding;
+}
+function nextLevel() {
+  level++;
+  spaceUntil = tick + config.game.spaceSeconds * 60;
+  startZ = ship.position.z - config.game.spaceSeconds * speed;
+  fuel = Math.min(100, fuel + 55);
+  clearCameraFades();
+  world.clear();
+  obstacles.length = shots.length = particles.length = beacons.length = 0;
+  formationCount = gatesCleared = 0;
+  build();
+}
+
+function pilot(p, boss) {
+  const gap = p.z - boss.object.position.z;
+  const fighting = boss.hp && gap < 21 && gap > 0;
+  const target = boss.object.position;
+  const nearby = obstacles.find(({ hp, object, kind }) => hp && kind !== 'boss'
+    && p.z - object.position.z > 0 && p.z - object.position.z < 12
+    && Math.abs(p.x - object.position.x) < object.scale.x / 2 + 1.1);
+  const x = fighting ? target.x : 0;
+  const y = fighting ? target.y + boss.core.position.y * boss.object.scale.y
+    : nearby ? Math.min(9.5, Math.max(6, nearby.object.position.y + nearby.object.scale.y / 2 + 1.2)) : 6;
+  let mask = 16;
+  if (p.x < x - 0.2) mask |= 2;
+  if (p.x > x + 0.2) mask |= 1;
+  if (p.y < y - 0.15) mask |= 8;
+  if (p.y > y + 0.15) mask |= 4;
+  if (shieldCharge > 30 && shots.some(s => !s.friendly
+    && s.object.position.z > p.z - 2.5 && s.object.position.z < p.z
+    && Math.abs(s.object.position.x - p.x) < 1 && Math.abs(s.object.position.y - p.y) < 1)) mask |= 32;
+  return mask;
+}
+
+function simulate(dt) {
+  const p = ship.position;
+  const frame = replay?.frames[tick];
+  if (replay && !frame) return finish('Replay complete.');
+  const boss = obstacles.at(-1);
+  const attract = config.game.idleAutopilot && tick - lastInput > 600;
+  const mask = frame ? frame[3] : config.game.autopilot || attract ? pilot(p, boss)
+    : controlKeys.reduce((value, key, i) => value | (keys.has(key) ? 1 << i : 0), 0);
+  tick++;
+  const t = tick * dt;
+  const nearTurret = obstacles.find(({ hp, kind, object }) => hp && kind === 'turret'
+    && p.z - object.position.z > 0 && p.z - object.position.z < 30);
+  searchlight.intensity = nearTurret && config.features.lighting ? 95 : 0;
+  if (nearTurret) {
+    searchlight.position.copy(nearTurret.object.position).y += 1;
+    searchlight.target.position.set(p.x + 6 * Math.sin(t * 2), 0, p.z - 7);
+  }
+  for (const beacon of beacons) {
+    const gap = p.z - beacon.position.z;
+    beacon.visible = config.visual.reducedFlash || gap < 0 || gap < 50 + 30 * Math.sin(t * 3);
+  }
+  const steer = Number(!!(mask & 2)) - Number(!!(mask & 1));
+  p.x = clamp(p.x + steer * 11 * dt, -11, 11);
+  p.y = clamp(p.y + (Number(!!(mask & 8)) - Number(!!(mask & 4))) * 7 * dt, 0.7, 10);
+  if (p.z > startZ - 151 || boss.hp === 0) p.z -= speed * dt;
+  ship.rotation.z = T.MathUtils.damp(ship.rotation.z,
+    -(config.visual.camera === 'Classic' ? 0.24 : 0.58) * steer, 9, dt);
+  ship.rotation.x = T.MathUtils.damp(ship.rotation.x, mask & 8 ? 0.17 : mask & 4 ? -0.17 : 0, 8, dt);
+  const guarding = config.game.shield && (mask & 32) !== 0 && shieldCharge > 0;
+  shieldCharge = clamp(shieldCharge + (guarding ? -32 : mask & 32 ? 0 : 15) * dt, 0, 100);
+  shieldBubble.visible = guarding;
+  for (const engine of engines) engine.scale.y = T.MathUtils.damp(engine.scale.y,
+    mask & 8 ? 0.65 : 0.28, 8, dt);
+  fuel -= (tick < spaceUntil ? 0.35 : 2.15) * dt;
+  cooldown -= dt;
+  damage -= dt;
+  if (!replay) trace.push([p.x, p.y, p.z, mask]);
+  const ghostFrame = watch?.frames[tick - 1];
+  ghost.visible = config.game.ghost && !!ghostFrame && !replay;
+  if (ghost.visible) ghost.position.fromArray(ghostFrame);
+  if (mask & 16 && cooldown <= 0) {
+    shot(p, true);
+    cooldown = 0.16;
+  }
+  if (config.features.trails && tick % 3 === 0) {
+    emit(new T.Vector3(p.x, p.y, p.z + 1.1), 1, plasma);
+  }
+  function hurt(amount) {
+    if (damage > 0) return;
+    if (guarding) {
+      shieldCharge = Math.max(0, shieldCharge - amount);
+      damage = 0.25;
+      return;
+    }
+    fuel -= amount;
+    damage = 0.8;
+    if (config.visual.damageFx) emit(p, config.visual.reducedFlash ? 3 : 9, hostile);
+  }
+  for (const entry of obstacles) {
+    const { object, kind, y } = entry;
+    if (!entry.hp) continue;
+    const gap = p.z - object.position.z;
+    if (kind === 'gate') object.position.y = y + 1.8 * Math.sin(t * 2 + object.position.z);
+    if (kind === 'fighter' || kind === 'boss') {
+      object.position.x = (kind === 'fighter' ? entry.x * 0.5 : 0)
+        + Math.sin(t * (kind === 'boss' ? 0.8 : 1.4) + object.position.z) * (kind === 'boss' ? 4 : 6);
+    }
+    if (kind === 'boss') {
+      object.position.y = y + (entry.hp < 7 ? 2.5 : 0) + Math.sin(t * 1.3) * 0.5;
+      entry.core.position.y = entry.hp < 7 ? -0.2 : 0.12;
+    }
+    if (entry.beacon) {
+      const phase = (tick + Math.round(-object.position.z)) % 89;
+      entry.beacon.visible = config.visual.reducedFlash || (kind === 'gate'
+        ? Math.cos(t * 2 + object.position.z) > -0.2 : phase >= 66);
+    }
+    if (gap > 3 && gap < 29 && ['fighter', 'turret', 'boss'].includes(kind)
+        && (tick + Math.round(-object.position.z)) % (kind === 'boss' ? 31 : 89) === 0) {
+      shot(object.position, false);
+    }
+    if (hit(p, object, 0.45)) hurt(20);
+    if (config.game.precision && gap <= 0 && gap > -speed * dt
+        && ['wall', 'gate'].includes(kind)
+        && Math.abs(p.x - object.position.x) < object.scale.x / 2
+        && Math.abs(p.y - object.position.y) - object.scale.y / 2 > 0.48
+        && Math.abs(p.y - object.position.y) - object.scale.y / 2 < 0.95) {
+      score += 75;
+      bonusLabel = 'Precision +75';
+      bonusUntil = tick + 90;
+      if (kind === 'gate' && ++gatesCleared % 3 === 0) {
+        score += 200;
+        bonusLabel = 'Gate streak +275';
+      }
+    }
+  }
+  for (let i = shots.length - 1; i >= 0; i--) {
+    const s = shots[i];
+    s.ttl -= dt;
+    s.object.position.z += (s.friendly ? -52 : 26) * dt;
+    if (s.friendly) {
+      const target = obstacles.find(({ hp, kind, object }) =>
+        hp && hit(s.object.position, object, 0.14));
+      if (target) {
+        s.ttl = 0;
+        const localY = s.object.position.y - target.object.position.y;
+        const coreHit = target.kind !== 'boss'
+          || Math.abs(localY - target.core.position.y * target.object.scale.y) < 0.95;
+        if (coreHit && target.kind !== 'wall' && target.kind !== 'gate' && --target.hp === 0) {
+          world.remove(target.object);
+          score += target.kind === 'boss' ? 1000 : 100;
+          if (target.kind === 'fuel') fuel = Math.min(100, fuel + 20);
+          if (target.kind === 'fighter' && ++formationCount === 5 && config.game.precision) {
+            score += 400;
+            bonusLabel = 'Formation +400';
+            bonusUntil = tick + 90;
+          }
+          if (config.features.debris) emit(target.object.position, 14, fuelMaterial);
+        }
+      }
+    } else if (hit(p, s.object, 0.55)) {
+      hurt(12);
+      s.ttl = 0;
+    }
+    if (s.ttl <= 0) {
+      world.remove(s.object);
+      shots.splice(i, 1);
+    }
+  }
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const particle = particles[i];
+    particle.object.position.addScaledVector(particle.velocity, dt);
+    particle.ttl -= dt;
+    particle.object.scale.setScalar(Math.max(0, particle.ttl) * 0.37);
+    if (particle.ttl <= 0) {
+      world.remove(particle.object);
+      particles.splice(i, 1);
+    }
+  }
+  if (fuel <= 0) finish('Ship lost.');
+  else if (boss.hp === 0 && p.z < startZ - 173) nextLevel();
+}
+function resize() {
+  const width = innerWidth, height = innerHeight;
+  const ratio = Math.min(devicePixelRatio, 2) * config.visual.scale;
+  renderer.setPixelRatio(ratio);
+  renderer.setSize(width, height, false);
+  composer.setPixelRatio(ratio);
+  composer.setSize(width, height);
+  const half = Math.max(14, 20 * height / width);
+  ortho.left = -half * width / height;
+  ortho.right = -ortho.left;
+  ortho.top = half;
+  ortho.bottom = -half;
+  ortho.updateProjectionMatrix();
+  perspective.aspect = width / height;
+  perspective.updateProjectionMatrix();
+}
+function resetCamera() { yaw = 0; pitch = 0.37; distance = 19; }
+addEventListener('resize', resize);
+addEventListener('blur', () => keys.clear());
+addEventListener('keydown', event => {
+  if (event.target.closest('input, select, textarea, button, summary')) return;
+  if (controlKeys.includes(event.code)) event.preventDefault();
+  lastInput = tick;
+  if (controlKeys.slice(0, 5).includes(event.code) && config.game.autopilot) {
+    config.game.autopilot = false;
+    edit();
+  }
+  keys.add(event.code);
+  if (event.repeat) return;
+  if (event.code === 'KeyA' && !replay) {
+    config.game.autopilot = !config.game.autopilot;
+    edit();
+  }
+  if (event.code === 'KeyR') restart();
+  if (event.code === 'KeyF') resetCamera();
+  if (event.code === 'KeyC') {
+    config.visual.camera = config.visual.camera === 'Classic' ? '3D' : 'Classic';
+    edit();
+  }
+});
+addEventListener('keyup', event => keys.delete(event.code));
+const canvas = renderer.domElement;
+canvas.oncontextmenu = event => event.preventDefault();
+canvas.onpointerdown = event => {
+  if (event.button !== 2 || config.visual.camera !== '3D') return;
+  pointer = event.pointerId;
+  canvas.setPointerCapture(pointer);
+};
+canvas.onlostpointercapture = () => { pointer = null; };
+canvas.onpointermove = event => {
+  if (event.pointerId !== pointer || config.visual.camera !== '3D') return;
+  yaw -= event.movementX * 0.007;
+  pitch = clamp(pitch + event.movementY * 0.007, 0.08, 1.42);
+};
+canvas.addEventListener('wheel', event => {
+  if (config.visual.camera !== '3D') return;
+  event.preventDefault();
+  distance = clamp(distance * Math.exp(event.deltaY * 0.001), 6, 37);
+}, { passive: false });
+
+resize();
+restart();
+let previous = performance.now(), accumulator = 0;
+const step = 1 / 60;
+renderer.setAnimationLoop(now => {
+  const elapsed = Math.min(0.08, (now - previous) / 1000);
+  accumulator += elapsed;
+  previous = now;
+  while (accumulator >= step) {
+    if (run) simulate(step);
+    accumulator -= step;
+  }
+  const p = ship.position;
+  cameraTarget.set(p.x * 0.35, 2, p.z - 9);
+  ortho.position.copy(cameraTarget).add(new T.Vector3(25, 25, 25));
+  ortho.lookAt(cameraTarget);
+  cameraTarget.set(p.x, p.y, p.z - 3);
+  const idleOrbit = config.game.idleAutopilot && tick - lastInput > 600 && pointer === null;
+  const orbit = yaw + (idleOrbit ? 0.45 * Math.sin((tick - lastInput - 600) / 165) : 0);
+  perspective.position.copy(cameraTarget).add(new T.Vector3(
+    distance * Math.cos(pitch) * Math.sin(orbit), distance * Math.sin(pitch),
+    distance * Math.cos(pitch) * Math.cos(orbit)
+  ));
+  perspective.lookAt(cameraTarget);
+  render.camera = config.visual.camera === 'Classic' ? ortho : perspective;
+  fadeCameraObstructions(render.camera, elapsed);
+  sky.position.copy(render.camera.position);
+  sky.material.uniforms.time.value = now / 1000;
+  sky.material.uniforms.clouds.value = Number(config.features.nebula);
+  sun.target.position.set(0, 0, p.z - 9);
+  sun.position.copy(sun.target.position).add(new T.Vector3(-10, 27, 7));
+  pulse.position.copy(p);
+  const flash = config.visual.reducedFlash ? 0 : 60 * Math.max(cooldown, 0);
+  pulse.intensity = config.features.lighting ? 15 + flash : 0;
+  canopy.visible = !config.visual.damageFx || config.visual.reducedFlash || damage <= 0 || tick % 12 < 8;
+  bloom.enabled = config.features.bloom;
+  bloom.strength = config.features.intensity;
+  bloom.radius = config.features.radius;
+  bloom.threshold = config.features.threshold;
+  let ahead;
+  for (const { hp, object } of obstacles) {
+    const z = object.position.z;
+    if (hp && z < p.z && z > (ahead?.position.z ?? p.z - 25)
+        && Math.abs(p.x - object.position.x) < object.scale.x / 2 + 0.45) ahead = object;
+  }
+  hud.textContent = `Fuel ${Math.max(0, Math.ceil(fuel))}% · Score ${score} · Alt ${p.y.toFixed(1)} · `
+    + `Seed ${seed} · ${config.visual.camera} · Level ${level} · Shield ${Math.ceil(shieldCharge)}%`
+    + (config.game.autopilot || (config.game.idleAutopilot && tick - lastInput > 600) ? ' · AUTO' : '')
+    + (tick < spaceUntil ? ` · Arrival ${Math.ceil((spaceUntil - tick) / 60)}s` : '')
+    + (tick < bonusUntil ? ` · ${bonusLabel}` : '')
+    + (ahead && config.visual.clearance
+      ? ` · Obstacle top ${(ahead.position.y + ahead.scale.y / 2).toFixed(1)}` : '');
+  clearance.hidden = !ahead || !config.visual.clearance;
+  if (!clearance.hidden) {
+    const limit = ahead.position.y + ahead.scale.y / 2 + 0.45;
+    clearance.firstElementChild.style.height = Math.min(100, limit * 10) + '%';
+    clearance.lastElementChild.style.bottom = p.y * 10 + '%';
+  }
+  composer.render();
+});
+</script>
+</html>

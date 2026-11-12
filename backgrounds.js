@@ -388,4 +388,12 @@ export const backgrounds = [
             "Interlaced threads carry different rhythms, " +
             "weaving a fabric that settles into harmony nearby.",
     },
+    {
+        name: "Zaxxon: Fortress Run",
+        folder: "zaxxon",
+        tags: ["games", "space", "3d", "interactive"],
+        description:
+            "Pilot a fighter through orbital fortresses and open-space encounters in classic isometric or orbitable 3D view. " +
+            "Use the arrow keys to fly, Space to fire, S to shield, and A to toggle autopilot.",
+    },
 ];
