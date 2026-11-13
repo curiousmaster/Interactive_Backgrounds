@@ -1,30 +1,80 @@
 <!doctype html>
 <html lang="en">
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Zaxxon • Fortress Run</title>
 <style>
   * { box-sizing: border-box }
+  [hidden] { display: none !important }
+  :root {
+    --top: max(10px, env(safe-area-inset-top));
+    --right: max(10px, env(safe-area-inset-right));
+    --bottom: max(10px, env(safe-area-inset-bottom));
+    --left: max(10px, env(safe-area-inset-left));
+  }
   body { margin: 0; background: #070b1d; color: #e5f4ff; font: 15px system-ui }
-  canvas { display: block; width: 100vw; height: 100vh; touch-action: none }
-  header, footer, details, #message { position: fixed; padding: 12px; background: #080f24ed; border: 1px solid #42708b; border-radius: 8px }
-  header { top: 12px; left: 12px; line-height: 1.7 }
-  footer { bottom: 12px; left: 12px; max-width: calc(100vw - 24px) }
-  #settings { top: 12px; right: 12px; width: min(280px, 50vw); max-height: 85vh; overflow: auto }
-  #settings details { position: static; margin: 8px 0; padding: 8px }
-  label { display: grid; grid-template-columns: 1fr minmax(0, 46%); align-items: center; margin: 8px 0; gap: 6px }
-  input, select, button, textarea { font: inherit; color: inherit; background: #142748; border: 1px solid #52788e; border-radius: 4px; padding: 4px }
-  #settings > input, textarea { width: 100%; margin-top: 8px }
+  canvas { position: fixed; inset: 0; display: block; width: 100%; height: 100%; touch-action: none }
+  header, footer, details, #message { position: fixed; padding: 10px; background: #080f24ed;
+    border: 1px solid #42708b; border-radius: 8px }
+  header { top: var(--top); left: var(--left); right: calc(var(--right) + 100px);
+    width: fit-content; max-width: calc(100% - var(--left) - var(--right) - 100px);
+    line-height: 1.45; pointer-events: none; overflow-wrap: anywhere }
+  footer { bottom: var(--bottom); left: var(--left);
+    max-width: calc(100% - var(--left) - var(--right)); pointer-events: none }
+  #settings { z-index: 4; top: var(--top); right: var(--right); padding: 0;
+    max-width: calc(100% - var(--left) - var(--right)) }
+  #settings[open] { width: min(320px, calc(100% - var(--left) - var(--right))) }
+  #settings > summary { padding: 11px }
+  #settings-body { padding: 0 11px 11px; overflow: auto; overscroll-behavior: contain;
+    max-height: calc(100vh - var(--top) - var(--bottom) - 48px);
+    max-height: calc(100dvh - var(--top) - var(--bottom) - 48px) }
+  #settings-body details { position: static; margin: 8px 0; padding: 8px }
+  #settings-body label { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 44%);
+    align-items: center; margin: 8px 0; gap: 6px; overflow-wrap: anywhere }
+  input, select, button, textarea { font: inherit; color: inherit; background: #142748;
+    border: 1px solid #52788e; border-radius: 4px; padding: 5px; min-width: 0 }
+  #settings-body > input, #settings-body textarea { width: 100%; margin: 0 0 8px }
+  #settings-body > button { margin: 2px }
   summary, button { cursor: pointer }
-  #clearance { position: fixed; left: 16px; top: 100px; width: 10px; height: 100px;
-    border: 1px solid #98c9e8; border-radius: 4px; background: #10172e }
+  #clearance { position: fixed; left: var(--left); top: 36%; width: 10px; height: min(100px, 22dvh);
+    border: 1px solid #98c9e8; border-radius: 4px; background: #10172e; pointer-events: none }
   #clearance span { position: absolute; inset: auto 0 0; background: #dc644f; border-radius: 3px }
   #clearance i { position: absolute; width: 18px; left: -5px; height: 2px; background: #73edff }
-  #message { top: 45%; left: 50%; transform: translate(-50%, -50%); text-align: center }
+  #message { z-index: 3; top: 45%; left: 50%; transform: translate(-50%, -50%); text-align: center;
+    width: max-content; max-width: calc(100% - var(--left) - var(--right)) }
+  #touch-controls { position: fixed; z-index: 2; bottom: var(--bottom); left: var(--left); right: var(--right);
+    display: flex; justify-content: space-between; align-items: end; gap: 8px; pointer-events: none }
+  #touch-controls button, #stick { pointer-events: auto; touch-action: none; user-select: none;
+    -webkit-user-select: none; -webkit-touch-callout: none }
+  #stick { position: relative; width: clamp(82px, 26vmin, 132px); aspect-ratio: 1; flex: none;
+    border-radius: 50%; border: 1px solid #52788e; background: #142748bb;
+    display: grid; place-items: center; color: #d4efff }
+  #stick span { position: absolute; display: grid; place-items: center; width: 42%; aspect-ratio: 1;
+    border-radius: 50%; background: #315477; border: 1px solid #9bcae5; pointer-events: none }
+  #touch-actions { display: grid; grid-template-columns: repeat(2, minmax(48px, 1fr)); gap: 5px }
+  #touch-actions button { min-height: 44px; background: #142748e8; font-size: 13px; padding-inline: 7px }
+  #touch-actions button.active, #touch-actions button[aria-pressed="true"] { background: #315d86 }
+  @media (max-width: 600px), (max-height: 450px) {
+    header, footer { padding: 6px 8px; font-size: 12px }
+    #settings-body input, #settings-body select, #settings-body textarea { font-size: 16px }
+  }
+  @media (pointer: coarse), (any-pointer: coarse) {
+    #settings-body select, #settings-body button, #settings-body input[type=number] { min-height: 38px }
+    #settings-body input[type=checkbox] { min-width: 22px; min-height: 22px; justify-self: end }
+  }
 </style>
 <header><strong>ZAXXON / FORTRESS RUN</strong><div id="hud">Loading WebGL…</div></header>
-<details id="settings"><summary>Settings</summary></details>
-<footer>←/→ steer · ↑/↓ altitude · Space fire · A autopilot · Hold S to shield · C camera · Right-drag orbit · Wheel zoom · F recenter · R restart</footer>
+<details id="settings"><summary>Settings</summary><div id="settings-body"></div></details>
+<footer id="keyboard-help">←/→ steer · ↑/↓ altitude · Space fire · A autopilot · Hold S to shield · C camera · Right-drag orbit · Wheel zoom · F recenter · R restart</footer>
+<div id="touch-controls" role="group" aria-label="Touch flight controls" hidden>
+  <div id="stick" role="img" aria-label="Drag left or right to steer, up to climb, down to descend"><span>✥</span></div>
+  <div id="touch-actions">
+    <button type="button" data-hold="Space">Fire</button>
+    <button type="button" data-hold="KeyS">Shield</button>
+    <button type="button" id="touch-auto" aria-pressed="false">Auto</button>
+    <button type="button" id="touch-camera">3D view</button>
+  </div>
+</div>
 <div id="message" hidden></div>
 <div id="clearance" hidden><span></span><i></i></div>
 <script src="./settings-editor.js"></script>
@@ -1674,7 +1724,7 @@ const schema = {
   features: { bloom: true, intensity: [0, 2, 0.05], radius: [0, 1, 0.05],
     threshold: [0, 2, 0.05], nebula: true, trails: true, lighting: true, debris: true }
 };
-const edit = settingsEditor(document.querySelector('#settings'), config, schema, resize, restart);
+const edit = settingsEditor(document.querySelector('#settings-body'), config, schema, resize, restart);
 const clamp = T.MathUtils.clamp;
 const world = new T.Group();
 scene.add(world, new T.HemisphereLight(0xbddaff, 0x493759, 2));
@@ -1758,6 +1808,8 @@ sky.renderOrder = -1;
 scene.add(sky);
 
 const keys = new Set();
+const touchKeys = new Map();
+const stickKeys = new Set();
 const recordings = new Map();
 const cameraTarget = new T.Vector3();
 let seed, run, tick, fuel, score, cooldown, damage, trace, replay, watch;
@@ -1890,6 +1942,7 @@ function restart(keepSeed = false, replayRun = null) {
     ? config.game.seed || crypto.getRandomValues(new Uint32Array(1))[0] : 1982;
   clearCameraFades();
   world.clear();
+  clearTouchInput();
   ghost.visible = false;
   obstacles.length = shots.length = particles.length = beacons.length = 0;
   formationCount = gatesCleared = 0;
@@ -1910,6 +1963,7 @@ function restart(keepSeed = false, replayRun = null) {
 }
 function finish(result) {
   run = false;
+  clearTouchInput();
   if (!replay && (!watch || score > watch.score || (score === watch.score && trace.length > watch.frames.length))) {
     recordings.set(seed, { score, frames: trace });
   }
@@ -1980,9 +2034,9 @@ function simulate(dt) {
   const frame = replay?.frames[tick];
   if (replay && !frame) return finish('Replay complete.');
   const boss = obstacles.at(-1);
-  const attract = config.game.idleAutopilot && tick - lastInput > 600;
+  const attract = idleAutopilotActive();
   const mask = frame ? frame[3] : config.game.autopilot || attract ? pilot(p, boss)
-    : controlKeys.reduce((value, key, i) => value | (keys.has(key) ? 1 << i : 0), 0);
+    : controlKeys.reduce((value, key, i) => value | (isHeld(key) ? 1 << i : 0), 0);
   tick++;
   const t = tick * dt;
   const nearTurret = obstacles.find(({ hp, kind, object }) => hp && kind === 'turret'
@@ -2117,7 +2171,8 @@ function simulate(dt) {
   else if (boss.hp === 0 && p.z < startZ - 173) nextLevel();
 }
 function resize() {
-  const width = innerWidth, height = innerHeight;
+  const { clientWidth, clientHeight } = renderer.domElement;
+  const width = Math.max(1, clientWidth), height = Math.max(1, clientHeight);
   const ratio = Math.min(devicePixelRatio, 2) * config.visual.scale;
   renderer.setPixelRatio(ratio);
   renderer.setSize(width, height, false);
@@ -2130,45 +2185,168 @@ function resize() {
   ortho.bottom = -half;
   ortho.updateProjectionMatrix();
   perspective.aspect = width / height;
+  // Preserve a usable horizontal field of view on portrait displays.
+  perspective.fov = T.MathUtils.radToDeg(2 * Math.atan(
+    Math.tan(T.MathUtils.degToRad(53 / 2)) / Math.min(1, perspective.aspect / 0.9)
+  ));
   perspective.updateProjectionMatrix();
 }
 function resetCamera() { yaw = 0; pitch = 0.37; distance = 19; }
-addEventListener('resize', resize);
-addEventListener('blur', () => keys.clear());
-addEventListener('keydown', event => {
-  if (event.target.closest('input, select, textarea, button, summary')) return;
-  if (controlKeys.includes(event.code)) event.preventDefault();
+const canvas = renderer.domElement;
+const settings = document.querySelector('#settings');
+const touchControls = document.querySelector('#touch-controls');
+const touchAuto = document.querySelector('#touch-auto');
+const touchCamera = document.querySelector('#touch-camera');
+const keyboardHelp = document.querySelector('#keyboard-help');
+const stick = document.querySelector('#stick');
+const thumb = stick.firstElementChild;
+const holdButtons = [...touchControls.querySelectorAll('[data-hold]')];
+const coarsePointer = matchMedia('(pointer: coarse)');
+const finePointer = matchMedia('(any-pointer: fine)');
+let touchSeen = false;
+let touchMode = false;
+let stickPointer = null;
+let orbitX = 0, orbitY = 0;
+
+function updateInputMode() {
+  touchMode = touchSeen || coarsePointer.matches || (navigator.maxTouchPoints > 0 && !finePointer.matches);
+  touchControls.hidden = !touchMode || settings.open || !run;
+  keyboardHelp.hidden = touchMode;
+}
+
+function clearTouchInput() {
+  const activePointer = stickPointer;
+  stickPointer = null;
+  stickKeys.clear();
+  touchKeys.clear();
+  thumb.style.transform = '';
+  if (activePointer !== null && stick.hasPointerCapture(activePointer)) stick.releasePointerCapture(activePointer);
+  for (const button of holdButtons) button.classList.remove('active');
+}
+
+function isHeld(key) {
+  if (keys.has(key) || stickKeys.has(key)) return true;
+  for (const heldKey of touchKeys.values()) if (heldKey === key) return true;
+  return false;
+}
+
+function idleAutopilotActive() {
+  return config.game.idleAutopilot && tick - lastInput > 600 && !controlKeys.some(isHeld);
+}
+
+function registerInput(manualFlight = false) {
   lastInput = tick;
-  if (controlKeys.slice(0, 5).includes(event.code) && config.game.autopilot) {
+  if (manualFlight && config.game.autopilot && !replay) {
     config.game.autopilot = false;
     edit();
   }
+}
+
+function toggleAutopilot() {
+  if (replay) return;
+  config.game.autopilot = !config.game.autopilot;
+  edit();
+}
+
+function toggleCamera() {
+  config.visual.camera = config.visual.camera === 'Classic' ? '3D' : 'Classic';
+  edit();
+}
+
+function moveStick(event) {
+  if (event.pointerId !== stickPointer) return;
+  const rect = stick.getBoundingClientRect();
+  const x = (event.clientX - rect.left - rect.width / 2) / (rect.width / 2);
+  const y = (event.clientY - rect.top - rect.height / 2) / (rect.height / 2);
+  const magnitude = Math.max(1, Math.hypot(x, y));
+  thumb.style.transform = `translate(${0.28 * rect.width * x / magnitude}px, ${0.28 * rect.height * y / magnitude}px)`;
+  stickKeys.clear();
+  if (Math.abs(x) >= 0.23) stickKeys.add(x < 0 ? 'ArrowLeft' : 'ArrowRight');
+  if (Math.abs(y) >= 0.23) stickKeys.add(y < 0 ? 'ArrowUp' : 'ArrowDown');
+  if (stickKeys.size) registerInput(true);
+}
+
+function releaseStick(event) {
+  if (event.pointerId !== stickPointer) return;
+  stickPointer = null;
+  stickKeys.clear();
+  thumb.style.transform = '';
+}
+
+stick.onpointerdown = event => {
+  if (stickPointer !== null || event.button !== 0) return;
+  stickPointer = event.pointerId;
+  stick.setPointerCapture(stickPointer);
+  moveStick(event);
+};
+stick.onpointermove = moveStick;
+stick.onpointerup = stick.onpointercancel = stick.onlostpointercapture = releaseStick;
+
+for (const button of holdButtons) {
+  button.onpointerdown = event => {
+    if (event.button !== 0) return;
+    const key = button.dataset.hold;
+    touchKeys.set(event.pointerId, key);
+    button.setPointerCapture(event.pointerId);
+    button.classList.add('active');
+    registerInput(key === 'Space');
+  };
+  button.onpointerup = button.onpointercancel = button.onlostpointercapture = event => {
+    if (!touchKeys.delete(event.pointerId)) return;
+    button.classList.toggle('active', [...touchKeys.values()].includes(button.dataset.hold));
+  };
+}
+touchAuto.onclick = () => { registerInput(); toggleAutopilot(); };
+touchCamera.onclick = () => { registerInput(); toggleCamera(); };
+touchControls.oncontextmenu = event => event.preventDefault();
+settings.addEventListener('toggle', () => {
+  keys.clear();
+  clearTouchInput();
+  updateInputMode();
+});
+
+addEventListener('resize', resize);
+new ResizeObserver(resize).observe(canvas);
+for (const media of [coarsePointer, finePointer]) media.addEventListener('change', updateInputMode);
+addEventListener('pointerdown', event => {
+  if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+  touchSeen = true;
+  updateInputMode();
+}, true);
+addEventListener('blur', () => { keys.clear(); clearTouchInput(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { keys.clear(); clearTouchInput(); }
+});
+
+addEventListener('keydown', event => {
+  if (settings.contains(event.target) || event.target.closest('input, select, textarea, summary')) return;
+  if (event.target.closest('button') && !event.target.closest('#touch-controls')) return;
+  if (controlKeys.includes(event.code)) event.preventDefault();
+  registerInput(controlKeys.includes(event.code) && event.code !== 'KeyS');
   keys.add(event.code);
   if (event.repeat) return;
-  if (event.code === 'KeyA' && !replay) {
-    config.game.autopilot = !config.game.autopilot;
-    edit();
-  }
+  if (event.code === 'KeyA') toggleAutopilot();
   if (event.code === 'KeyR') restart();
   if (event.code === 'KeyF') resetCamera();
-  if (event.code === 'KeyC') {
-    config.visual.camera = config.visual.camera === 'Classic' ? '3D' : 'Classic';
-    edit();
-  }
+  if (event.code === 'KeyC') toggleCamera();
 });
 addEventListener('keyup', event => keys.delete(event.code));
-const canvas = renderer.domElement;
 canvas.oncontextmenu = event => event.preventDefault();
 canvas.onpointerdown = event => {
-  if (event.button !== 2 || config.visual.camera !== '3D') return;
+  const orbitButton = event.pointerType === 'mouse' ? event.button === 2 : event.button === 0;
+  if (!orbitButton || pointer !== null || config.visual.camera !== '3D') return;
   pointer = event.pointerId;
+  orbitX = event.clientX;
+  orbitY = event.clientY;
   canvas.setPointerCapture(pointer);
 };
 canvas.onlostpointercapture = () => { pointer = null; };
 canvas.onpointermove = event => {
   if (event.pointerId !== pointer || config.visual.camera !== '3D') return;
-  yaw -= event.movementX * 0.007;
-  pitch = clamp(pitch + event.movementY * 0.007, 0.08, 1.42);
+  yaw -= (event.clientX - orbitX) * 0.007;
+  pitch = clamp(pitch + (event.clientY - orbitY) * 0.007, 0.08, 1.42);
+  orbitX = event.clientX;
+  orbitY = event.clientY;
 };
 canvas.addEventListener('wheel', event => {
   if (config.visual.camera !== '3D') return;
@@ -2178,6 +2356,7 @@ canvas.addEventListener('wheel', event => {
 
 resize();
 restart();
+updateInputMode();
 let previous = performance.now(), accumulator = 0;
 const step = 1 / 60;
 renderer.setAnimationLoop(now => {
@@ -2185,15 +2364,21 @@ renderer.setAnimationLoop(now => {
   accumulator += elapsed;
   previous = now;
   while (accumulator >= step) {
-    if (run) simulate(step);
+    if (run && !(touchMode && settings.open)) simulate(step);
     accumulator -= step;
+  }
+  if (touchMode) {
+    touchControls.hidden = settings.open || !run;
+    const autopilot = config.game.autopilot || (idleAutopilotActive());
+    touchAuto.setAttribute('aria-pressed', String(autopilot));
+    touchCamera.textContent = config.visual.camera === 'Classic' ? '3D view' : 'Classic view';
   }
   const p = ship.position;
   cameraTarget.set(p.x * 0.35, 2, p.z - 9);
   ortho.position.copy(cameraTarget).add(new T.Vector3(25, 25, 25));
   ortho.lookAt(cameraTarget);
   cameraTarget.set(p.x, p.y, p.z - 3);
-  const idleOrbit = config.game.idleAutopilot && tick - lastInput > 600 && pointer === null;
+  const idleOrbit = idleAutopilotActive() && pointer === null;
   const orbit = yaw + (idleOrbit ? 0.45 * Math.sin((tick - lastInput - 600) / 165) : 0);
   perspective.position.copy(cameraTarget).add(new T.Vector3(
     distance * Math.cos(pitch) * Math.sin(orbit), distance * Math.sin(pitch),
@@ -2223,7 +2408,7 @@ renderer.setAnimationLoop(now => {
   }
   hud.textContent = `Fuel ${Math.max(0, Math.ceil(fuel))}% · Score ${score} · Alt ${p.y.toFixed(1)} · `
     + `Seed ${seed} · ${config.visual.camera} · Level ${level} · Shield ${Math.ceil(shieldCharge)}%`
-    + (config.game.autopilot || (config.game.idleAutopilot && tick - lastInput > 600) ? ' · AUTO' : '')
+    + (config.game.autopilot || (idleAutopilotActive()) ? ' · AUTO' : '')
     + (tick < spaceUntil ? ` · Arrival ${Math.ceil((spaceUntil - tick) / 60)}s` : '')
     + (tick < bonusUntil ? ` · ${bonusLabel}` : '')
     + (ahead && config.visual.clearance
