@@ -38,30 +38,184 @@ const TAU=Math.PI*2, DEG=Math.PI/180, PHI=Math.PI*(3-Math.sqrt(5));
 const $=s=>document.querySelector(s), clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const clone=o=>JSON.parse(JSON.stringify(o));
 const defaults={
-  editor:{enabled:true},
-  geometry:{type:'prolate',aspect:.60,eccentricity:.92,size:.92,rotation:0,pulse:.065,pulseSpeed:.23,rotateSpeed:5,twinGap:.12,boundaryWidth:1.15,showBoundary:true,showFoci:true},
-  particles:{max:128,speed:1.25,speedVariation:.04,splitAngle:68,resetDelay:1.2,emitter:'alternate',distribution:'golden',azimuth:0,elevation:12,spread:70,size:3.4,showBodies:true},
-  trails:{enabled:true,length:3.7,fadePower:1.65,lifetime:17,width:.85,brightness:.75,additive:true},
-  colors:{mode:'rainbow',hue:220,hueSpread:320,saturation:.95,lightness:.66,hueDrift:2,focusA:'#ffc06d',focusB:'#67dfff',boundary:'#dbeeff'},
-  lighting:{bloom:true,bloomStrength:1.05,bloomRadius:1.5,boundaryGlow:true,focusGlow:true},
-  view:{yaw:-28,tilt:18,roll:0,zoom:1,perspective:true,distance:3.7,orbit:true,orbitSpeed:7},
-  scene:{background:'#050713',stars:.24,vignette:.65},
-  interaction:{enabled:true,dragRotate:true,wheelZoom:true,clickBurst:false,burstCount:6,showAim:false},
-  features:{
-    silk:{enabled:true,filamentWidth:.5,silkOpacity:.33,iridescence:.8,strandGlow:.55},
-    shockwaves:{enabled:true,waveSpeed:.65,waveRadius:1.3,intensity:1.1,decay:1.5,distortion:.12},
-    spectral:{enabled:true,dispersion:1.1,chromaticShift:1.8,spectralGlow:.4,wavelengthSpread:1.25},
-    ribbons:{enabled:false,ribbonWidth:2.8,twist:2,depth:.05,edgeGlow:.8,perspective:1},
-    livingBoundary:{enabled:true,surfaceRipple:.024,refraction:.3,edgeThickness:1.15,impactGlow:1},
-    kaleidoscope:{enabled:false,symmetryCount:6,mirrorMode:'mirror',rotationOffset:0,blendStrength:.8},
-    lineage:{enabled:true,generationHue:27,thicknessDecay:.93,brightnessDecay:.91,lineageGlow:.4},
-    interference:{enabled:false,interferenceScale:2,frequency:20,contrast:.6,phaseSpeed:.9},
-    constellations:{enabled:true,intersectionGlow:1.2,sparkleSize:4,persistence:2.8,connectionBrightness:.25},
-    echoes:{enabled:false,echoCount:4,echoInterval:.22,echoOpacity:.3,depthSeparation:.055},
-    shell:{enabled:true,meridians:12,parallels:9,opacity:.34,fresnel:1.35},
-    haze:{enabled:true,density:.33,brightness:.24,depthFade:.65},
-    focusCores:{enabled:true,size:1.1,pulse:.35},
-    confocalGuides:false,guideCount:4,axes:false,focusPulse:true,endpointFlashes:true,directionMarkers:false
+  "editor": {
+    "enabled": true
+  },
+  "geometry": {
+    "type": "prolate",
+    "aspect": 0.77,
+    "eccentricity": 0.92,
+    "size": 1.04,
+    "rotation": 0,
+    "pulse": 0.065,
+    "pulseSpeed": 0.23,
+    "rotateSpeed": 5,
+    "twinGap": 0.12,
+    "boundaryWidth": 1.15,
+    "showBoundary": true,
+    "showFoci": true
+  },
+  "particles": {
+    "max": 132,
+    "speed": 1.1,
+    "speedVariation": 0.05,
+    "splitAngle": 46.5,
+    "resetDelay": 1.2,
+    "emitter": "alternate",
+    "distribution": "random",
+    "azimuth": 180,
+    "elevation": 68,
+    "spread": 70,
+    "size": 3.5,
+    "showBodies": true
+  },
+  "trails": {
+    "enabled": false,
+    "length": 9.3,
+    "fadePower": 0.5,
+    "lifetime": 3.7,
+    "width": 0.3,
+    "brightness": 0.55,
+    "additive": true
+  },
+  "colors": {
+    "mode": "rainbow",
+    "hue": 220,
+    "hueSpread": 320,
+    "saturation": 0.95,
+    "lightness": 0.66,
+    "hueDrift": 2,
+    "focusA": "#ffc06d",
+    "focusB": "#67dfff",
+    "boundary": "#dbeeff"
+  },
+  "lighting": {
+    "bloom": false,
+    "bloomStrength": 1.05,
+    "bloomRadius": 1.5,
+    "boundaryGlow": true,
+    "focusGlow": true
+  },
+  "view": {
+    "yaw": -28,
+    "tilt": 18,
+    "roll": 0,
+    "zoom": 1,
+    "perspective": true,
+    "distance": 3.7,
+    "orbit": true,
+    "orbitSpeed": 10.5
+  },
+  "scene": {
+    "background": "#050713",
+    "stars": 0.24,
+    "vignette": 0.65
+  },
+  "interaction": {
+    "enabled": true,
+    "dragRotate": true,
+    "wheelZoom": true,
+    "clickBurst": true,
+    "burstCount": 6,
+    "showAim": false
+  },
+  "features": {
+    "silk": {
+      "enabled": true,
+      "filamentWidth": 0.5,
+      "silkOpacity": 0.33,
+      "iridescence": 0.8,
+      "strandGlow": 0.55
+    },
+    "shockwaves": {
+      "enabled": false,
+      "waveSpeed": 0.65,
+      "waveRadius": 1.3,
+      "intensity": 1.1,
+      "decay": 1.5,
+      "distortion": 0.12
+    },
+    "spectral": {
+      "enabled": false,
+      "dispersion": 1.1,
+      "chromaticShift": 1.8,
+      "spectralGlow": 0.4,
+      "wavelengthSpread": 1.25
+    },
+    "ribbons": {
+      "enabled": false,
+      "ribbonWidth": 6.4,
+      "twist": 2,
+      "depth": 0.22,
+      "edgeGlow": 2,
+      "perspective": 2
+    },
+    "livingBoundary": {
+      "enabled": true,
+      "surfaceRipple": 0.008,
+      "refraction": 1,
+      "edgeThickness": 1.7,
+      "impactGlow": 1.05
+    },
+    "kaleidoscope": {
+      "enabled": false,
+      "symmetryCount": 6,
+      "mirrorMode": "mirror",
+      "rotationOffset": 0,
+      "blendStrength": 0.8
+    },
+    "lineage": {
+      "enabled": false,
+      "generationHue": 27,
+      "thicknessDecay": 0.93,
+      "brightnessDecay": 0.91,
+      "lineageGlow": 0.4
+    },
+    "interference": {
+      "enabled": false,
+      "interferenceScale": 2,
+      "frequency": 20,
+      "contrast": 0.6,
+      "phaseSpeed": 0.9
+    },
+    "constellations": {
+      "enabled": false,
+      "intersectionGlow": 1.2,
+      "sparkleSize": 4,
+      "persistence": 2.8,
+      "connectionBrightness": 0.25
+    },
+    "echoes": {
+      "enabled": false,
+      "echoCount": 4,
+      "echoInterval": 0.22,
+      "echoOpacity": 0.3,
+      "depthSeparation": 0.055
+    },
+    "shell": {
+      "enabled": true,
+      "meridians": 28,
+      "parallels": 24,
+      "opacity": 0.75,
+      "fresnel": 2.1
+    },
+    "haze": {
+      "enabled": true,
+      "density": 0.8,
+      "brightness": 1.35,
+      "depthFade": 0.9
+    },
+    "focusCores": {
+      "enabled": true,
+      "size": 1.1,
+      "pulse": 0.35
+    },
+    "confocalGuides": true,
+    "guideCount": 6,
+    "axes": false,
+    "focusPulse": true,
+    "endpointFlashes": true,
+    "directionMarkers": true
   }
 };
 const STORAGE='chromatic-reflections-3d-v1';
