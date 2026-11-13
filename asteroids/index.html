@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Asteroids — Deep Field</title>
 <style>
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;color:#e0f8ff;font:13px system-ui,sans-serif}body{background:#050816}body.clear{background:transparent}canvas{position:fixed;inset:0;width:100%;height:100%}
@@ -38,15 +38,59 @@
   .settings-stats { display:block; font-variant-numeric:tabular-nums; }
   .settings-row output { color:#a6e6df; font-size:11px; white-space:nowrap; font-variant-numeric:tabular-nums; }
   .settings-status { margin:7px 0 0; }
-#error{position:fixed;top:42%;left:10%;right:10%;text-align:center}#touch{position:fixed;bottom:74px;left:20px;gap:8px;display:none;touch-action:none}@media(pointer:coarse){#touch.active{display:flex}}[hidden]{display:none!important}
+#error{position:fixed;top:42%;left:10%;right:10%;text-align:center}
+:root {
+  --edge-left: max(12px, env(safe-area-inset-left));
+  --edge-right: max(12px, env(safe-area-inset-right));
+  --edge-bottom: max(12px, env(safe-area-inset-bottom));
+  --edge-top: max(12px, env(safe-area-inset-top));
+}
+#dock { position:fixed; bottom:var(--edge-bottom); left:var(--edge-left); right:var(--edge-right); display:grid; gap:8px; pointer-events:none; }
+#controls, #touch { position:static; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+#dock button { pointer-events:auto; }
+#controls .settings-open { position:static; }
+#touch { justify-content:space-between; user-select:none; }
+.touch-group { display:flex; gap:5px; }
+#touch button { min-width:44px; min-height:44px; touch-action:none; }
+#touch button:active { background:#356078; }
+#hud { top:var(--edge-top); left:var(--edge-left); right:var(--edge-right); gap:8px 20px; }
+#hud b { font-size:calc(var(--hud-size,22px) * var(--hud-scale,1)); }
+#radar { position:static; width:112px; height:62px; border:1px solid #456980; border-radius:6px; background:#070e21aa; }
+.settings-panel { top:auto; bottom:calc(var(--edge-bottom) + 49px); right:var(--edge-right); z-index:2;
+  width:min(345px,calc(100% - var(--edge-left) - var(--edge-right)));
+  max-height:calc(100dvh - var(--edge-top) - var(--edge-bottom) - 58px); }
+.settings-line > label { min-width:0; overflow-wrap:anywhere; }
+.settings-preset select,.settings-line select { min-width:0; max-width:100%; }
+@media (any-pointer:coarse) {
+  #controls button,.settings-panel button { min-height:44px; }
+  .settings-panel input[type=search],.settings-panel input[type=text],.settings-panel textarea,.settings-panel select { font-size:16px; }
+}
+@media (max-width:600px), (max-height:460px) {
+  #hud { --hud-size:16px; gap:5px 12px; }
+  #hud small { font-size:9px; }
+  #radar { width:76px; height:42px; }
+  #hint { display:none; }
+  .settings-panel { top:var(--edge-top); bottom:calc(var(--edge-bottom) + 49px); width:auto; left:var(--edge-left); max-height:none; }
+}
+body:has(.settings-panel:not([hidden])) #touch { visibility:hidden; }
+[hidden]{display:none!important}
 </style>
 </head>
 <body>
 <canvas id="space" tabindex="0" aria-label="Animated asteroid field"></canvas>
 <div id="hud" aria-label="Scoreboard"></div>
 <div id="error" role="alert" hidden></div>
-<div id="touch"><button data-key="ArrowLeft" aria-label="Turn left">◀</button><button data-key="ArrowRight" aria-label="Turn right">▶</button><button data-key="ArrowUp" aria-label="Thrust">▲</button><button data-key="Space">Fire</button><button id="jump">Jump</button></div>
-<div id="controls"><button id="pilot">Take control</button><button id="pause">Pause</button><span id="hint"></span></div>
+<div id="dock">
+  <div id="touch" role="group" aria-label="Touch flight controls" hidden>
+    <div class="touch-group">
+      <button data-key="ArrowLeft" aria-label="Turn left">◀</button>
+      <button data-key="ArrowRight" aria-label="Turn right">▶</button>
+      <button data-key="ArrowUp" aria-label="Thrust">▲</button>
+    </div>
+    <div class="touch-group"><button data-key="Space">Fire</button><button id="jump">Jump</button></div>
+  </div>
+  <div id="controls"><button id="pilot">Take control</button><button id="pause">Pause</button><span id="hint"></span></div>
+</div>
 <div id="editor"></div>
 <script>
 'use strict';
@@ -323,6 +367,7 @@ function loadSettingsEditor() {
       onRestart: resetRound,
       onPause: setPause
     });
+    $('controls').insertBefore($('editor').querySelector('.settings-open'), $('hint'));
     applySettings(editor.config);
   }, { once: true });
   document.head.append(script);
@@ -463,7 +508,7 @@ precision mediump float;
 varying vec4 tint;
 void main(){gl_FragColor=vec4(tint.rgb*tint.a,tint.a);}
 `;
-const W=1180;
+let W=1180;
 let nebulaPhase=0;
 let H=690, time=0, previous=0, accumulator=0, paused=reduced.matches;
 const bloomFragment=`
@@ -501,6 +546,24 @@ let rocks=[], shots=[], dust=[], ship, rival=null, score=0, wave=1, lives=3;
 let manual=false, lastInput=0, nextComet=14, nextRival=19, nextWave=0, hudCache='';
 const records={auto:Math.max(0,Number(read('deep-field-auto-best',0))||0),player:Math.max(0,Number(read('deep-field-player-best',0))||0)};
 const keys=new Set();
+const touchKeys=new Map();
+const coarsePointer=matchMedia('(any-pointer: coarse)');
+let touchObserved=false;
+
+function updateInputUI() {
+  const touchCapable=touchObserved||coarsePointer.matches||(navigator.maxTouchPoints||0)>0;
+  $('touch').hidden=!manual||!touchCapable;
+  $('hint').textContent=manual&&!touchCapable?'↑ or W to thrust · ←/→ or A/D to turn · Space to fire · H to jump':'';
+}
+function clearInput() {
+  keys.clear();
+  touchKeys.clear();
+}
+function held(code) {
+  if(keys.has(code))return true;
+  for(const active of touchKeys.values())if(active===code)return true;
+  return false;
+}
 function rock(x,y,r,vx,vy,comet=false) {
   const ring=Array.from({length:11},(_,i)=>{
     const a=i*TAU/11, distance=rand(.73,1.18);
@@ -526,9 +589,14 @@ function resetRound() {
 }
 function resize() {
   const w=Math.max(1,canvas.clientWidth),h=Math.max(1,canvas.clientHeight);
-  const height=clamp(W*h/w,490,1600);
-  if(height!==H) {
-    for(const obj of [ship,rival,...rocks,...shots,...dust,...blasts]) if(obj) obj.y*=height/H;
+  // Keep world units square and retain a playable short axis in either orientation.
+  const unitScale=Math.min(w/1180,h/620);
+  const width=w/unitScale,height=h/unitScale;
+  if(width!==W||height!==H) {
+    for(const obj of [ship,rival,...rocks,...shots,...dust,...blasts]){
+      if(obj){obj.x*=width/W;obj.y*=height/H;}
+    }
+    W=width;
     H=height;
   }
   const scale=Math.min(devicePixelRatio||1,1.65)*config.graphics.quality;
@@ -605,17 +673,16 @@ function jump() {
 }
 function setPilot(on) {
   if(manual!==on){score=0;shots=shots.filter(shot=>shot.owner!=='ship');}
-  manual=on;lastInput=time;keys.clear();
+  manual=on;lastInput=time;clearInput();
   if(on){
     setPause(false);
     canvas.focus({preventScroll:true});
   }
   $('pilot').textContent=on?'Resume autopilot':'Take control';
-  $('touch').classList.toggle('active',on);
-  $('hint').textContent=on?'Arrows or WASD · Space to fire · H to jump':'';
+  updateInputUI();
 }
 function setPause(on) {
-  paused=on;editor?.setPaused(on);keys.clear();$('pause').textContent=on?'Resume':'Pause';
+  paused=on;editor?.setPaused(on);clearInput();$('pause').textContent=on?'Resume':'Pause';
 }
 $('pilot').onclick=()=>setPilot(!manual);
 $('pause').onclick=()=>setPause(!paused);
@@ -631,20 +698,30 @@ addEventListener('keydown',e=>{
   if(e.code==='KeyH'&&!e.repeat)jump();
 });
 addEventListener('keyup',e=>keys.delete(e.code));
-addEventListener('blur',()=>keys.clear());
-document.addEventListener('visibilitychange',()=>{if(document.hidden)keys.clear();});
+addEventListener('blur',clearInput);
+coarsePointer.addEventListener('change',updateInputUI);
+addEventListener('pointerdown',event=>{
+  if(event.pointerType==='touch'&&!touchObserved){
+    touchObserved=true;
+    updateInputUI();
+  }
+},{capture:true});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)clearInput();});
 reduced.addEventListener('change',e=>{if(e.matches)setPause(true);});
 for(const button of $('touch').querySelectorAll('[data-key]')) {
   button.onpointerdown=e=>{
     e.preventDefault();
-    button.setPointerCapture(e.pointerId);keys.add(button.dataset.key);lastInput=time;
+    if(!manual||paused)return;
+    button.setPointerCapture(e.pointerId);
+    touchKeys.set(e.pointerId,button.dataset.key);
+    lastInput=time;
   };
-  button.onpointerup=button.onpointercancel=button.onlostpointercapture=()=>keys.delete(button.dataset.key);
+  button.onpointerup=button.onpointercancel=button.onlostpointercapture=event=>touchKeys.delete(event.pointerId);
 }
 function step(dt) {
   time+=dt;
   if(!reduced.matches) nebulaPhase=(nebulaPhase+dt*.19*config.graphics.nebulaSpeed)%TAU;
-  if(manual&&keys.size)lastInput=time;
+  if(manual&&(keys.size||touchKeys.size))lastInput=time;
   if(manual&&config.gameplay.idle&&time-lastInput>config.gameplay.idle)setPilot(false);
   ship.safe-=dt;ship.cool-=dt;ship.jump-=dt;
   if(ship.dead>0){
@@ -653,8 +730,8 @@ function step(dt) {
   } else {
     let turn=0,thrust=false,shoot=false;
     if(manual) {
-      turn=Number(keys.has('ArrowRight')||keys.has('KeyD'))-Number(keys.has('ArrowLeft')||keys.has('KeyA'));
-      thrust=keys.has('ArrowUp')||keys.has('KeyW');shoot=keys.has('Space');
+      turn=Number(held('ArrowRight')||held('KeyD'))-Number(held('ArrowLeft')||held('KeyA'));
+      thrust=held('ArrowUp')||held('KeyW');shoot=held('Space');
     } else {
       const [target]=nearest(ship),[threat,distance]=nearest(ship,.75);
       let angle=time*.65;
@@ -1065,8 +1142,7 @@ function updateHud() {
   hud.style.opacity=config.scoreboard.opacity;
   hud.style.color=config.scoreboard.color;
   hud.style.justifyContent={left:'flex-start',center:'center',right:'flex-end'}[config.scoreboard.align];
-  hud.style.transformOrigin=config.scoreboard.align+' top';
-  hud.style.transform='scale('+config.scoreboard.scale+')';
+  hud.style.setProperty('--hud-scale',config.scoreboard.scale);
   const data={Score:String(score).padStart(5,'0'),Best:String(records[manual?'player':'auto']).padStart(5,'0'),Wave:String(wave).padStart(2,'0'),Lives:lives,Pilot:manual?'PLAYER':'AUTO'};
   const metrics=Object.entries(data).filter(([key])=>config.scoreboard['show'+key]);
   const cache=JSON.stringify([metrics,config.scoreboard.radar]);
@@ -1080,7 +1156,6 @@ function updateHud() {
     if(config.scoreboard.radar){
       const radar=document.createElement('canvas');
       radar.id='radar';radar.width=112;radar.height=62;
-      radar.style.cssText='position:static;width:112px;height:62px;border:1px solid #456980;border-radius:6px;background:#070e21aa';
       radar.setAttribute('aria-label','Nearby asteroid radar');hud.append(radar);
     }
   }
@@ -1129,6 +1204,7 @@ try {
   gl.bindBuffer(gl.ARRAY_BUFFER,screenBuffer);
   gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
   canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();fail('WebGL rendering was interrupted. Reload to resume.');});
+  resize();
   resetRound();
   if (settings.editor.enabled) loadSettingsEditor();
   requestAnimationFrame(frame);
