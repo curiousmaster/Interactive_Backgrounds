@@ -1,0 +1,1220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#060713">
+  <title>Chromatic Reflections — Focal Ellipse Background</title>
+  <style>
+    :root {color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    * {box-sizing:border-box}
+    html,body {margin:0;width:100%;height:100%;overflow:hidden;background:#060713;color:#f4f6ff}
+    #scene {position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+    .hud {position:fixed;z-index:5;pointer-events:none;text-shadow:0 1px 16px #000b}
+    #hud-top {top:max(20px,env(safe-area-inset-top));left:clamp(17px,4vw,55px)}
+    .eyebrow {font-size:10px;letter-spacing:4px;color:#9db2d5;font-weight:800;text-transform:uppercase}
+    .headline {font-size:clamp(20px,3vw,36px);font-weight:300;letter-spacing:.02em;margin-top:3px}
+    .headline strong {font-weight:750}
+    .hint {color:#9eacc9;font-size:12px;margin-top:5px}
+    #hud-bottom {bottom:max(19px,env(safe-area-inset-bottom));left:clamp(17px,4vw,55px)}
+    .stats {display:flex;align-items:center;gap:18px;flex-wrap:wrap;font-size:12px;color:#b6c4e1}
+    .stats b {color:#fff;font-size:14px;font-variant-numeric:tabular-nums}
+    #top-actions {position:fixed;top:max(17px,env(safe-area-inset-top));right:clamp(17px,2vw,26px);z-index:12;display:flex;gap:8px}
+    .action {border:1px solid #4a5879;background:#10172acc;color:#f3f7ff;border-radius:12px;padding:10px 14px;min-height:41px;cursor:pointer;font:600 12px system-ui;backdrop-filter:blur(14px)}
+    .action:hover {background:#263653ec}
+    .action:focus-visible{outline:2px solid #91bfff;outline-offset:3px}
+    #error {display:none;position:fixed;z-index:40;left:50%;top:50%;transform:translate(-50%,-50%);width:min(90vw,450px);padding:24px;background:#1b1d33;border:1px solid #546487;border-radius:12px;text-align:center}
+    @media(max-width:700px){.headline{font-size:22px}.hint{font-size:11px;max-width:220px}#hud-top{top:max(70px,env(safe-area-inset-top))}#hud-bottom{bottom:max(12px,env(safe-area-inset-bottom))}.stats{gap:10px;font-size:11px}#top-actions{top:max(14px,env(safe-area-inset-top))}}
+  </style>
+</head>
+<body>
+  <canvas id="scene" aria-label="Animated glowing particles reflecting between the foci of an ellipse"></canvas>
+  <div id="hud-top" class="hud">
+    <div class="eyebrow">Mathematics in motion</div>
+    <div class="headline">CHROMATIC <strong>REFLECTIONS</strong></div>
+    <div class="hint" id="mode-label">Focus → boundary → opposite focus</div>
+  </div>
+  <div id="top-actions">
+    <button type="button" class="action" id="pause-button" title="Pause (Space)">Pause</button>
+    <button type="button" class="action" id="settings-button" title="Settings (E)">Settings</button>
+  </div>
+  <div id="hud-bottom" class="hud">
+    <div class="stats"><span>BALLS <b id="ball-count">0</b></span><span>BOUNCES <b id="bounce-count">0</b></span><span>FPS <b id="fps-count">–</b></span></div>
+    <div class="hint">Drag to rotate · Space pause · E settings · R restart</div>
+  </div>
+  <div id="error" role="alert"></div>
+
+  <script src="./settings-editor.js"></script>
+  <script>
+  (() => {
+    'use strict';
+    const TAU = Math.PI * 2;
+    const RAD = Math.PI / 180;
+    const GOLDEN_ANGLE = 137.50776405003785;
+    const STORAGE = 'chromatic-reflections-settings-v2';
+    const $ = selector => document.querySelector(selector);
+    const clamp = (n, low, high) => Math.min(high, Math.max(low, n));
+    const copy = obj => JSON.parse(JSON.stringify(obj));
+
+    const defaults = {
+      editor: { enabled: true },
+      geometry: {
+        type: 'ellipse', aspect: 0.59, eccentricity: 0.81, size: 0.94,
+        rotation: 0, pulse: 0.075, rotateSpeed: 7, pulseSpeed: 0.15,
+        twinGap: 0.08, showBoundary: true, boundaryWidth: 1.65, showFoci: true
+      },
+      particles: {
+        count: 128, speed: 1.28, speedVariation: 0.07,
+        emitter: 'alternate', distribution: 'golden',
+        angle: 0, spread: 360, splitSpread: 12, resetDelay: 0.85,
+        size: 3.25, showBodies: true
+      },
+      trails: { enabled: true, lifetime: 14, width: 0.82, brightness: 0.74, additive: true },
+      colors: {
+        mode: 'rainbow', hue: 215, hueSpread: 335, saturation: 0.94,
+        lightness: 0.65, hueDrift: 3, focusA: '#ffd178', focusB: '#69ecff',
+        boundary: '#e6efff'
+      },
+      lighting: { bloom: true, bloomStrength: 0.85, bloomRadius: 1.15,
+        boundaryGlow: true, focusGlow: true },
+      scene: { background: '#060713', stars: 0.18, vignette: 0.6 },
+      view: { zoom: 1, tilt: 0, yaw: 0, perspective: false,
+        orbit: false, orbitSpeed: 6 },
+      interaction: { enabled: true, clickBurst: false, burstCount: 28,
+        dragRotate: true, showAim: false },
+      features: {
+        confocalGuides: false, guideCount: 4, axes: false,
+        focusPulse: true, endpointFlashes: true, directionMarkers: false,
+        silk: {enabled: true, filamentWidth: .48, silkOpacity: .36, iridescence: .75, strandGlow: .52},
+        shockwaves: {enabled: true, waveRadius: .5, waveSpeed: 1.35, intensity: 1.25, decay: 1.5, distortion: .7},
+        spectral: {enabled: true, dispersion: 1.8, chromaticShift: 2.2, spectralGlow: .35, wavelengthSpread: .7},
+        ribbons: {enabled: false, ribbonWidth: 1.8, twist: 1.6, depth: .4, edgeGlow: .7, perspective: .7},
+        livingBoundary: {enabled: true, surfaceRipple: .012, refraction: .55, edgeThickness: 1.3, impactGlow: .85},
+        kaleidoscope: {enabled: false, symmetryCount: 6, mirrorMode: 'mirror', rotationOffset: 0, blendStrength: .85},
+        lineage: {enabled: true, generationHue: 27, thicknessDecay: .9, brightnessDecay: .88, lineageGlow: .58},
+        interference: {enabled: false, interferenceScale: 5, frequency: 14, contrast: .7, phaseSpeed: 1.2},
+        constellations: {enabled: true, intersectionGlow: 1.0, sparkleSize: 3.0, persistence: 2.2, connectionBrightness: .22},
+        echoes: {enabled: false, echoCount: 4, echoInterval: .20, echoOpacity: .3, depthSeparation: .018}
+      }
+    };
+
+    function savedSettings() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(STORAGE));
+        return raw ? SettingsEditor.merge(copy(defaults), raw) : copy(defaults);
+      } catch { return copy(defaults); }
+    }
+    let cfg = savedSettings();
+    const canvas = $('#scene');
+    const error = $('#error');
+
+    function hexToRGB(hex) {
+      const clean = String(hex).replace('#', '');
+      if (!/^[0-9a-f]{6}$/i.test(clean)) return [1, 1, 1];
+      return [0, 2, 4].map(n => parseInt(clean.slice(n, n + 2), 16) / 255);
+    }
+    function hslToRGB(h, s, l) {
+      h = ((h % 360) + 360) % 360 / 360;
+      const f = n => {
+        const k = (n + h * 12) % 12;
+        const a = s * Math.min(l, 1 - l);
+        return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+      };
+      return [f(0), f(8), f(4)];
+    }
+    function compile(gl, type, code) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, code); gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const message = gl.getShaderInfoLog(shader); gl.deleteShader(shader); throw Error(message);
+      }
+      return shader;
+    }
+    function program(gl, vertex, fragment) {
+      const p = gl.createProgram();
+      const vs = compile(gl, gl.VERTEX_SHADER, vertex);
+      const fs = compile(gl, gl.FRAGMENT_SHADER, fragment);
+      gl.attachShader(p, vs); gl.attachShader(p, fs); gl.linkProgram(p);
+      gl.deleteShader(vs); gl.deleteShader(fs);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw Error(gl.getProgramInfoLog(p));
+      return p;
+    }
+    const FULLSCREEN_VS = `#version 300 es
+      precision highp float;
+      out vec2 uv;
+      void main() {
+        vec2 pos = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+        uv = pos;
+        gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
+      }`;
+    const FADE_FS = `#version 300 es
+      precision highp float; in vec2 uv; out vec4 frag;
+      uniform sampler2D tex; uniform float fade;
+      void main() { frag = vec4(texture(tex, uv).rgb * fade, 1.0); }`;
+    const BLUR_FS = `#version 300 es
+      precision highp float; in vec2 uv; out vec4 frag;
+      uniform sampler2D tex; uniform vec2 stepSize;
+      void main() {
+        vec3 c = texture(tex, uv).rgb * .227027;
+        c += texture(tex, uv + 1.384615 * stepSize).rgb * .316216;
+        c += texture(tex, uv - 1.384615 * stepSize).rgb * .316216;
+        c += texture(tex, uv + 3.230769 * stepSize).rgb * .070270;
+        c += texture(tex, uv - 3.230769 * stepSize).rgb * .070270;
+        frag = vec4(c, 1.0);
+      }`;
+    const COMPOSITE_FS = `#version 300 es
+      precision highp float;
+      in vec2 uv;
+      out vec4 frag;
+      uniform sampler2D trails, bloom, echo0, echo1, echo2, echo3, echo4, echo5;
+      uniform vec3 bg;
+      uniform vec2 resolution;
+      uniform float time, glow, vignette, stars, brightness;
+      uniform float spectralOn, dispersion, chromaticShift, spectralGlow, wavelengthSpread;
+      uniform float interferenceOn, interferenceScale, frequency, contrast, phaseSpeed;
+      uniform float kaleidoOn, symmetryCount, mirrorMode, rotationOffset, blendStrength;
+      uniform float boundaryOn, refraction, impactGlow;
+      uniform vec4 ellipses[2]; // Center XY and semi-minor, semi-major, in screen pixels
+      uniform vec2 ellipseRotation[2]; // cos(angle),sin(angle)
+      uniform int ellipseCount;
+      uniform int echoCount;
+      uniform float echoOn, echoOpacity, depthSeparation;
+      uniform int waveCount;
+      uniform vec4 waves[10]; // normalized XY, normalized radius, intensity
+      uniform float waveOn, waveDistortion;
+      float hash(vec2 p) { return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+      vec2 clampUV(vec2 p) { return clamp(p,vec2(0.001),vec2(0.999)); }
+      void main() {
+        vec2 sourceUV = uv;
+        float aspect = resolution.x / max(resolution.y,1.);
+        if (kaleidoOn > .5) {
+          vec2 center = vec2(ellipses[0].x/resolution.x,1.-ellipses[0].y/resolution.y);
+          vec2 pos = (sourceUV-center)*vec2(aspect,1.);
+          float sector = 6.2831853/max(2.,symmetryCount);
+          float theta = atan(pos.y,pos.x) - radians(rotationOffset);
+          float folded = mod(theta,sector);
+          if (mirrorMode>.5) folded = min(folded,sector-folded);
+          vec2 mapped = vec2(cos(folded+radians(rotationOffset)),sin(folded+radians(rotationOffset))) * length(pos);
+          vec2 symUV = center + mapped/vec2(aspect,1.);
+          sourceUV = mix(sourceUV,symUV,blendStrength);
+        }
+        float focusWave = 0.;
+        if (waveOn > .5) {
+          for (int i=0;i<10;i++) {
+            if (i>=waveCount) break;
+            vec2 delta = (sourceUV-waves[i].xy)*vec2(aspect,1.);
+            float rr = length(delta);
+            float circle = exp(-pow((rr-waves[i].z)*250.,2.));
+            focusWave += circle*waves[i].w;
+            sourceUV += delta/max(rr,.0001)*circle*waves[i].w*waveDistortion*.0019;
+          }
+        }
+        float boundaryHalo = 0.;
+        if (boundaryOn > .5) {
+          vec2 pos = vec2(sourceUV.x*resolution.x,(1.-sourceUV.y)*resolution.y);
+          for (int i=0;i<2;i++) {
+            if (i>=ellipseCount) break;
+            vec2 d = pos-ellipses[i].xy;
+            vec2 co = ellipseRotation[i];
+            vec2 local = vec2(d.x*co.x + d.y*co.y,-d.x*co.y + d.y*co.x);
+            float radius = length(local/max(ellipses[i].zw,vec2(1.)));
+            float rim = exp(-pow((radius-1.)*90.,2.));
+            boundaryHalo = max(boundaryHalo,rim);
+            sourceUV += vec2(d.x/resolution.x,-d.y/resolution.y)*rim*refraction*.007;
+          }
+        }
+        sourceUV=clampUV(sourceUV);
+        vec3 light = texture(trails,sourceUV).rgb * brightness;
+        if (spectralOn > .5) {
+          vec2 radial = normalize((sourceUV-.5)*vec2(aspect,1.)+vec2(.001,.0001));
+          vec2 shift = radial / resolution * (chromaticShift+dispersion*1.8);
+          vec3 shifted = vec3(
+            texture(trails,clampUV(sourceUV+shift*wavelengthSpread)).r,
+            texture(trails,sourceUV).g,
+            texture(trails,clampUV(sourceUV-shift)).b);
+          light = mix(light, shifted, clamp(dispersion*.5,0.,1.));
+          light += abs(shifted-texture(trails,sourceUV).rgb)*spectralGlow;
+        }
+        if (interferenceOn > .5) {
+          vec2 px = vec2(1.)/resolution;
+          float a = dot(texture(trails,clampUV(sourceUV+px*interferenceScale)).rgb,vec3(.3333));
+          float b = dot(texture(trails,clampUV(sourceUV-px*interferenceScale)).rgb,vec3(.3333));
+          float lum = dot(light,vec3(.299,.587,.114));
+          float fringes = sin((a-b)*frequency*13. + length((sourceUV-.5)*vec2(aspect,1.))*frequency*10. - time*phaseSpeed*3.);
+          light += vec3(.27,.47,.9) * max(0.,fringes) * min(1.,lum*1.9) * contrast * .65;
+        }
+        if (echoOn>.5) {
+          vec2 dv = vec2(depthSeparation,depthSeparation*.45);
+          if (echoCount>0) light += texture(echo0,clampUV(sourceUV+dv)).rgb*echoOpacity;
+          if (echoCount>1) light += texture(echo1,clampUV(sourceUV-dv*1.45)).rgb*echoOpacity*.68;
+          if (echoCount>2) light += texture(echo2,clampUV(sourceUV+dv*2.1)).rgb*echoOpacity*.48;
+          if (echoCount>3) light += texture(echo3,clampUV(sourceUV-dv*2.7)).rgb*echoOpacity*.34;
+          if (echoCount>4) light += texture(echo4,clampUV(sourceUV+dv*3.4)).rgb*echoOpacity*.22;
+          if (echoCount>5) light += texture(echo5,clampUV(sourceUV-dv*4.2)).rgb*echoOpacity*.13;
+        }
+        light += texture(bloom,sourceUV).rgb*glow;
+        light += vec3(.16,.32,.7)*boundaryHalo*impactGlow*.42 + vec3(.32,.48,.95)*focusWave*.32;
+        vec2 centered = uv-.5;
+        float r2 = dot(centered*vec2(aspect,1.),centered*vec2(aspect,1.));
+        vec3 base = bg+vec3(.009,.015,.041)*(1.-smoothstep(.04,.55,r2));
+        float cellSize = 7.;
+        vec2 cell = floor(gl_FragCoord.xy/cellSize);
+        float random=hash(cell);
+        float star=step(.998,random)*step(length(fract(gl_FragCoord.xy/cellSize)-.5),.12);
+        base += vec3(.34,.49,.85)*star*stars*(.8+.2*sin(time+random*20.));
+        vec3 result = base+light;
+        result *= 1.-vignette*smoothstep(.06,.57,r2)*.72;
+        frag = vec4(1.-exp(-result*1.18),1.);
+      }`;
+    const LINE_VS = `#version 300 es
+      precision highp float;
+      layout(location=0) in vec2 pos;
+      layout(location=1) in vec4 color;
+      layout(location=2) in float side;
+      uniform vec2 resolution;
+      out vec4 vColor; out float vSide;
+      void main() {
+        gl_Position = vec4(pos / resolution * vec2(2.0, -2.0) + vec2(-1.0, 1.0), 0., 1.);
+        vColor = color; vSide = side;
+      }`;
+    const LINE_FS = `#version 300 es
+      precision highp float; in vec4 vColor; in float vSide; out vec4 frag;
+      void main() {
+        float feather = 1.0 - smoothstep(.55, 1.0, abs(vSide));
+        frag = vec4(vColor.rgb, vColor.a * feather);
+      }`;
+    const POINT_VS = `#version 300 es
+      precision highp float;
+      layout(location=0) in vec2 pos;
+      layout(location=1) in vec4 color;
+      layout(location=2) in float size;
+      uniform vec2 resolution; uniform float pixelRatio;
+      out vec4 vColor;
+      void main() {
+        gl_Position = vec4(pos / resolution * vec2(2.0,-2.0)+vec2(-1.0,1.0),0.,1.);
+        gl_PointSize = max(1.,size*pixelRatio); vColor = color;
+      }`;
+    const POINT_FS = `#version 300 es
+      precision highp float; in vec4 vColor; out vec4 frag;
+      void main() {
+        float d = length(gl_PointCoord - .5)*2.0;
+        float halo = exp(-d*d*4.5);
+        float core = 1.0 - smoothstep(.09,.25,d);
+        float alpha = vColor.a * (halo*.55+core*.65) * (1.0-smoothstep(.82,1.,d));
+        frag = vec4(mix(vColor.rgb,vec3(1.),core*.65),alpha);
+      }`;
+
+    class Renderer {
+      constructor(element) {
+        this.gl = element.getContext('webgl2', {
+          alpha: false, antialias: true, depth: false, stencil: false,
+          premultipliedAlpha: false, preserveDrawingBuffer: true
+        });
+        if (!this.gl) throw Error('WebGL2 is unavailable in this browser.');
+        const gl = this.gl;
+        this.fade = program(gl, FULLSCREEN_VS, FADE_FS);
+        this.blur = program(gl, FULLSCREEN_VS, BLUR_FS);
+        this.composite = program(gl, FULLSCREEN_VS, COMPOSITE_FS);
+        this.lineProgram = program(gl, LINE_VS, LINE_FS);
+        this.pointProgram = program(gl, POINT_VS, POINT_FS);
+        this.fullVAO = gl.createVertexArray();
+        this.lineVAO = gl.createVertexArray(); this.lineVBO = gl.createBuffer();
+        gl.bindVertexArray(this.lineVAO); gl.bindBuffer(gl.ARRAY_BUFFER, this.lineVBO);
+        gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 28, 0);
+        gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 28, 8);
+        gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 28, 24);
+        this.pointVAO = gl.createVertexArray(); this.pointVBO = gl.createBuffer();
+        gl.bindVertexArray(this.pointVAO); gl.bindBuffer(gl.ARRAY_BUFFER, this.pointVBO);
+        gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 28, 0);
+        gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 28, 8);
+        gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 28, 24);
+        gl.bindVertexArray(null);
+        this.targets = []; this.bloomTargets = []; this.echoTargets = []; this.echoIndex = -1; this.echoAvailable = 0; this.echoElapsed = 0;
+        this.width = this.height = this.dpr = 0;
+      }
+      uniform(programObject, name) { return this.gl.getUniformLocation(programObject, name); }
+      target(w, h) {
+        const gl = this.gl;
+        const texture = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        const fbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE)
+          throw Error('Could not allocate WebGL framebuffer.');
+        return { texture, fbo, width: w, height: h };
+      }
+      disposeTarget(t) { this.gl.deleteTexture(t.texture); this.gl.deleteFramebuffer(t.fbo); }
+      resize(width, height) {
+        const dpr = Math.min(window.devicePixelRatio || 1, width < 650 ? 1.6 : 2);
+        const w = Math.max(1, Math.round(width * dpr));
+        const h = Math.max(1, Math.round(height * dpr));
+        if (w === this.width && h === this.height) return;
+        this.width = w; this.height = h; this.dpr = dpr;
+        canvas.width = w; canvas.height = h;
+        this.targets.forEach(t => this.disposeTarget(t));
+        this.bloomTargets.forEach(t => this.disposeTarget(t));
+        this.echoTargets.forEach(t => this.disposeTarget(t));
+        this.targets = [this.target(w, h), this.target(w, h)];
+        this.bloomTargets = [this.target(Math.max(1,w>>2), Math.max(1,h>>2)),
+                             this.target(Math.max(1,w>>2), Math.max(1,h>>2))];
+        this.echoTargets = Array.from({length:6}, () => this.target(Math.max(1,w>>1), Math.max(1,h>>1)));
+        this.read = 0;
+        this.clearTrails();
+      }
+      clearTrails() {
+        const gl = this.gl;
+        for (const t of [...this.targets,...this.echoTargets,...this.bloomTargets]) {
+          gl.bindFramebuffer(gl.FRAMEBUFFER,t.fbo);
+          gl.viewport(0,0,t.width,t.height); gl.clearColor(0,0,0,1);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+        }
+        this.read = 0; this.echoIndex = -1; this.echoAvailable = 0; this.echoElapsed = 0;
+        gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+      }
+      texture(unit, target) {
+        const gl = this.gl; gl.activeTexture(gl.TEXTURE0+unit);
+        gl.bindTexture(gl.TEXTURE_2D,target.texture);
+      }
+      fullscreen(target, shader) {
+        const gl = this.gl;
+        gl.bindFramebuffer(gl.FRAMEBUFFER,target?.fbo ?? null);
+        gl.viewport(0,0,target?.width ?? this.width,target?.height ?? this.height);
+        gl.useProgram(shader); gl.bindVertexArray(this.fullVAO);
+      }
+      drawFullscreen() { this.gl.drawArrays(this.gl.TRIANGLES,0,3); }
+      drawLines(vertices, isAdditive = true) {
+        if (!vertices.length) return;
+        const gl = this.gl;
+        gl.useProgram(this.lineProgram);
+        gl.uniform2f(this.uniform(this.lineProgram,'resolution'),canvas.clientWidth,canvas.clientHeight);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA,isAdditive ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA);
+        gl.bindVertexArray(this.lineVAO); gl.bindBuffer(gl.ARRAY_BUFFER,this.lineVBO);
+        gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(vertices),gl.DYNAMIC_DRAW);
+        gl.drawArrays(gl.TRIANGLES,0,vertices.length/7);
+        gl.disable(gl.BLEND);
+      }
+      drawPoints(vertices) {
+        if (!vertices.length) return;
+        const gl = this.gl; gl.useProgram(this.pointProgram);
+        gl.uniform2f(this.uniform(this.pointProgram,'resolution'),canvas.clientWidth,canvas.clientHeight);
+        gl.uniform1f(this.uniform(this.pointProgram,'pixelRatio'),this.dpr);
+        gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+        gl.bindVertexArray(this.pointVAO); gl.bindBuffer(gl.ARRAY_BUFFER,this.pointVBO);
+        gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(vertices),gl.DYNAMIC_DRAW);
+        gl.drawArrays(gl.POINTS,0,vertices.length/7); gl.disable(gl.BLEND);
+      }
+      captureEcho(dt) {
+        if (!cfg.features.echoes.enabled || dt <= 0) return;
+        const settings = cfg.features.echoes;
+        this.echoElapsed += dt;
+        if (this.echoElapsed < settings.echoInterval) return;
+        this.echoElapsed %= Math.max(0.04,settings.echoInterval);
+        this.echoIndex = (this.echoIndex+1)%6;
+        this.echoAvailable = Math.min(6,this.echoAvailable+1);
+        const gl=this.gl;
+        this.fullscreen(this.echoTargets[this.echoIndex],this.fade);
+        this.texture(0,this.targets[this.read]);
+        gl.uniform1i(this.uniform(this.fade,'tex'),0);
+        gl.uniform1f(this.uniform(this.fade,'fade'),1);
+        gl.disable(gl.BLEND); this.drawFullscreen();
+      }
+      draw(trailVertices, overlayVertices, pointVertices, dt, time) {
+        const gl = this.gl;
+        const to = 1-this.read;
+        this.fullscreen(this.targets[to],this.fade);
+        this.texture(0,this.targets[this.read]);
+        gl.uniform1i(this.uniform(this.fade,'tex'),0);
+        gl.uniform1f(this.uniform(this.fade,'fade'), cfg.trails.enabled ?
+          Math.exp(-dt*2.4/Math.max(.1,cfg.trails.lifetime)) : 0);
+        gl.disable(gl.BLEND); this.drawFullscreen();
+        if (cfg.trails.enabled) this.drawLines(trailVertices,cfg.trails.additive);
+        this.read = to;
+        this.captureEcho(dt);
+
+        if (cfg.lighting.bloom) {
+          const texelX = cfg.lighting.bloomRadius * 4 / this.width;
+          const texelY = cfg.lighting.bloomRadius / this.height;
+          this.fullscreen(this.bloomTargets[0],this.blur);
+          this.texture(0,this.targets[this.read]);
+          gl.uniform1i(this.uniform(this.blur,'tex'),0);
+          gl.uniform2f(this.uniform(this.blur,'stepSize'),texelX,0);
+          this.drawFullscreen();
+          this.fullscreen(this.bloomTargets[1],this.blur);
+          this.texture(0,this.bloomTargets[0]);
+          gl.uniform2f(this.uniform(this.blur,'stepSize'),0,texelY*4);
+          this.drawFullscreen();
+        }
+        this.fullscreen(null,this.composite);
+        this.texture(0,this.targets[this.read]);
+        this.texture(1,this.bloomTargets[1]);
+        gl.uniform1i(this.uniform(this.composite,'trails'),0);
+        gl.uniform1i(this.uniform(this.composite,'bloom'),1);
+        const uniforms = {
+          bg: hexToRGB(cfg.scene.background),
+          glow: cfg.lighting.bloom ? cfg.lighting.bloomStrength : 0,
+          vignette: cfg.scene.vignette, stars: cfg.scene.stars,
+          brightness: 1, time,
+          spectralOn: Number(cfg.features.spectral.enabled),
+          dispersion: cfg.features.spectral.dispersion,
+          chromaticShift: cfg.features.spectral.chromaticShift,
+          spectralGlow: cfg.features.spectral.spectralGlow,
+          wavelengthSpread: cfg.features.spectral.wavelengthSpread,
+          interferenceOn: Number(cfg.features.interference.enabled),
+          interferenceScale: cfg.features.interference.interferenceScale,
+          frequency: cfg.features.interference.frequency,
+          contrast: cfg.features.interference.contrast,
+          phaseSpeed: cfg.features.interference.phaseSpeed,
+          kaleidoOn: Number(cfg.features.kaleidoscope.enabled),
+          symmetryCount: cfg.features.kaleidoscope.symmetryCount,
+          mirrorMode: Number(cfg.features.kaleidoscope.mirrorMode === 'mirror'),
+          rotationOffset: cfg.features.kaleidoscope.rotationOffset,
+          blendStrength: cfg.features.kaleidoscope.blendStrength,
+          boundaryOn: Number(cfg.features.livingBoundary.enabled),
+          refraction: cfg.features.livingBoundary.refraction,
+          impactGlow: cfg.features.livingBoundary.impactGlow,
+          echoOn: Number(cfg.features.echoes.enabled),
+          echoOpacity: cfg.features.echoes.echoOpacity,
+          depthSeparation: cfg.features.echoes.depthSeparation,
+          waveOn: Number(cfg.features.shockwaves.enabled),
+          waveDistortion: cfg.features.shockwaves.distortion
+        };
+        for (const [key,value] of Object.entries(uniforms)) {
+          const location = this.uniform(this.composite,key);
+          if (location === null) continue;
+          if (key === 'bg') gl.uniform3fv(location,value);
+          else gl.uniform1f(location,value);
+        }
+        gl.uniform2f(this.uniform(this.composite,'resolution'),this.width,this.height);
+        gl.uniform1i(this.uniform(this.composite,'ellipseCount'),chambers.length);
+        const ellipseData=new Float32Array(8),rotationData=new Float32Array(4);
+        chambers.forEach((ch,i) => {
+          ellipseData.set([ch.cx*this.dpr,ch.cy*this.dpr,ch.ratio*ch.size*this.dpr,ch.size*this.dpr],i*4);
+          rotationData.set([Math.cos(ch.theta),Math.sin(ch.theta)],i*2);
+        });
+        gl.uniform4fv(this.uniform(this.composite,'ellipses[0]'),ellipseData);
+        gl.uniform2fv(this.uniform(this.composite,'ellipseRotation[0]'),rotationData);
+        const waveData=new Float32Array(40);
+        const activeWaves=cfg.features.shockwaves.enabled ? waves.slice(-10) : [];
+        activeWaves.forEach((w,i) => {
+          const ch=chambers[w.chamberId]||chambers[0];
+          const p=project(ch,w.x,w.y);
+          waveData.set([p.x/width,1-p.y/height,
+            w.age*cfg.features.shockwaves.waveSpeed*ch.size/height,
+            w.intensity*Math.exp(-w.age*cfg.features.shockwaves.decay*2)],i*4);
+        });
+        gl.uniform1i(this.uniform(this.composite,'waveCount'),activeWaves.length);
+        gl.uniform4fv(this.uniform(this.composite,'waves[0]'),waveData);
+        const echoCount=cfg.features.echoes.enabled ? Math.min(cfg.features.echoes.echoCount,this.echoAvailable) : 0;
+        gl.uniform1i(this.uniform(this.composite,'echoCount'),echoCount);
+        for (let i=0;i<6;i++) {
+          const idx=(this.echoIndex-i+6)%6;
+          this.texture(2+i,this.echoTargets[idx]);
+          gl.uniform1i(this.uniform(this.composite,'echo'+i),2+i);
+        }
+        this.drawFullscreen();
+        this.drawLines(overlayVertices,true);
+        this.drawPoints(pointVertices);
+      }
+    }
+
+    // Optional 2D fallback: the primary implementation above is WebGL2, but
+    // the same physics and editor also run on devices with WebGL disabled.
+    class CanvasFallback {
+      constructor(element) {
+        this.ctx = element.getContext('2d');
+        if (!this.ctx) throw Error('Neither WebGL2 nor Canvas 2D is available.');
+        this.offscreen = document.createElement('canvas');
+        this.trailCtx = this.offscreen.getContext('2d');
+        this.width = this.height = this.dpr = 0;
+      }
+      resize(width, height) {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const w = Math.round(width*dpr), h = Math.round(height*dpr);
+        if (w === this.width && h === this.height) return;
+        this.width=w;this.height=h;this.dpr=dpr;
+        canvas.width=w;canvas.height=h;
+        this.offscreen.width=w;this.offscreen.height=h;
+        this.ctx.setTransform(dpr,0,0,dpr,0,0);
+        this.trailCtx.setTransform(dpr,0,0,dpr,0,0);
+      }
+      clearTrails() {this.trailCtx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);}
+      paintLines(ctx,vertices,additive=false) {
+        ctx.save();ctx.lineCap='round';
+        ctx.globalCompositeOperation=additive?'lighter':'source-over';
+        for (let i=0;i<vertices.length;i+=42) {
+          const sx=(vertices[i]+vertices[i+7])/2;
+          const sy=(vertices[i+1]+vertices[i+8])/2;
+          const ex=(vertices[i+14]+vertices[i+35])/2;
+          const ey=(vertices[i+15]+vertices[i+36])/2;
+          const r=Math.round(vertices[i+2]*255),g=Math.round(vertices[i+3]*255),b=Math.round(vertices[i+4]*255);
+          ctx.strokeStyle=`rgba(${r},${g},${b},${vertices[i+5]})`;
+          ctx.lineWidth=Math.hypot(vertices[i]-vertices[i+7],vertices[i+1]-vertices[i+8]);
+          ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(ex,ey);ctx.stroke();
+        }
+        ctx.restore();
+      }
+      draw(trails,overlay,points,dt,time) {
+        const w=canvas.clientWidth,h=canvas.clientHeight,tc=this.trailCtx,ctx=this.ctx;
+        tc.save();tc.globalCompositeOperation='destination-in';
+        tc.globalAlpha=cfg.trails.enabled?Math.exp(-dt*2.4/Math.max(.1,cfg.trails.lifetime)):0;
+        tc.fillStyle='#ffffff';tc.fillRect(0,0,w,h);tc.restore();
+        if (cfg.trails.enabled) this.paintLines(tc,trails,cfg.trails.additive);
+        ctx.fillStyle=cfg.scene.background;ctx.fillRect(0,0,w,h);
+        ctx.save();
+        ctx.globalAlpha=1;
+        if (cfg.lighting.bloom) {
+          ctx.shadowColor='#568dff';ctx.shadowBlur=cfg.lighting.bloomStrength*14;
+        }
+        ctx.drawImage(this.offscreen,0,0,w,h);
+        if (cfg.features.echoes.enabled) {
+          const e=cfg.features.echoes;
+          ctx.globalAlpha=e.echoOpacity*.32;
+          for(let i=1;i<=Math.min(3,e.echoCount);i++)
+            ctx.drawImage(this.offscreen,i*e.depthSeparation*w*.3,i*e.depthSeparation*h*.25,w,h);
+        }
+        ctx.restore();
+        this.paintLines(ctx,overlay,true);
+        ctx.save();ctx.globalCompositeOperation='lighter';
+        for (let i=0;i<points.length;i+=7) {
+          const [x,y,r,g,b,a,size]=points.slice(i,i+7);
+          const radius=Math.max(1,size*.5);
+          const gradient=ctx.createRadialGradient(x,y,0,x,y,radius);
+          const rgb=`${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)}`;
+          gradient.addColorStop(0,`rgba(${rgb},${Math.min(1,a)})`);
+          gradient.addColorStop(1,`rgba(${rgb},0)`);
+          ctx.fillStyle=gradient;ctx.beginPath();ctx.arc(x,y,radius,0,TAU);ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+
+    // One local ellipse per chamber: x²/b² + y²/a² = 1, with a=1 and b=ratio.
+    // Reflections are solved in ellipse-local coordinates BEFORE screen transforms.
+    function currentRatio() {
+      if (cfg.geometry.type === 'circle') return 1;
+      if (cfg.geometry.type === 'eccentric')
+        return clamp(Math.sqrt(1-cfg.geometry.eccentricity**2),.2,1);
+      return clamp(cfg.geometry.aspect,.2,1);
+    }
+    let renderer;
+    try { renderer = canvas.getContext('webgl2') ? new Renderer(canvas) : new CanvasFallback(canvas); }
+    catch (e) { error.textContent = 'Unable to start Chromatic Reflections: ' + e.message;
+      error.style.display = 'block'; console.error(e); return; }
+    let particles = [];
+    let flashes = [];
+    let waves = [], impacts = [], intersections = [], recentSegments = [], segmentGrid = new Map();
+    let nextParticleId = 1;
+    let spawnIndex = 0;
+    let bounceCount = 0;
+    let cycleIndex = 0;
+    let resetTimer = -1;
+    let time = 0;
+    let paused = false;
+    let dragRotation = 0;
+    let pointer = null;
+    let prevTime = performance.now();
+    let fpsAvg = 60;
+    let hudLast = 0;
+    let width = 1, height = 1;
+    let chambers = [];
+    let editor = null;
+
+    function makeChambers() {
+      const usableWidth = width - (width > 700 && editor?.isOpen() ? Math.min(355,width-32)+30 : 0);
+      const ratio = currentRatio();
+      const c = Math.sqrt(Math.max(0,1-ratio*ratio));
+      const twin = cfg.geometry.type === 'twin';
+      const portrait = height > width * 1.15;
+      const angle = (cfg.geometry.type === 'ellipse' || cfg.geometry.type === 'circle' ? 0 : cfg.geometry.rotation)*RAD
+        + dragRotation*RAD + (cfg.geometry.type === 'animated' ? time*cfg.geometry.rotateSpeed*RAD : 0)
+        + (cfg.view.orbit ? time*cfg.view.orbitSpeed*RAD : 0);
+      const cos = Math.cos(angle), sin = Math.sin(angle);
+      const extentX = Math.sqrt((ratio*cos)**2 + sin**2);
+      const extentY = Math.sqrt((ratio*sin)**2 + cos**2);
+      const pulse = cfg.geometry.type === 'animated'
+        ? 1 + cfg.geometry.pulse*Math.sin(TAU*time*cfg.geometry.pulseSpeed) : 1;
+      const positions = twin ? (portrait ? [
+        { x:usableWidth*.5, y:height*(.34-cfg.geometry.twinGap*.10) },
+        { x:usableWidth*.5, y:height*(.72+cfg.geometry.twinGap*.10) }
+      ] : [
+        { x:usableWidth*(.265-cfg.geometry.twinGap*.09), y:height*.5 },
+        { x:usableWidth*(.735+cfg.geometry.twinGap*.09), y:height*.5 }
+      ]) : [{ x:usableWidth*.5, y:height*.53 }];
+      return positions.map((center,id) => {
+        const limitX = twin && !portrait ? usableWidth*(.222-cfg.geometry.twinGap*.12) : usableWidth*.445;
+        const limitY = twin && portrait ? height*(.135-cfg.geometry.twinGap*.09) :
+          !twin ? height*(width<=700 ? .355 : .375) : height*.375;
+        const zoom = cfg.view.zoom * cfg.geometry.size * pulse;
+        const size = Math.max(5,Math.min(limitX/extentX,limitY/extentY))*zoom;
+        return { id, cx:center.x, cy:center.y, size, ratio, c, theta:angle };
+      });
+    }
+    function project(chamber,x,y,z=0) {
+      const co = Math.cos(chamber.theta), si = Math.sin(chamber.theta);
+      const xr = x*co-y*si, yr = x*si+y*co;
+      const yaw = cfg.view.yaw*RAD, tilt = cfg.view.tilt*RAD;
+      const depth = -yr*Math.sin(tilt)+xr*Math.sin(yaw)*Math.cos(tilt)+z*Math.cos(tilt);
+      const px = xr*Math.cos(yaw), py = yr*Math.cos(tilt)+xr*Math.sin(yaw)*Math.sin(tilt)-z*Math.sin(tilt);
+      const perspective = cfg.view.perspective ? 1/Math.max(.3,1+depth*.34) : 1;
+      return { x:chamber.cx+px*chamber.size*perspective,
+               y:chamber.cy+py*chamber.size*perspective };
+    }
+    function line(out, start, end, rgb, opacity, thickness) {
+      const dx = end.x-start.x,dy = end.y-start.y;
+      const length = Math.hypot(dx,dy);
+      if (length < 0.00001) return;
+      const nx = -dy/length*thickness*.5, ny = dx/length*thickness*.5;
+      const p = [
+        [start.x+nx,start.y+ny,-1],[start.x-nx,start.y-ny,1],
+        [end.x+nx,end.y+ny,-1],[end.x+nx,end.y+ny,-1],
+        [start.x-nx,start.y-ny,1],[end.x-nx,end.y-ny,1]
+      ];
+      for (const v of p) out.push(v[0],v[1],rgb[0],rgb[1],rgb[2],opacity,v[2]);
+    }
+    function path(out, chamber, samples, rgb, opacity, thickness, scaleA=1, scaleB=chamber.ratio) {
+      let first = project(chamber,0,scaleA), previous = first;
+      for (let i=1;i<=samples;i++) {
+        const a = i*TAU/samples;
+        const next = project(chamber,Math.sin(a)*scaleB,Math.cos(a)*scaleA);
+        line(out,previous,next,rgb,opacity,thickness); previous = next;
+      }
+    }
+    function livingPath(out,ch,rgb,opacity,thickness,offset=0) {
+      const cfgB=cfg.features.livingBoundary;
+      let previous=null;
+      for(let i=0;i<=220;i++) {
+        const theta=TAU*i/220;
+        let d=1+offset+Math.sin(theta*9+time*2.6)*cfgB.surfaceRipple*.27;
+        for(const hit of impacts) {
+          if(hit.chamberId!==ch.id) continue;
+          const angular=Math.atan2(Math.sin(theta-hit.angle),Math.cos(theta-hit.angle));
+          d+=cfgB.surfaceRipple*Math.exp(-angular*angular/(.06+hit.age*.35)) *
+            Math.sin(hit.age*18-angular*10)*Math.exp(-hit.age*2.5);
+        }
+        const p=project(ch,Math.sin(theta)*ch.ratio*d,Math.cos(theta)*d);
+        if(previous) line(out,previous,p,rgb,opacity,thickness);
+        previous=p;
+      }
+    }
+    function ring(out,p,r,rgb,alpha,width=1.3) {
+      let prev = {x:p.x+r,y:p.y};
+      for (let i=1;i<=24;i++) {
+        const a=TAU*i/24;
+        const next={x:p.x+Math.cos(a)*r,y:p.y+Math.sin(a)*r};
+        line(out,prev,next,rgb,alpha,width);prev=next;
+      }
+    }
+    function point(out,p,rgb,alpha,size) {
+      out.push(p.x,p.y,rgb[0],rgb[1],rgb[2],alpha,size);
+    }
+    function colorFor(p) {
+      const mode = cfg.colors.mode;
+      if (mode === 'dual') return hexToRGB(p.origin === 'a' ? cfg.colors.focusA : cfg.colors.focusB);
+      let unit = p.seed;
+      if (mode === 'bounce') unit = (p.bounces*0.075+p.seed*.28)%1;
+      if (mode === 'speed') unit = clamp((p.speed/cfg.particles.speed-.6)*1.6,0,1);
+      if (mode === 'mono') unit = 0;
+      const generationOffset=cfg.features.lineage.enabled ? p.generation*cfg.features.lineage.generationHue : 0;
+      const h = cfg.colors.hue + cfg.colors.hueSpread*unit + time*cfg.colors.hueDrift+generationOffset;
+      return hslToRGB(h,cfg.colors.saturation,cfg.colors.lightness);
+    }
+    function launchAngle(i) {
+      const d = cfg.particles.distribution;
+      let degrees = 0;
+      if (d === 'golden') degrees = (i*GOLDEN_ANGLE)%360;
+      else if (d === 'even') degrees = (i%Math.max(1,cfg.particles.count))*360/Math.max(1,cfg.particles.count);
+      else if (d === 'fan') degrees = ((i%Math.max(1,cfg.particles.count))/Math.max(1,cfg.particles.count-1)-.5)*cfg.particles.spread;
+      else degrees = Math.random()*360;
+      return (degrees+cfg.particles.angle)*RAD;
+    }
+    function chooseSeedOrigin() {
+      if (cfg.particles.emitter === 'a') return 'a';
+      if (cfg.particles.emitter === 'b') return 'b';
+      return cycleIndex++ % 2 ? 'b' : 'a';
+    }
+    function makeParticle(angle, origin, chamberId, bounces = 0, generation = 0) {
+      const ratio = currentRatio();
+      const c = Math.sqrt(Math.max(0,1-ratio*ratio));
+      const variation = 1 + (Math.random()*2 - 1) * cfg.particles.speedVariation;
+      const speed = cfg.particles.speed * variation;
+      return {
+        x: 0, y: origin === 'a' ? -c : c,
+        vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+        speed, chamberId, origin,
+        phase: 'toWall',
+        seed: ((angle / TAU) % 1 + 1) % 1,
+        bounces, generation, id: nextParticleId++
+      };
+    }
+    function spawnOne(forcedAngle, forcedOrigin, forcedChamber) {
+      const i = spawnIndex++;
+      const origin = forcedOrigin || chooseSeedOrigin();
+      const chamberId = forcedChamber == null ? i % chambers.length : forcedChamber;
+      const angle = forcedAngle == null ? launchAngle(i) : forcedAngle;
+      const particle = makeParticle(angle, origin, chamberId);
+      if (particles.length < cfg.particles.count) particles.push(particle);
+      return particle;
+    }
+    function spawnNext(angle, chamberId) {
+      if (particles.length >= cfg.particles.count) return null;
+      return spawnOne(angle, undefined, chamberId);
+    }
+    function scheduleReset() {
+      if (resetTimer >= 0) return;
+      resetTimer = Math.max(0, Number(cfg.particles.resetDelay) || 0);
+    }
+    function seedSimulation() {
+      particles = [];
+      flashes = [];
+      spawnOne();
+    }
+    function resetSimulation() {
+      particles=[];flashes=[];waves=[];impacts=[];intersections=[];recentSegments=[];
+      segmentGrid.clear();nextParticleId=1;
+      spawnIndex=0;bounceCount=0;resetTimer=-1;
+      renderer.clearTrails();
+      seedSimulation();
+    }
+    function resetAll() {time=0;dragRotation=0;cycleIndex=0;resetSimulation();}
+    // Exact ray / ellipse intersection followed by specular reflection.
+    // Inside an ellipse, every reflected path from one focus passes through the other.
+    function insertSegmentGrid(seg) {
+      const cell=70;
+      const minX=Math.floor(Math.min(seg.a.x,seg.b.x)/cell),maxX=Math.floor(Math.max(seg.a.x,seg.b.x)/cell);
+      const minY=Math.floor(Math.min(seg.a.y,seg.b.y)/cell),maxY=Math.floor(Math.max(seg.a.y,seg.b.y)/cell);
+      for (let x=minX;x<=maxX;x++) for(let y=minY;y<=maxY;y++) {
+        const key=x+','+y;
+        if(!segmentGrid.has(key)) segmentGrid.set(key,[]);
+        segmentGrid.get(key).push(seg);
+      }
+    }
+    function crossPoint(a,b,c,d) {
+      const rx=b.x-a.x,ry=b.y-a.y,sx=d.x-c.x,sy=d.y-c.y;
+      const den=rx*sy-ry*sx;
+      if(Math.abs(den)<1e-6) return null;
+      const qx=c.x-a.x,qy=c.y-a.y;
+      const t=(qx*sy-qy*sx)/den,u=(qx*ry-qy*rx)/den;
+      if(t<.08||t>.92||u<.08||u>.92) return null;
+      return {x:a.x+rx*t,y:a.y+ry*t};
+    }
+    function recordIntersection(a,b,p) {
+      if(!cfg.features.constellations.enabled || Math.hypot(a.x-b.x,a.y-b.y)<3) return;
+      const seg={a,b,id:p.id,t:time};
+      const keys=new Set(), candidates=new Set();
+      const cell=70;
+      for(let x=Math.floor(Math.min(a.x,b.x)/cell);x<=Math.floor(Math.max(a.x,b.x)/cell);x++)
+        for(let y=Math.floor(Math.min(a.y,b.y)/cell);y<=Math.floor(Math.max(a.y,b.y)/cell);y++)
+          keys.add(x+','+y);
+      for(const key of keys) for(const entry of (segmentGrid.get(key)||[])) candidates.add(entry);
+      let tested=0;
+      for(const other of candidates) {
+        if(tested++>120) break;
+        if(other.id===p.id) continue;
+        const hit=crossPoint(a,b,other.a,other.b);
+        if(!hit) continue;
+        if(intersections.some(star=>Math.hypot(star.x-hit.x,star.y-hit.y)<14)) continue;
+        intersections.push({x:hit.x,y:hit.y,age:0,color:colorFor(p)});
+        if(intersections.length>140) intersections.shift();
+        break;
+      }
+      recentSegments.push(seg);
+      insertSegmentGrid(seg);
+    }
+    function rebuildSegmentGrid() {
+      segmentGrid.clear();
+      for(const seg of recentSegments) insertSegmentGrid(seg);
+    }
+    function travelSegment(p,ch,sx,sy,ex,ey,out) {
+      const start=project(ch,sx,sy),end=project(ch,ex,ey),rgb=colorFor(p);
+      const f=cfg.features;
+      const generation=p.generation||0;
+      const fade=f.lineage.enabled ? Math.pow(f.lineage.brightnessDecay,generation*.22) : 1;
+      const thick=f.lineage.enabled ? Math.pow(f.lineage.thicknessDecay,generation*.24) : 1;
+      const width=Math.max(.24,cfg.trails.width*thick);
+      const alpha=cfg.trails.brightness*fade;
+      line(out,start,end,rgb,alpha,width);
+      const dx=end.x-start.x,dy=end.y-start.y,mag=Math.hypot(dx,dy);
+      if(mag>1) {
+        const nx=-dy/mag,ny=dx/mag;
+        if(f.silk.enabled) {
+          const s=f.silk;
+          const strands=5;
+          for(let j=0;j<strands;j++) {
+            const off=(j-(strands-1)/2)*(width+.9)*.77;
+            const wave=Math.sin(p.seed*15+time*2+j*2.1)*s.iridescence;
+            const tint=hslToRGB(cfg.colors.hue+generation*21+j*42+wave*35+time*.6, .9,.65);
+            const a={x:start.x+nx*(off+wave),y:start.y+ny*(off+wave)};
+            const b={x:end.x+nx*(off-wave),y:end.y+ny*(off-wave)};
+            line(out,a,b,tint,alpha*s.silkOpacity*(.65+s.strandGlow*.55),s.filamentWidth);
+          }
+        }
+        if(f.ribbons.enabled) {
+          const r=f.ribbons, twist=Math.sin(time*r.twist*1.2+p.seed*TAU+generation*.75);
+          const z=r.depth*twist*.1;
+          const ra=project(ch,sx,sy,z),rb=project(ch,ex,ey,-z);
+          const spread=r.ribbonWidth*(1+r.perspective*Math.abs(z))*.5;
+          const bright=hslToRGB(cfg.colors.hue+p.seed*340+35, .75,.8);
+          line(out,{x:ra.x+nx*spread,y:ra.y+ny*spread},{x:rb.x+nx*spread,y:rb.y+ny*spread},bright,alpha*r.edgeGlow,.65);
+          line(out,{x:ra.x-nx*spread,y:ra.y-ny*spread},{x:rb.x-nx*spread,y:rb.y-ny*spread},rgb,alpha*.48,Math.max(.8,spread*1.9));
+        }
+        if(f.lineage.enabled && f.lineage.lineageGlow>0) {
+          line(out,start,end,rgb,alpha*f.lineage.lineageGlow*.11,width*5);
+        }
+      }
+      if(cfg.trails.enabled) recordIntersection(start,end,p);
+    }
+    function splitParticle(p, chamber, out, pending) {
+      const nextOrigin = p.origin === 'a' ? 'b' : 'a';
+      const focusY = nextOrigin === 'a' ? -chamber.c : chamber.c;
+      if (cfg.features.endpointFlashes && flashes.length < 180) {
+        flashes.push({ chamberId:p.chamberId, x:0, y:focusY, life:.55, color:colorFor(p) });
+      }
+      if (cfg.features.shockwaves.enabled && waves.length<40) {
+        waves.push({chamberId:p.chamberId,x:0,y:focusY,age:0,intensity:cfg.features.shockwaves.intensity});
+      }
+      const halfSpread = (cfg.particles.splitSpread || 0) * RAD * 0.5;
+      const heading = Math.atan2(p.vy, p.vx);
+      const angleA = heading - halfSpread;
+      const angleB = heading + halfSpread;
+      const generation = (p.generation || 0) + 1;
+      const nextA = makeParticle(angleA, nextOrigin, p.chamberId, p.bounces, generation);
+      p.x = nextA.x; p.y = nextA.y; p.vx = nextA.vx; p.vy = nextA.vy;
+      p.speed = nextA.speed; p.origin = nextA.origin; p.phase = 'toWall';
+      p.seed = nextA.seed; p.generation = generation; p.id = nextA.id;
+      if (particles.length + pending.length < cfg.particles.count) {
+        pending.push(makeParticle(angleB, nextOrigin, p.chamberId, p.bounces, generation));
+        if (particles.length + pending.length >= cfg.particles.count) scheduleReset();
+      } else {
+        scheduleReset();
+      }
+    }
+    function advanceParticle(p,dt,out,pending) {
+      const chamber = chambers[p.chamberId] || chambers[0];
+      const b2 = chamber.ratio*chamber.ratio;
+      let remaining = dt;
+      for (let events=0; remaining>1e-8 && events<12; events++) {
+        const startX = p.x, startY = p.y;
+        const color = colorFor(p);
+        const speed2 = p.vx*p.vx + p.vy*p.vy;
+        let focusTime = Infinity;
+        let focusY = 0;
+        if (p.phase === 'toFocus') {
+          const targetOrigin = p.origin === 'a' ? 'b' : 'a';
+          focusY = targetOrigin === 'a' ? -chamber.c : chamber.c;
+          const dx = -p.x, dy = focusY - p.y;
+          const cross = Math.abs(dx*p.vy - dy*p.vx);
+          if (cross <= 1e-5) {
+            const tFocus = (dx*p.vx + dy*p.vy) / speed2;
+            if (tFocus > 1e-9) focusTime = tFocus;
+          }
+        }
+        const A = p.vx*p.vx/b2 + p.vy*p.vy;
+        const B = 2*(p.x*p.vx/b2 + p.y*p.vy);
+        const C = p.x*p.x/b2 + p.y*p.y - 1;
+        const discriminant = Math.max(0, B*B - 4*A*C);
+        const root = Math.sqrt(discriminant);
+        let wallTime = Infinity;
+        const t1 = (-B - root)/(2*A), t2 = (-B + root)/(2*A);
+        if (t1 > 1e-8) wallTime = t1;
+        else if (t2 > 1e-8) wallTime = t2;
+
+        if (focusTime <= remaining && focusTime < wallTime - 1e-8) {
+          p.x = 0; p.y = focusY;
+          travelSegment(p,chamber,startX,startY,p.x,p.y,out);
+          remaining -= focusTime;
+          splitParticle(p, chamber, out, pending);
+          continue;
+        }
+
+        if (wallTime <= remaining) {
+          const hx = p.x + p.vx * wallTime, hy = p.y + p.vy * wallTime;
+          travelSegment(p,chamber,startX,startY,hx,hy,out);
+          let nx = hx / b2, ny = hy;
+          const nlen = Math.hypot(nx, ny); nx /= nlen; ny /= nlen;
+          const vn = p.vx*nx + p.vy*ny;
+          p.vx -= 2*vn*nx; p.vy -= 2*vn*ny;
+          p.x = hx - nx*1e-8; p.y = hy - ny*1e-8;
+          p.phase = 'toFocus';
+          remaining -= wallTime;
+          p.bounces++; bounceCount++;
+          if (cfg.features.endpointFlashes && flashes.length<180) {
+            flashes.push({ chamberId:p.chamberId, x:hx, y:hy, life:.45, color });
+          }
+          if (cfg.features.livingBoundary.enabled && impacts.length<64) {
+            impacts.push({chamberId:p.chamberId,angle:Math.atan2(hx/chamber.ratio,hy),age:0});
+          }
+          if (wallTime < 1e-9) remaining -= 1e-6;
+          continue;
+        }
+
+        p.x += p.vx * remaining; p.y += p.vy * remaining;
+        travelSegment(p,chamber,startX,startY,p.x,p.y,out);
+        break;
+      }
+    }
+    function getAimAngle(chamberId) {
+      if (!pointer) return undefined;
+      const ch = chambers[chamberId] || chambers[0];
+      // Inverse of the basic camera/ellipse rotation; useful even with perspective on.
+      let x=(pointer.x-ch.cx)/ch.size,y=(pointer.y-ch.cy)/ch.size;
+      x/=Math.max(.2,Math.cos(cfg.view.yaw*RAD));
+      y/=Math.max(.2,Math.cos(cfg.view.tilt*RAD));
+      const co=Math.cos(ch.theta),si=Math.sin(ch.theta);
+      const lx=x*co+y*si,ly=-x*si+y*co;
+      const cy=cfg.particles.emitter==='b' ? ch.c : -ch.c;
+      return Math.atan2(ly-cy,lx);
+    }
+    function burst() {
+      for (let j=0;j<cfg.interaction.burstCount;j++) {
+        const id=chambers.length===1?0:j%chambers.length;
+        const angle=getAimAngle(id);
+        spawnNext(angle==null?undefined:angle+(j-(cfg.interaction.burstCount-1)/2)*.035,id);
+      }
+    }
+    function makeOverlay(lines,points) {
+      const color = hexToRGB(cfg.colors.boundary);
+      for (const ch of chambers) {
+        if (cfg.geometry.showBoundary) {
+          if (cfg.features.livingBoundary.enabled) {
+            const lb=cfg.features.livingBoundary;
+            if (cfg.lighting.boundaryGlow) livingPath(lines,ch,color,.055*lb.impactGlow,cfg.geometry.boundaryWidth*9*lb.edgeThickness);
+            livingPath(lines,ch,color,.86,cfg.geometry.boundaryWidth*lb.edgeThickness);
+            livingPath(lines,ch,[.28,.53,1],.10,.55,-.007);
+          } else {
+            if (cfg.lighting.boundaryGlow) path(lines,ch,190,color,.065,cfg.geometry.boundaryWidth*8);
+            path(lines,ch,190,color,.88,cfg.geometry.boundaryWidth);
+          }
+        }
+        if (cfg.features.confocalGuides || cfg.geometry.type==='confocal') {
+          for (let i=1;i<=cfg.features.guideCount;i++) {
+            // All guide ellipses share c² = a²-b² with the reflecting boundary.
+            const a=ch.c+(1-ch.c)*i/(cfg.features.guideCount+1);
+            const b=Math.sqrt(Math.max(0,a*a-ch.c*ch.c));
+            if (b>0.01) path(lines,ch,120,color,.1,.6,a,b);
+          }
+        }
+        if (cfg.features.axes) {
+          const a0=project(ch,0,-1),a1=project(ch,0,1);
+          const b0=project(ch,-ch.ratio,0),b1=project(ch,ch.ratio,0);
+          line(lines,a0,a1,color,.18,.7);line(lines,b0,b1,color,.18,.7);
+        }
+        if (cfg.geometry.showFoci) {
+          const positions = ch.c<1e-5 ? [0] : [-ch.c,ch.c];
+          positions.forEach((y,i) => {
+            const rgb=hexToRGB(i===0?cfg.colors.focusA:cfg.colors.focusB);
+            const p=project(ch,0,y);
+            const radius=4.5 + (cfg.features.focusPulse ? 1.2*Math.sin(time*3+i*Math.PI) : 0);
+            if (cfg.lighting.focusGlow) point(points,p,rgb,.6,30);
+            ring(lines,p,Math.max(2.4,radius),rgb,.9,1.3);
+            point(points,p,[1,1,1],.95,5);
+          });
+        }
+      }
+      if (cfg.particles.showBodies) {
+        for (const p of particles) {
+          const ch=chambers[p.chamberId]||chambers[0];
+          const center=project(ch,p.x,p.y);const rgb=colorFor(p);
+          point(points,center,rgb,.85,cfg.particles.size*5);
+          point(points,center,[1,1,1],1,cfg.particles.size*1.55);
+        }
+      }
+      if (cfg.features.directionMarkers) {
+        for (const p of particles) {
+          const ch=chambers[p.chamberId]||chambers[0];
+          const head=project(ch,p.x,p.y);
+          const vlen=Math.hypot(p.vx,p.vy);
+          const tail=project(ch,p.x-p.vx/vlen*.035,p.y-p.vy/vlen*.035);
+          line(lines,tail,head,colorFor(p),.48,.85);
+        }
+      }
+      if (cfg.features.endpointFlashes) {
+        for (const f of flashes) {
+          const center=project(chambers[f.chamberId]||chambers[0],f.x,f.y);
+          point(points,center,f.color,(f.life/.45)*.9,20*f.life/.45+4);
+        }
+      }
+      if (cfg.features.shockwaves.enabled) {
+        const sw=cfg.features.shockwaves;
+        for(const w of waves) {
+          const ch=chambers[w.chamberId]||chambers[0];
+          const center=project(ch,w.x,w.y);
+          const radius=w.age*sw.waveSpeed*ch.size;
+          const limit=Math.max(15,ch.size*sw.waveRadius);
+          const intensity=sw.intensity*Math.exp(-w.age*sw.decay*2)*clamp(1-radius/limit,0,1);
+          if(radius>1&&intensity>.01) {
+            ring(lines,center,radius,[.37,.68,1],intensity*.5,1.2);
+            ring(lines,center,radius+2,[1,.4,.9],intensity*.18,3.5);
+          }
+        }
+      }
+      if (cfg.features.constellations.enabled) {
+        const f=cfg.features.constellations;
+        for(let i=0;i<intersections.length;i++) {
+          const st=intersections[i];
+          const fade=Math.max(0,1-st.age/f.persistence);
+          const twinkle=.7+.3*Math.sin(time*9+i*1.6);
+          point(points,st,st.color,fade*f.intersectionGlow*twinkle,Math.max(2,f.sparkleSize*6));
+          point(points,st,[1,1,1],fade*.92,Math.max(2,f.sparkleSize*1.4));
+          if(f.connectionBrightness>0 && i>0 && i%3===0) {
+            const prev=intersections[i-1];
+            if(Math.hypot(st.x-prev.x,st.y-prev.y)<chambers[0].size*.8)
+              line(lines,st,prev,st.color,fade*f.connectionBrightness*.24,.6);
+          }
+        }
+      }
+      if (pointer && cfg.interaction.enabled && cfg.interaction.showAim) {
+        ring(lines,pointer,7,[.7,.85,1],.6,1);
+      }
+    }
+
+    function resize() {
+      width=Math.max(1,window.innerWidth);height=Math.max(1,window.innerHeight);
+      renderer.resize(width,height);
+      chambers=makeChambers();
+    }
+    resize();
+    window.addEventListener('resize',resize,{passive:true});
+
+    editor = SettingsEditor.create({
+      defaults,initial:cfg,
+      onToggle() {
+        if (renderer) { renderer.clearTrails(); chambers=makeChambers(); }
+      },
+      onChange(next,path) {
+        const was = cfg; cfg = next;
+        try { localStorage.setItem(STORAGE, JSON.stringify(cfg)); } catch {}
+        const restartPrefixes = ['geometry.', 'particles.'];
+        const liveOnly = new Set([
+          'particles.size','particles.showBodies',
+          'trails.enabled','trails.lifetime','trails.width','trails.brightness','trails.additive',
+          'colors.mode','colors.hue','colors.hueSpread','colors.saturation','colors.lightness','colors.hueDrift','colors.focusA','colors.focusB','colors.boundary',
+          'lighting.bloom','lighting.bloomStrength','lighting.bloomRadius','lighting.boundaryGlow','lighting.focusGlow',
+          'scene.background','scene.stars','scene.vignette',
+          'view.zoom','view.tilt','view.yaw','view.perspective','view.orbit','view.orbitSpeed',
+          'interaction.enabled','interaction.clickBurst','interaction.burstCount','interaction.dragRotate','interaction.showAim',
+          'features.confocalGuides','features.guideCount','features.axes','features.focusPulse','features.endpointFlashes','features.directionMarkers'
+        ]);
+        const requiresRestart = path === 'reset' || path === 'import' || path === 'preset' ||
+          (restartPrefixes.some(prefix => String(path).startsWith(prefix)) && !liveOnly.has(path));
+        if (requiresRestart) resetSimulation();
+        const trailStyleChange = String(path).startsWith('colors.') ||
+          ['features.silk.', 'features.ribbons.', 'features.lineage.'].some(prefix=>String(path).startsWith(prefix));
+        if (was.trails.enabled !== cfg.trails.enabled || trailStyleChange ||
+          (path==='features.echoes.enabled' && !cfg.features.echoes.enabled)) renderer.clearTrails();
+        if(path==='features.constellations.enabled' && !cfg.features.constellations.enabled) {recentSegments=[];intersections=[];segmentGrid.clear();}
+        chambers = makeChambers();
+        $('#mode-label').textContent = cfg.geometry.type==='twin' ? 'Two independent focal chambers · split at each focus' :
+          cfg.geometry.type==='animated' ? 'Moving ellipse · each focus hit branches into two' :
+          cfg.geometry.type==='circle' ? 'Circular reflection · branching from the center focus' :
+          'Focus → boundary → opposite focus → split in two';
+      }
+    });
+    // Open on desktop by default; leave the full visualization visible on touch devices.
+    editor.setOpen(cfg.editor.enabled && !window.matchMedia('(max-width:700px)').matches);
+    $('#mode-label').textContent = cfg.geometry.type==='twin' ? 'Two independent focal chambers · split at each focus' :
+      cfg.geometry.type==='animated' ? 'Moving ellipse · each focus hit branches into two' :
+      cfg.geometry.type==='circle' ? 'Circular reflection · branching from the center focus' :
+      'Focus → boundary → opposite focus → split in two';
+    $('#settings-button').addEventListener('click',()=>editor.toggle());
+    $('#pause-button').addEventListener('click',togglePause);
+    function togglePause() {
+      paused=!paused;$('#pause-button').textContent=paused?'Resume':'Pause';
+    }
+    window.addEventListener('keydown',event=>{
+      if (event.key==='Escape' && editor.isOpen()) {editor.setOpen(false);return;}
+      if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
+      const key=event.key.toLowerCase();
+      if (key===' '){event.preventDefault();togglePause();}
+      else if (key==='e') editor.toggle();
+      else if (key==='r') resetAll();
+      else if (key==='b') burst();
+      else if (key==='s') screenshot();
+    });
+    function screenshot() {
+      canvas.toBlob(blob=>{
+        if (!blob) return;
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement('a');a.href=url;a.download='chromatic-reflections.png';
+        document.body.append(a);a.click();a.remove();
+        setTimeout(()=>URL.revokeObjectURL(url),1000);
+      },'image/png');
+    }
+    let dragging=null;
+    canvas.addEventListener('pointerdown',e=>{
+      if (!cfg.interaction.enabled) return;
+      pointer={x:e.clientX,y:e.clientY};
+      dragging={x:e.clientX,y:e.clientY,rotation:dragRotation,moved:false};
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener('pointermove',e=>{
+      if (!cfg.interaction.enabled) return;
+      pointer={x:e.clientX,y:e.clientY};
+      if (dragging && cfg.interaction.dragRotate) {
+        const dx=e.clientX-dragging.x,dy=e.clientY-dragging.y;
+        if (Math.hypot(dx,dy)>6) dragging.moved=true;
+        if (dragging.moved) dragRotation=dragging.rotation+dx*.3;
+      }
+    });
+    function pointerUp(e) {
+      if (!dragging) return;
+      if (!dragging.moved && cfg.interaction.clickBurst) burst();
+      dragging=null;
+      pointer=null;
+      if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    }
+    canvas.addEventListener('pointerup',pointerUp);
+    canvas.addEventListener('pointercancel',()=>{dragging=null;pointer=null;});
+    canvas.addEventListener('pointerleave',()=>{if(!dragging)pointer=null;});
+    document.addEventListener('visibilitychange',()=>{prevTime=performance.now();});
+
+    resetAll();
+
+    function frame(now) {
+      requestAnimationFrame(frame);
+      const rawDT=clamp((now-prevTime)/1000,0,.05);prevTime=now;
+      const dt=paused||document.hidden?0:rawDT;
+      if (dt>0) time+=dt;
+      chambers=makeChambers();
+      const trailLines=[],overlayLines=[],points=[];
+      if (dt>0) {
+        if (cfg.features.constellations.enabled) {
+          recentSegments=recentSegments.filter(seg=>time-seg.t<Math.min(3,cfg.features.constellations.persistence));
+          if (recentSegments.length>700) recentSegments.splice(0,recentSegments.length-700);
+          rebuildSegmentGrid();
+        } else if (recentSegments.length) { recentSegments=[];segmentGrid.clear(); }
+        for(const w of waves) w.age+=dt;
+        waves=waves.filter(w=>w.age<3 && w.age*cfg.features.shockwaves.waveSpeed < cfg.features.shockwaves.waveRadius*1.4);
+        for(const hit of impacts) hit.age+=dt;
+        impacts=impacts.filter(hit=>hit.age<1.8);
+        for(const star of intersections) star.age+=dt;
+        intersections=intersections.filter(star=>star.age<cfg.features.constellations.persistence);
+        const pending = [];
+        for (const p of particles) advanceParticle(p, dt, trailLines, pending);
+        if (pending.length) particles.push(...pending.slice(0, Math.max(0, cfg.particles.count - particles.length)));
+        if (resetTimer >= 0) {
+          resetTimer -= dt;
+          if (resetTimer <= 0) { resetSimulation(); }
+        }
+        for (const f of flashes) f.life-=dt;
+        flashes=flashes.filter(f=>f.life>0);
+      }
+      makeOverlay(overlayLines,points);
+      renderer.draw(trailLines,overlayLines,points,dt,time);
+      fpsAvg=fpsAvg*.94+(rawDT>0?1/rawDT:60)*.06;
+      if (now-hudLast>300) {
+        $('#ball-count').textContent=particles.length.toLocaleString();
+        $('#bounce-count').textContent=bounceCount.toLocaleString();
+        $('#fps-count').textContent=Math.round(fpsAvg);
+        hudLast=now;
+      }
+    }
+    requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>
