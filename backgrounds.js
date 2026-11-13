@@ -68,6 +68,15 @@ export const backgrounds = [
             "your pointer bends their course.",
     },
     {
+        name: "Chromatic Reflections",
+        folder: "chromatic-reflections",
+        tags: ["abstract", "3d", "physics", "particles", "interactive"],
+        description:
+            "Luminous particles bounce between the two focal points of a transparent, rugby-shaped 3D spheroid, " +
+            "splitting into new particles and weaving intricate rainbow light trails. " +
+            "Explore volumetric effects, glowing filaments, dynamic reflections, and cinematic camera movement.",
+    },
+    {
         name: "Chromatic Ribbons",
         folder: "chromatic-ribbons",
         tags: ["colorful", "interactive", "ribbons"],
