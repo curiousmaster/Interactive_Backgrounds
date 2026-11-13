@@ -1,279 +1,173 @@
-/* Chromatic Reflections — dependency-free responsive settings editor. */
+
+/* Chromatic Reflections 3D — live settings editor, no dependencies. */
 (() => {
-  'use strict';
-
-  const SCHEMA = [
-    { title: 'Ellipse / Boundary', fields: [
-      { path: 'geometry.type', label: 'Ellipse type', type: 'select', options: [
-        ['ellipse', 'Standard ellipse'], ['rotated', 'Rotated ellipse'],
-        ['eccentric', 'Eccentric ellipse'], ['animated', 'Animated ellipse'],
-        ['confocal', 'Confocal ellipse'], ['twin', 'Twin ellipses'],
-        ['circle', 'Circle'] ] },
-      { path: 'geometry.aspect', label: 'Minor / major axis', min: 0.24, max: 0.98, step: 0.01,
-        when: c => !['circle', 'eccentric'].includes(c.geometry.type) },
-      { path: 'geometry.eccentricity', label: 'Eccentricity', min: 0.05, max: 0.96, step: 0.01,
-        when: c => c.geometry.type === 'eccentric' },
-      { path: 'geometry.size', label: 'Boundary size', min: 0.5, max: 1.15, step: 0.01 },
-      { path: 'geometry.rotation', label: 'Rotation', min: -180, max: 180, step: 1, unit: '°',
-        when: c => !['ellipse', 'circle'].includes(c.geometry.type) },
-      { path: 'geometry.pulse', label: 'Breathing amplitude', min: 0, max: 0.2, step: 0.005,
-        when: c => c.geometry.type === 'animated' },
-      { path: 'geometry.rotateSpeed', label: 'Rotation speed', min: -35, max: 35, step: 0.5, unit: '°/s',
-        when: c => c.geometry.type === 'animated' },
-      { path: 'geometry.pulseSpeed', label: 'Breathing speed', min: 0.02, max: 2, step: 0.02, unit: 'Hz',
-        when: c => c.geometry.type === 'animated' },
-      { path: 'geometry.twinGap', label: 'Twin separation', min: 0, max: 0.25, step: 0.01,
-        when: c => c.geometry.type === 'twin' },
-      { path: 'geometry.showBoundary', label: 'Visible boundary', type: 'checkbox' },
-      { path: 'geometry.boundaryWidth', label: 'Boundary thickness', min: 0.5, max: 4, step: 0.1, unit: 'px',
-        when: c => c.geometry.showBoundary },
-      { path: 'geometry.showFoci', label: 'Show focal points', type: 'checkbox' },
-    ] },
-    { title: 'Particles / Physics', fields: [
-      { path: 'particles.count', label: 'Max balls before reset', min: 2, max: 600, step: 1 },
-      { path: 'particles.speed', label: 'Travel speed', min: 0.1, max: 4, step: 0.05 },
-      { path: 'particles.speedVariation', label: 'Speed variation', min: 0, max: 0.5, step: 0.01 },
-      { path: 'particles.emitter', label: 'Starting focus', type: 'select', options: [
-        ['a', 'Focus A'], ['b', 'Focus B'], ['alternate', 'Alternate between resets'] ] },
-      { path: 'particles.distribution', label: 'Seed launch angles', type: 'select', options: [
-        ['golden', 'Golden angle'], ['even', 'Evenly spaced'], ['fan', 'Angle fan'], ['random', 'Random'] ] },
-      { path: 'particles.angle', label: 'Seed launch angle', min: -180, max: 180, step: 1, unit: '°' },
-      { path: 'particles.spread', label: 'Seed angle spread', min: 0, max: 360, step: 1, unit: '°',
-        when: c => c.particles.distribution === 'fan' },
-      { path: 'particles.splitSpread', label: 'Split angle', min: 0, max: 90, step: 0.5, unit: '°' },
-      { path: 'particles.resetDelay', label: 'Reset hold time', min: 0, max: 4, step: 0.05, unit: 's' },
-      { path: 'particles.size', label: 'Ball radius', min: 0.6, max: 8, step: 0.1, unit: 'px' },
-      { path: 'particles.showBodies', label: 'Draw balls', type: 'checkbox' },
-    ] },
-    { title: 'Trails', fields: [
-      { path: 'trails.enabled', label: 'Enable light trails', type: 'checkbox' },
-      { path: 'trails.lifetime', label: 'Trail lifetime', min: 0.4, max: 50, step: 0.2, unit: 's',
-        when: c => c.trails.enabled },
-      { path: 'trails.width', label: 'Line width', min: 0.3, max: 4, step: 0.1, unit: 'px',
-        when: c => c.trails.enabled },
-      { path: 'trails.brightness', label: 'Trail brightness', min: 0.05, max: 2.5, step: 0.05,
-        when: c => c.trails.enabled },
-      { path: 'trails.additive', label: 'Additive blending', type: 'checkbox', when: c => c.trails.enabled },
-    ] },
-    { title: 'Colors', fields: [
-      { path: 'colors.mode', label: 'Color mapping', type: 'select', options: [
-        ['rainbow', 'Launch angle / Rainbow'], ['bounce', 'Bounce index'],
-        ['speed', 'Particle speed'], ['mono', 'Single color'], ['dual', 'Focus A / Focus B'] ] },
-      { path: 'colors.hue', label: 'Base hue', min: 0, max: 360, step: 1, unit: '°' },
-      { path: 'colors.hueSpread', label: 'Hue range', min: 0, max: 360, step: 1, unit: '°',
-        when: c => c.colors.mode !== 'mono' && c.colors.mode !== 'dual' },
-      { path: 'colors.saturation', label: 'Saturation', min: 0, max: 1, step: 0.01 },
-      { path: 'colors.lightness', label: 'Lightness', min: 0.15, max: 0.9, step: 0.01 },
-      { path: 'colors.hueDrift', label: 'Hue drift', min: -25, max: 25, step: 0.5, unit: '°/s',
-        when: c => c.colors.mode !== 'dual' },
-      { path: 'colors.focusA', label: 'Focus A color', type: 'color' },
-      { path: 'colors.focusB', label: 'Focus B color', type: 'color' },
-      { path: 'colors.boundary', label: 'Boundary color', type: 'color' },
-    ] },
-    { title: 'Lighting', fields: [
-      { path: 'lighting.bloom', label: 'Bloom / light scattering', type: 'checkbox' },
-      { path: 'lighting.bloomStrength', label: 'Bloom intensity', min: 0, max: 2.5, step: 0.05,
-        when: c => c.lighting.bloom },
-      { path: 'lighting.bloomRadius', label: 'Bloom radius', min: 0.4, max: 3, step: 0.1,
-        when: c => c.lighting.bloom },
-      { path: 'lighting.boundaryGlow', label: 'Glowing boundary', type: 'checkbox' },
-      { path: 'lighting.focusGlow', label: 'Glowing foci', type: 'checkbox' },
-    ] },
-    { title: 'Scene / View', fields: [
-      { path: 'scene.background', label: 'Background', type: 'color' },
-      { path: 'scene.stars', label: 'Star field', min: 0, max: 1, step: 0.05 },
-      { path: 'scene.vignette', label: 'Vignette', min: 0, max: 1, step: 0.05 },
-      { path: 'view.zoom', label: 'Zoom', min: 0.6, max: 1.45, step: 0.01 },
-      { path: 'view.tilt', label: 'Tilt (view from above)', min: 0, max: 70, step: 1, unit: '°' },
-      { path: 'view.yaw', label: 'Yaw', min: -60, max: 60, step: 1, unit: '°' },
-      { path: 'view.perspective', label: 'Perspective', type: 'checkbox' },
-      { path: 'view.orbit', label: 'Auto orbit', type: 'checkbox' },
-      { path: 'view.orbitSpeed', label: 'Orbit speed', min: -25, max: 25, step: 0.5, unit: '°/s',
-        when: c => c.view.orbit },
-    ] },
-    { title: 'Interaction', fields: [
-      { path: 'interaction.enabled', label: 'Pointer / touch enabled', type: 'checkbox' },
-      { path: 'interaction.clickBurst', label: 'Tap to launch a burst', type: 'checkbox',
-        when: c => c.interaction.enabled },
-      { path: 'interaction.burstCount', label: 'Burst size', min: 1, max: 128, step: 1,
-        when: c => c.interaction.enabled && c.interaction.clickBurst },
-      { path: 'interaction.dragRotate', label: 'Drag to rotate boundary', type: 'checkbox',
-        when: c => c.interaction.enabled },
-      { path: 'interaction.showAim', label: 'Show pointer target', type: 'checkbox',
-        when: c => c.interaction.enabled && c.interaction.clickBurst },
-    ] },
-    { title: 'Features', fields: [
-      { path: 'features.confocalGuides', label: 'Confocal ellipse guides', type: 'checkbox' },
-      { path: 'features.guideCount', label: 'Number of guides', min: 1, max: 8, step: 1,
-        when: c => c.features.confocalGuides || c.geometry.type === 'confocal' },
-      { path: 'features.axes', label: 'Major and minor axes', type: 'checkbox' },
-      { path: 'features.focusPulse', label: 'Pulsating foci', type: 'checkbox' },
-      { path: 'features.endpointFlashes', label: 'Reflection sparks', type: 'checkbox' },
-      { path: 'features.directionMarkers', label: 'Show travel directions', type: 'checkbox' },
-      { path: 'features.silk.enabled', label: 'Chromatic Silk', type: 'checkbox' },
-      { path: 'features.silk.filamentWidth', label: 'Filament width', min: .15, max: 2, step: .05, unit: 'px', when: c=>c.features.silk.enabled },
-      { path: 'features.silk.silkOpacity', label: 'Silk opacity', min: .05, max: 1, step: .025, when: c=>c.features.silk.enabled },
-      { path: 'features.silk.iridescence', label: 'Iridescence', min: 0, max: 2, step: .05, when: c=>c.features.silk.enabled },
-      { path: 'features.silk.strandGlow', label: 'Strand glow', min: 0, max: 2, step: .05, when: c=>c.features.silk.enabled },
-
-      { path: 'features.shockwaves.enabled', label: 'Focal Shockwaves', type: 'checkbox' },
-      { path: 'features.shockwaves.waveRadius', label: 'Wave radius', min: .05, max: 1.5, step: .05, when: c=>c.features.shockwaves.enabled },
-      { path: 'features.shockwaves.waveSpeed', label: 'Wave speed', min: .1, max: 5, step: .05, when: c=>c.features.shockwaves.enabled },
-      { path: 'features.shockwaves.intensity', label: 'Shockwave intensity', min: .05, max: 3, step: .05, when: c=>c.features.shockwaves.enabled },
-      { path: 'features.shockwaves.decay', label: 'Wave decay', min: .1, max: 4, step: .1, when: c=>c.features.shockwaves.enabled },
-      { path: 'features.shockwaves.distortion', label: 'Wave distortion', min: 0, max: 2, step: .05, when: c=>c.features.shockwaves.enabled },
-
-      { path: 'features.spectral.enabled', label: 'Spectral Dispersion', type: 'checkbox' },
-      { path: 'features.spectral.dispersion', label: 'Dispersion', min: 0, max: 3, step: .05, when: c=>c.features.spectral.enabled },
-      { path: 'features.spectral.chromaticShift', label: 'Chromatic shift', min: 0, max: 8, step: .1, unit: 'px', when: c=>c.features.spectral.enabled },
-      { path: 'features.spectral.spectralGlow', label: 'Spectral glow', min: 0, max: 2, step: .05, when: c=>c.features.spectral.enabled },
-      { path: 'features.spectral.wavelengthSpread', label: 'Wavelength spread', min: .1, max: 3, step: .05, when: c=>c.features.spectral.enabled },
-
-      { path: 'features.ribbons.enabled', label: 'Volumetric Ribbons', type: 'checkbox' },
-      { path: 'features.ribbons.ribbonWidth', label: 'Ribbon width', min: .4, max: 6, step: .1, unit: 'px', when: c=>c.features.ribbons.enabled },
-      { path: 'features.ribbons.twist', label: 'Ribbon twist', min: 0, max: 8, step: .1, when: c=>c.features.ribbons.enabled },
-      { path: 'features.ribbons.depth', label: 'Ribbon depth', min: 0, max: 2, step: .05, when: c=>c.features.ribbons.enabled },
-      { path: 'features.ribbons.edgeGlow', label: 'Edge glow', min: 0, max: 2, step: .05, when: c=>c.features.ribbons.enabled },
-      { path: 'features.ribbons.perspective', label: 'Depth perspective', min: 0, max: 2, step: .05, when: c=>c.features.ribbons.enabled },
-
-      { path: 'features.livingBoundary.enabled', label: 'Living Boundary', type: 'checkbox' },
-      { path: 'features.livingBoundary.surfaceRipple', label: 'Surface ripple', min: 0, max: .1, step: .002, when: c=>c.features.livingBoundary.enabled },
-      { path: 'features.livingBoundary.refraction', label: 'Refraction', min: 0, max: 2, step: .05, when: c=>c.features.livingBoundary.enabled },
-      { path: 'features.livingBoundary.edgeThickness', label: 'Edge thickness', min: .5, max: 3, step: .05, when: c=>c.features.livingBoundary.enabled },
-      { path: 'features.livingBoundary.impactGlow', label: 'Impact glow', min: 0, max: 3, step: .05, when: c=>c.features.livingBoundary.enabled },
-
-      { path: 'features.kaleidoscope.enabled', label: 'Kaleidoscopic Symmetry', type: 'checkbox' },
-      { path: 'features.kaleidoscope.symmetryCount', label: 'Symmetry sectors', min: 2, max: 18, step: 1, when: c=>c.features.kaleidoscope.enabled },
-      { path: 'features.kaleidoscope.mirrorMode', label: 'Symmetry style', type: 'select', options: [['mirror','Mirror'],['repeat','Repeat']], when: c=>c.features.kaleidoscope.enabled },
-      { path: 'features.kaleidoscope.rotationOffset', label: 'Sector rotation', min: -180, max: 180, step: 1, unit: '°', when: c=>c.features.kaleidoscope.enabled },
-      { path: 'features.kaleidoscope.blendStrength', label: 'Mirroring blend', min: 0, max: 1, step: .05, when: c=>c.features.kaleidoscope.enabled },
-
-      { path: 'features.lineage.enabled', label: 'Fractal Lineage', type: 'checkbox' },
-      { path: 'features.lineage.generationHue', label: 'Hue per generation', min: -100, max: 100, step: 1, unit: '°', when: c=>c.features.lineage.enabled },
-      { path: 'features.lineage.thicknessDecay', label: 'Thickness decay', min: .4, max: 1.2, step: .025, when: c=>c.features.lineage.enabled },
-      { path: 'features.lineage.brightnessDecay', label: 'Brightness decay', min: .4, max: 1.2, step: .025, when: c=>c.features.lineage.enabled },
-      { path: 'features.lineage.lineageGlow', label: 'Lineage glow', min: 0, max: 2, step: .05, when: c=>c.features.lineage.enabled },
-
-      { path: 'features.interference.enabled', label: 'Interference Fields', type: 'checkbox' },
-      { path: 'features.interference.interferenceScale', label: 'Sampling scale', min: .5, max: 12, step: .5, when: c=>c.features.interference.enabled },
-      { path: 'features.interference.frequency', label: 'Fringe frequency', min: 1, max: 40, step: 1, when: c=>c.features.interference.enabled },
-      { path: 'features.interference.contrast', label: 'Fringe contrast', min: 0, max: 2, step: .05, when: c=>c.features.interference.enabled },
-      { path: 'features.interference.phaseSpeed', label: 'Phase speed', min: -5, max: 5, step: .1, when: c=>c.features.interference.enabled },
-
-      { path: 'features.constellations.enabled', label: 'Intersection Constellations', type: 'checkbox' },
-      { path: 'features.constellations.intersectionGlow', label: 'Intersection glow', min: 0, max: 3, step: .05, when: c=>c.features.constellations.enabled },
-      { path: 'features.constellations.sparkleSize', label: 'Sparkle size', min: .5, max: 10, step: .1, unit: 'px', when: c=>c.features.constellations.enabled },
-      { path: 'features.constellations.persistence', label: 'Sparkle persistence', min: .2, max: 10, step: .1, unit: 's', when: c=>c.features.constellations.enabled },
-      { path: 'features.constellations.connectionBrightness', label: 'Connection brightness', min: 0, max: 2, step: .05, when: c=>c.features.constellations.enabled },
-
-      { path: 'features.echoes.enabled', label: 'Temporal Echoes', type: 'checkbox' },
-      { path: 'features.echoes.echoCount', label: 'Echo layers', min: 1, max: 6, step: 1, when: c=>c.features.echoes.enabled },
-      { path: 'features.echoes.echoInterval', label: 'Capture interval', min: .05, max: 2, step: .05, unit: 's', when: c=>c.features.echoes.enabled },
-      { path: 'features.echoes.echoOpacity', label: 'Echo opacity', min: 0, max: 1, step: .025, when: c=>c.features.echoes.enabled },
-      { path: 'features.echoes.depthSeparation', label: 'Layer depth shift', min: 0, max: .1, step: .002, when: c=>c.features.echoes.enabled },
-    ] },
-  ];
-
-  const PRESETS = {
-    'Chromatic Weave': {
-      geometry: {type:'ellipse',aspect:.59},
-      particles: {count:128,speed:1.25,splitSpread:10,resetDelay:1},
-      trails: {lifetime:15,width:.72,brightness:.8},
-      colors: {mode:'rainbow',hue:215,hueSpread:330},
-      features: {silk:{enabled:true,silkOpacity:.55},lineage:{enabled:true,generationHue:29},
-        shockwaves:{enabled:true},spectral:{enabled:true},ribbons:{enabled:false},
-        kaleidoscope:{enabled:false},interference:{enabled:false},constellations:{enabled:true},echoes:{enabled:false}}
-    },
-    'Focus Study': {
-      geometry:{type:'ellipse',aspect:.58,showFoci:true},
-      particles:{count:32,speed:.85,emitter:'a',size:4.2,splitSpread:18,resetDelay:1.3},
-      trails:{lifetime:25,width:1.35,brightness:.8},colors:{mode:'dual'},
-      features:{axes:true,shockwaves:{enabled:true,waveRadius:.9,distortion:1.25},
-        silk:{enabled:false},spectral:{enabled:false},constellations:{enabled:false},echoes:{enabled:false}}
-    },
-    'Radiant Halo': {
-      geometry:{type:'circle'},particles:{count:320,speed:1.9,splitSpread:8,resetDelay:.8},
-      trails:{lifetime:17,brightness:.58,width:.65},colors:{mode:'bounce',hueSpread:360},
-      lighting:{bloomStrength:1.2},
-      features:{silk:{enabled:true},spectral:{enabled:true,dispersion:2.7},
-        lineage:{enabled:true,generationHue:38},shockwaves:{enabled:true},constellations:{enabled:true}}
-    },
-    'Living Geometry': {
-      geometry:{type:'animated',aspect:.48,pulse:.085,rotateSpeed:8},
-      particles:{count:200,speed:1.4,splitSpread:12},
-      trails:{lifetime:7,width:.85},
-      features:{livingBoundary:{enabled:true,surfaceRipple:.035,refraction:1.3,impactGlow:1.6},
-        ribbons:{enabled:true,depth:.8,ribbonWidth:2.4},silk:{enabled:true},echoes:{enabled:false}}
-    },
-    'Confocal Study': {
-      geometry:{type:'confocal',aspect:.7},
-      particles:{count:72,speed:.9,emitter:'a',splitSpread:14,resetDelay:1.1},
-      trails:{lifetime:18,width:.75},
-      features:{confocalGuides:true,guideCount:5,axes:true,
-        interference:{enabled:true,frequency:17,contrast:.9},constellations:{enabled:true,intersectionGlow:1.8},
-        shockwaves:{enabled:true},silk:{enabled:false},spectral:{enabled:false}}
-    },
-    'Twin Resonance': {
-      geometry:{type:'twin',aspect:.67},
-      particles:{count:180,speed:1.3,splitSpread:10,resetDelay:.8},
-      trails:{lifetime:12,width:.75},
-      features:{focusPulse:true,shockwaves:{enabled:true},
-        echoes:{enabled:true,echoCount:4,echoOpacity:.28,depthSeparation:.014},silk:{enabled:true},
-        constellations:{enabled:true}}
-    },
-    'Prismatic Cathedral': {
-      geometry:{type:'rotated',aspect:.45,rotation:34},
-      view:{perspective:true,tilt:24,yaw:-10},
-      particles:{count:256,speed:1.7,splitSpread:17,resetDelay:1.2},
-      trails:{lifetime:16,width:.85,brightness:.9},
-      lighting:{bloomStrength:1.15},colors:{hue:260,hueSpread:340},
-      features:{ribbons:{enabled:true,ribbonWidth:3.2,twist:2.4,depth:.9,edgeGlow:1.2},
-        spectral:{enabled:true,dispersion:2.5,chromaticShift:4.6,spectralGlow:.7},
-        silk:{enabled:false},echoes:{enabled:false},constellations:{enabled:true}}
-    },
-    'Kaleidoscopic Mandala': {
-      geometry:{type:'circle'},
-      particles:{count:256,speed:1.15,splitSpread:12,resetDelay:1.3},
-      trails:{lifetime:16,brightness:.75},
-      colors:{hue:280,hueSpread:280},
-      features:{kaleidoscope:{enabled:true,symmetryCount:10,mirrorMode:'mirror',blendStrength:1},
-        silk:{enabled:true,silkOpacity:.5},lineage:{enabled:true,generationHue:47},
-        spectral:{enabled:true},constellations:{enabled:false},echoes:{enabled:false}}
-    },
-    'Quantum Interference': {
-      geometry:{type:'eccentric',eccentricity:.87},
-      particles:{count:256,speed:1.3,splitSpread:7},
-      trails:{lifetime:21,width:.5,brightness:1.05},
-      colors:{hue:200,hueSpread:170},
-      features:{interference:{enabled:true,interferenceScale:8,frequency:30,contrast:1.4,phaseSpeed:2.2},
-        silk:{enabled:true,filamentWidth:.25,iridescence:1.2},
-        spectral:{enabled:true,dispersion:1.2},ribbons:{enabled:false},echoes:{enabled:false}}
-    },
-    'Celestial Echoes': {
-      geometry:{type:'rotated',aspect:.62,rotation:-20},
-      view:{perspective:true,tilt:17},
-      particles:{count:128,speed:1.05,splitSpread:22,resetDelay:1.7},
-      trails:{lifetime:26,width:.72,brightness:.7},
-      colors:{hue:195,hueSpread:350},
-      features:{echoes:{enabled:true,echoCount:6,echoInterval:.23,echoOpacity:.52,depthSeparation:.022},
-        constellations:{enabled:true,intersectionGlow:2.2,sparkleSize:5,persistence:4.8,connectionBrightness:1.3},
-        silk:{enabled:true,silkOpacity:.4},shockwaves:{enabled:true,distortion:.2},
-        kaleidoscope:{enabled:false}}
-    }
-  };
-  const FEATURE_GROUPS = [
-    ['Chromatic Silk','features.silk.'],
-    ['Focal Shockwaves','features.shockwaves.'],
-    ['Spectral Dispersion','features.spectral.'],
-    ['Volumetric Ribbons','features.ribbons.'],
-    ['Living Boundary','features.livingBoundary.'],
-    ['Kaleidoscopic Symmetry','features.kaleidoscope.'],
-    ['Fractal Lineage','features.lineage.'],
-    ['Interference Fields','features.interference.'],
-    ['Intersection Constellations','features.constellations.'],
-    ['Temporal Echoes','features.echoes.']
-  ];
-
+'use strict';
+// Compact schema helpers; all settings are exported/imported as plain JSON.
+const R=(path,label,min,max,step=.01,unit='',when)=>({path,label,min,max,step,unit,when});
+const B=(path,label,when)=>({path,label,type:'checkbox',when});
+const C=(path,label,when)=>({path,label,type:'color',when});
+const S=(path,label,options,when)=>({path,label,type:'select',options,when});
+const active=name=>c=>c.features[name].enabled;
+const SCHEMA=[
+ {title:'Spheroid / Boundary',fields:[
+  S('geometry.type','Spheroid type', [['prolate','Prolate / rugby ball'],['rotated','Rotated spheroid'],['eccentric','Eccentric spheroid'],['confocal','Confocal spheroids'],['sphere','Sphere (one focus)'],['slender','Slender prolate'],['animated','Animated glass'],['twin','Twin spheroids']]),
+  R('geometry.aspect','Minor / major radius',.22,.98,.01,'',c=>!['sphere','eccentric'].includes(c.geometry.type)),
+  R('geometry.eccentricity','Eccentricity',.05,.97,.01,'',c=>c.geometry.type==='eccentric'),
+  R('geometry.size','Object size',.55,1.2,.01),R('geometry.rotation','Geometry roll',-180,180,1,'°'),
+  R('geometry.pulse','Breathing amplitude',0,.2,.005,'',c=>c.geometry.type==='animated'),
+  R('geometry.pulseSpeed','Breathing frequency',.02,2,.02,'Hz',c=>c.geometry.type==='animated'),
+  R('geometry.rotateSpeed','Spin speed',-35,35,.5,'°/s',c=>c.geometry.type==='animated'),
+  R('geometry.twinGap','Twin gap',0,.5,.01,'',c=>c.geometry.type==='twin'),
+  B('geometry.showBoundary','Visible glass boundary'),
+  R('geometry.boundaryWidth','Boundary line width',.3,4,.05,'px',c=>c.geometry.showBoundary),
+  B('geometry.showFoci','Show both foci')
+ ]},
+ {title:'Particles / Physics',fields:[
+  R('particles.max','Max balls before reset',2,512,1),R('particles.speed','Particle speed',.1,4,.05),
+  R('particles.speedVariation','Speed variation',0,.5,.01),R('particles.splitAngle','3D split angle',0,90,.5,'°'),
+  R('particles.resetDelay','Hold at maximum',0,5,.1,'s'),
+  S('particles.emitter','Start focus',[['a','Focus A'],['b','Focus B'],['alternate','Alternate each cycle']]),
+  S('particles.distribution','Seed direction',[['golden','Golden spiral'],['random','Random 3D'],['fan','3D fan'],['fixed','Fixed']]),
+  R('particles.azimuth','Seed azimuth',-180,180,1,'°'),R('particles.elevation','Seed elevation',-89,89,1,'°'),
+  R('particles.spread','Seed fan spread',0,180,1,'°',c=>c.particles.distribution==='fan'),
+  R('particles.size','Particle glow size',.5,8,.1,'px'),B('particles.showBodies','Show particle cores')
+ ]},
+ {title:'Camera / View',fields:[
+  R('view.yaw','Camera yaw',-180,180,1,'°'),R('view.tilt','Camera elevation',-80,80,1,'°'),
+  R('view.roll','Camera roll',-180,180,1,'°'),R('view.zoom','Zoom',.5,1.65,.01),
+  B('view.perspective','Perspective depth'),R('view.distance','Camera distance',2.4,8,.1,'',c=>c.view.perspective),
+  B('view.orbit','Auto-orbit'),R('view.orbitSpeed','Orbit speed',-45,45,.5,'°/s',c=>c.view.orbit)
+ ]},
+ {title:'Trails',fields:[
+  B('trails.enabled','Enable trails'),
+  R('trails.length','Trail length (3D distance)',.1,12,.1,'units',c=>c.trails.enabled),
+  R('trails.fadePower','Distance fade curve',.3,5,.05,'',c=>c.trails.enabled),
+  R('trails.lifetime','Trail lifetime',.3,45,.1,'s',c=>c.trails.enabled),
+  R('trails.width','Line width',.2,4,.05,'px',c=>c.trails.enabled),
+  R('trails.brightness','Brightness',.05,2,.05,'',c=>c.trails.enabled),B('trails.additive','Additive blending',c=>c.trails.enabled)
+ ]},
+ {title:'Colors',fields:[
+  S('colors.mode','Color mode',[['rainbow','Rainbow'],['dual','Two foci'],['generation','Generation'],['depth','3D depth'],['bounce','Reflections'],['speed','Particle speed'],['mono','Single hue']]),
+  R('colors.hue','Base hue',0,360,1,'°',c=>c.colors.mode!=='dual'),R('colors.hueSpread','Hue spread',0,360,1,'°',c=>!['dual','mono'].includes(c.colors.mode)),
+  R('colors.saturation','Saturation',0,1,.01,'',c=>c.colors.mode!=='dual'),R('colors.lightness','Lightness',.15,.85,.01,'',c=>c.colors.mode!=='dual'),
+  R('colors.hueDrift','Hue drift',-25,25,.5,'°/s',c=>c.colors.mode!=='dual'),
+  C('colors.focusA','Focus A color',c=>c.geometry.showFoci||c.colors.mode==='dual'),
+  C('colors.focusB','Focus B color',c=>c.geometry.showFoci||c.colors.mode==='dual'),
+  C('colors.boundary','Shell color',c=>c.geometry.showBoundary||c.features.confocalGuides||c.features.axes||c.geometry.type==='confocal')
+ ]},
+ {title:'Lighting / Background',fields:[
+  B('lighting.bloom','Bloom'),R('lighting.bloomStrength','Bloom intensity',0,3,.05,'',c=>c.lighting.bloom),
+  R('lighting.bloomRadius','Bloom radius',.2,8,.1,'',c=>c.lighting.bloom),
+  B('lighting.boundaryGlow','Glowing shell',c=>c.geometry.showBoundary),B('lighting.focusGlow','Glowing focus cores',c=>c.geometry.showFoci),
+  C('scene.background','Background color'),R('scene.stars','Star field',0,1,.05),R('scene.vignette','Vignette',0,1,.05)
+ ]},
+ {title:'Interaction',fields:[
+  B('interaction.enabled','Pointer / touch'),B('interaction.dragRotate','Drag to orbit',c=>c.interaction.enabled),
+  B('interaction.wheelZoom','Mouse wheel / pinch zoom',c=>c.interaction.enabled),
+  B('interaction.clickBurst','Click to add balls',c=>c.interaction.enabled),
+  R('interaction.burstCount','Manual burst count',1,64,1),
+  B('interaction.showAim','Show pointer aiming ring',c=>c.interaction.enabled)
+ ]},
+ {title:'Features',fields:[
+  B('features.confocalGuides','Confocal spheroid guides'),
+  R('features.guideCount','Confocal guide layers',1,8,1,'',c=>c.features.confocalGuides||c.geometry.type==='confocal'),
+  B('features.axes','Three principal axes'),B('features.focusPulse','Subtle focus-ring pulse',c=>c.geometry.showFoci),
+  B('features.endpointFlashes','Boundary and focus sparks'),B('features.directionMarkers','Particle direction markers'),
+  B('features.shell.enabled','Transparent spheroid shell',c=>c.geometry.showBoundary),
+  R('features.shell.meridians','Meridian strands',2,28,1,'',c=>c.geometry.showBoundary&&active('shell')(c)),
+  R('features.shell.parallels','Latitude rings',0,24,1,'',c=>c.geometry.showBoundary&&active('shell')(c)),
+  R('features.shell.opacity','Shell opacity',.05,1,.025,'',c=>c.geometry.showBoundary&&active('shell')(c)),
+  R('features.shell.fresnel','Rim / Fresnel power',.3,5,.05,'',c=>c.geometry.showBoundary&&active('shell')(c)),
+  B('features.haze.enabled','Volumetric depth haze'),
+  R('features.haze.density','Haze density',0,1,.05,'',active('haze')),
+  R('features.haze.brightness','Haze glow',0,2,.05,'',active('haze')),
+  R('features.haze.depthFade','Depth attenuation',0,1,.05,'',active('haze')),
+  B('features.focusCores.enabled','Pulsing energy foci',c=>c.geometry.showFoci),
+  R('features.focusCores.size','Core size',.3,3,.05,'',c=>c.geometry.showFoci&&active('focusCores')(c)),
+  R('features.focusCores.pulse','Core pulse amplitude',0,1,.05,'',c=>c.geometry.showFoci&&active('focusCores')(c)),
+  B('features.silk.enabled','Chromatic silk'),
+  R('features.silk.filamentWidth','Filament width',.1,2,.05,'px',active('silk')),
+  R('features.silk.silkOpacity','Silk opacity',0,1,.025,'',active('silk')),
+  R('features.silk.iridescence','Iridescence',0,3,.05,'',active('silk')),
+  R('features.silk.strandGlow','Strand glow',0,2,.05,'',active('silk')),
+  B('features.shockwaves.enabled','3D focal shockwave spheres'),
+  R('features.shockwaves.waveSpeed','Wave speed',.1,2,.05,'',active('shockwaves')),
+  R('features.shockwaves.waveRadius','Maximum radius',.1,2,.05,'',active('shockwaves')),
+  R('features.shockwaves.intensity','Wave brightness',0,3,.05,'',active('shockwaves')),
+  R('features.shockwaves.decay','Wave decay',.1,5,.1,'',active('shockwaves')),
+  R('features.shockwaves.distortion','Spherical wave distortion',0,2,.05,'',active('shockwaves')),
+  B('features.spectral.enabled','Spectral dispersion'),
+  R('features.spectral.dispersion','Prism strength',0,3,.05,'',active('spectral')),
+  R('features.spectral.chromaticShift','Chromatic shift',0,12,.1,'px',active('spectral')),
+  R('features.spectral.spectralGlow','Spectral glow',0,2,.05,'',active('spectral')),
+  R('features.spectral.wavelengthSpread','Wavelength separation',.1,3,.05,'',active('spectral')),
+  B('features.ribbons.enabled','3D ribbon filaments'),
+  R('features.ribbons.ribbonWidth','Ribbon width',.5,8,.1,'px',active('ribbons')),
+  R('features.ribbons.twist','Ribbon twist',0,8,.1,'',active('ribbons')),
+  R('features.ribbons.depth','Ribbon depth',0,.3,.005,'',active('ribbons')),
+  R('features.ribbons.edgeGlow','Ribbon edge glow',0,2,.05,'',active('ribbons')),
+  R('features.ribbons.perspective','Depth thickness response',0,2,.05,'',c=>c.view.perspective&&active('ribbons')(c)),
+  B('features.livingBoundary.enabled','Living glass boundary',c=>c.geometry.showBoundary),
+  R('features.livingBoundary.surfaceRipple','Impact ripple',0,.1,.002,'',c=>c.geometry.showBoundary&&active('livingBoundary')(c)),
+  R('features.livingBoundary.refraction','Glass ghost highlight',0,2,.05,'',c=>c.geometry.showBoundary&&active('livingBoundary')(c)),
+  R('features.livingBoundary.edgeThickness','Rim edge thickness',.5,3,.05,'',c=>c.geometry.showBoundary&&active('livingBoundary')(c)),
+  R('features.livingBoundary.impactGlow','Impact glow',0,3,.05,'',c=>c.geometry.showBoundary&&active('livingBoundary')(c)),
+  B('features.kaleidoscope.enabled','Kaleidoscopic projection'),
+  R('features.kaleidoscope.symmetryCount','Symmetry sectors',2,18,1,'',active('kaleidoscope')),
+  S('features.kaleidoscope.mirrorMode','Symmetry mode',[['mirror','Mirrored sectors'],['repeat','Repeated sectors']],active('kaleidoscope')),
+  R('features.kaleidoscope.rotationOffset','Sector rotation',-180,180,1,'°',active('kaleidoscope')),
+  R('features.kaleidoscope.blendStrength','Mirror blend',0,1,.05,'',active('kaleidoscope')),
+  B('features.lineage.enabled','3D fractal lineage'),
+  R('features.lineage.generationHue','Hue per generation',-90,90,1,'°',c=>c.colors.mode!=='dual'&&active('lineage')(c)),
+  R('features.lineage.thicknessDecay','Width decay',.5,1.15,.025,'',active('lineage')),
+  R('features.lineage.brightnessDecay','Brightness decay',.5,1.15,.025,'',active('lineage')),
+  R('features.lineage.lineageGlow','Lineage aura',0,2,.05,'',active('lineage')),
+  B('features.interference.enabled','Interference fields'),
+  R('features.interference.interferenceScale','Sampling scale',.5,12,.25,'',active('interference')),
+  R('features.interference.frequency','Fringe frequency',1,50,1,'',active('interference')),
+  R('features.interference.contrast','Fringe contrast',0,2,.05,'',active('interference')),
+  R('features.interference.phaseSpeed','Phase speed',-5,5,.1,'',active('interference')),
+  B('features.constellations.enabled','3D intersection constellations'),
+  R('features.constellations.intersectionGlow','Star glow',0,3,.05,'',active('constellations')),
+  R('features.constellations.sparkleSize','Star radius',.5,10,.1,'px',active('constellations')),
+  R('features.constellations.persistence','Star lifetime',.1,8,.1,'s',active('constellations')),
+  R('features.constellations.connectionBrightness','Connection glow',0,2,.05,'',active('constellations')),
+  B('features.echoes.enabled','3D temporal echoes'),
+  R('features.echoes.echoCount','Echo layers',1,6,1,'',active('echoes')),
+  R('features.echoes.echoInterval','Capture interval',.05,1,.05,'s',active('echoes')),
+  R('features.echoes.echoOpacity','Ghost opacity',0,1,.025,'',active('echoes')),
+  R('features.echoes.depthSeparation','3D layer offset',0,.3,.005,'',active('echoes'))
+ ]}
+];
+const PRESETS={
+ 'Glass Orbital':{geometry:{type:'prolate',aspect:.62},view:{orbit:true,orbitSpeed:5},particles:{max:64,splitAngle:60},colors:{mode:'dual'},features:{silk:{enabled:false},shell:{enabled:true,opacity:.55,meridians:14},haze:{enabled:false},spectral:{enabled:false},constellations:{enabled:false}}},
+ 'Photon Cocoon':{geometry:{aspect:.55},particles:{max:256,splitAngle:76},trails:{lifetime:24,width:.65},features:{silk:{enabled:true,silkOpacity:.6},haze:{enabled:true,density:.6},lineage:{enabled:true,generationHue:32}}},
+ 'Prismatic Core':{geometry:{aspect:.52},view:{tilt:30,orbitSpeed:9},lighting:{bloomStrength:1.7},features:{spectral:{enabled:true,dispersion:2.5,chromaticShift:6,spectralGlow:1},livingBoundary:{enabled:true,refraction:1.5},shockwaves:{enabled:true,intensity:2}}},
+ 'Cathedral Weave':{geometry:{type:'slender',aspect:.4},particles:{max:512,splitAngle:74},trails:{lifetime:28,width:.6,brightness:.75},features:{silk:{enabled:true,silkOpacity:.65},lineage:{enabled:true,generationHue:48},shell:{enabled:true,meridians:18,parallels:14,opacity:.16}}},
+ 'Nebula Capsule':{geometry:{type:'animated',aspect:.7},colors:{hue:275,hueSpread:230},view:{orbitSpeed:3},features:{haze:{enabled:true,density:1,brightness:.8},ribbons:{enabled:true,depth:.15},echoes:{enabled:true,echoOpacity:.4},shell:{enabled:true,opacity:.25}}},
+ 'Polar Resonance':{geometry:{type:'prolate',aspect:.4},particles:{max:128,emitter:'a',splitAngle:42},colors:{mode:'dual'},features:{shockwaves:{enabled:true,intensity:2,waveRadius:1.7},focusCores:{enabled:true,size:1.8,pulse:.6},silk:{enabled:false},constellations:{enabled:false}}},
+ 'Quantum Seed':{geometry:{aspect:.63},particles:{max:256,speed:.95,splitAngle:84,resetDelay:2},trails:{lifetime:16},features:{shockwaves:{enabled:true,intensity:2.1},constellations:{enabled:true,intersectionGlow:2.2},lineage:{enabled:true,generationHue:55},spectral:{enabled:false}}},
+ 'Twin Suns':{geometry:{type:'twin',aspect:.62},view:{orbit:true,orbitSpeed:5},particles:{max:128,splitAngle:69},colors:{mode:'dual'},features:{focusCores:{enabled:true,size:2,pulse:.7},echoes:{enabled:true,echoCount:5},silk:{enabled:true}}},
+ 'Aurora Lattice':{geometry:{aspect:.73},particles:{max:320,splitAngle:72},trails:{lifetime:22},colors:{hue:165,hueSpread:265,hueDrift:8},features:{ribbons:{enabled:true,ribbonWidth:4,depth:.18,edgeGlow:1.4},interference:{enabled:true,frequency:18},silk:{enabled:true}}},
+ 'Holographic Relic':{geometry:{aspect:.57},particles:{max:192},view:{tilt:23,orbitSpeed:4},colors:{hue:195,hueSpread:320},features:{shell:{enabled:true,opacity:.65,meridians:18,parallels:12},kaleidoscope:{enabled:true,symmetryCount:7,blendStrength:.55},interference:{enabled:true,contrast:1.5},echoes:{enabled:true,echoCount:6}}},
+ // Original 2D favorites, adapted to the 3D spheroid; original 3D presets remain above.
+ 'Chromatic Weave':{geometry:{type:'prolate',aspect:.59},particles:{max:128,splitAngle:14},trails:{length:4.8,fadePower:1.2,width:.55,lifetime:22},features:{silk:{enabled:true},lineage:{enabled:true},ribbons:{enabled:false}}},
+ 'Focus Study':{geometry:{type:'prolate',aspect:.60},particles:{max:16,speed:.8,splitAngle:34},trails:{length:2.5,width:1.4},features:{axes:true,focusPulse:true,endpointFlashes:true,shell:{enabled:true,opacity:.6},silk:{enabled:false}}},
+ 'Radiant Halo':{geometry:{type:'sphere'},particles:{max:256,splitAngle:21},trails:{length:7,fadePower:1.2},colors:{mode:'bounce'},features:{spectral:{enabled:true,dispersion:1.7},shockwaves:{enabled:true}}},
+ 'Living Geometry':{geometry:{type:'animated',aspect:.5,pulse:.10,rotateSpeed:9},particles:{max:128,splitAngle:51},features:{livingBoundary:{enabled:true,surfaceRipple:.07,refraction:1},ribbons:{enabled:true}}},
+ 'Confocal Study':{geometry:{type:'confocal',aspect:.67},particles:{max:64,speed:1},trails:{length:3},features:{confocalGuides:true,guideCount:6,axes:true,endpointFlashes:true}},
+ 'Twin Resonance':{geometry:{type:'twin',aspect:.65},particles:{max:128},features:{focusCores:{enabled:true,size:1.5},echoes:{enabled:true,echoCount:3}}},
+ 'Prismatic Cathedral':{geometry:{type:'slender',aspect:.35},view:{yaw:42,orbitSpeed:4},particles:{max:256},features:{spectral:{enabled:true,dispersion:2.6,wavelengthSpread:2},ribbons:{enabled:true,depth:.2},silk:{enabled:true}}},
+ 'Kaleidoscopic Mandala':{geometry:{type:'prolate',aspect:.8},view:{yaw:0,tilt:0,orbit:false},particles:{max:128},features:{kaleidoscope:{enabled:true,symmetryCount:10,blendStrength:1,mirrorMode:'mirror'},silk:{enabled:true}}},
+ 'Quantum Interference':{geometry:{type:'prolate',aspect:.52},particles:{max:192},features:{interference:{enabled:true,frequency:28,interferenceScale:4,contrast:1.5},spectral:{enabled:true,dispersion:1.4}}},
+ 'Celestial Echoes':{geometry:{type:'prolate',aspect:.57},particles:{max:256},trails:{length:5.5,lifetime:28},features:{echoes:{enabled:true,echoCount:6,echoOpacity:.55},constellations:{enabled:true,intersectionGlow:2},haze:{enabled:true,density:.55}}}
+};
+const FEATURE_GROUPS=[
+ ['Transparent Shell','features.shell.'],['Depth Haze','features.haze.'],['Focus Cores','features.focusCores.'],
+ ['Chromatic Silk','features.silk.'],['Focal Shockwaves','features.shockwaves.'],['Spectral Dispersion','features.spectral.'],
+ ['Volumetric Ribbons','features.ribbons.'],['Living Boundary','features.livingBoundary.'],['Kaleidoscope','features.kaleidoscope.'],
+ ['Fractal Lineage','features.lineage.'],['Interference Fields','features.interference.'],['Intersection Constellations','features.constellations.'],['Temporal Echoes','features.echoes.']
+];
   function deepCopy(obj) { return JSON.parse(JSON.stringify(obj)); }
   function merge(target, source) {
     if (!source || typeof source !== 'object' || Array.isArray(source)) return target;
@@ -298,7 +192,7 @@
     return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   }
   function labelValue(n, unit = '') {
-    const display = Number.isInteger(n) ? String(n) : String(Number(n.toFixed(3)));
+    const display = typeof n === "number" ? (Number.isInteger(n) ? String(n) : String(Number(n.toFixed(3)))) : String(n);
     return display + (unit ? ' ' + unit : '');
   }
   const STYLES = `
@@ -352,8 +246,8 @@
     }
     let state = merge(deepCopy(defaults), initial || {});
     let open = false;
-    const expanded = new Set(['Ellipse / Boundary', 'Particles / Physics', 'Features']);
-    const expandedFeatures = new Set(['Chromatic Silk','Fractal Lineage']);
+    const expanded = new Set(['Spheroid / Boundary', 'Particles / Physics', 'Camera / View', 'Features']);
+    const expandedFeatures = new Set(['Transparent Shell','Chromatic Silk','Fractal Lineage']);
     const backdrop = document.createElement('div');
     backdrop.id = 'cr-backdrop';
     backdrop.addEventListener('click', () => setOpen(false));
@@ -362,7 +256,7 @@
     root.id = 'cr-settings'; root.className = 'cr-closed';
     root.setAttribute('aria-label', 'Chromatic Reflections settings');
     root.innerHTML = `
-      <div class="cr-header"><div><div class="cr-kicker">Live controls</div><div class="cr-title">Chromatic Reflections</div></div><button class="cr-x" type="button" aria-label="Close settings">×</button></div>
+      <div class="cr-header"><div><div class="cr-kicker">Live controls</div><div class="cr-title">Chromatic Reflections 3D</div></div><button class="cr-x" type="button" aria-label="Close settings">×</button></div>
       <div class="cr-tools">
         <div class="cr-preset"><label for="cr-presets">Preset</label><select id="cr-presets"><option value="">Custom configuration</option>${Object.keys(PRESETS).map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('')}</select></div>
         <button type="button" data-command="export">Export JSON</button>
@@ -393,7 +287,7 @@
     root.querySelector('[data-command="export"]').addEventListener('click', () => {
       const data = JSON.stringify(state, null, 2);
       const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
-      const a = document.createElement('a'); a.href = url; a.download = 'chromatic-reflections.json';
+      const a = document.createElement('a'); a.href = url; a.download = 'chromatic-reflections-3d.json';
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
@@ -456,6 +350,10 @@
           const field = SCHEMA.flatMap(s => s.fields).find(f => f.path === el.dataset.path);
           let value = el.type === 'checkbox' ? el.checked : el.type === 'range' ? Number(el.value) : el.value;
           put(state, el.dataset.path, value);
+          if(el.dataset.path==='geometry.type' && value==='rotated' && state.geometry.rotation===0){
+            // A rotated preset must visibly rotate on selection, even at the default settings.
+            state.geometry.rotation=35;
+          }
           const valueTag = el.closest('.cr-control')?.querySelector('.cr-value');
           if (valueTag) valueTag.textContent = labelValue(value, field.unit);
           presets.value = '';
