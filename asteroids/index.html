@@ -49,8 +49,9 @@
 #controls, #touch { position:static; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
 #dock button { pointer-events:auto; }
 #controls .settings-open { position:static; }
-#touch { justify-content:space-between; user-select:none; }
-.touch-group { display:flex; gap:5px; }
+#touch { justify-content:flex-end; user-select:none; }
+#touch[data-side="left"] { justify-content:flex-start; }
+#space.touch-steering { touch-action:none; }
 #touch button { min-width:44px; min-height:44px; touch-action:none; }
 #touch button:active { background:#356078; }
 #hud { top:var(--edge-top); left:var(--edge-left); right:var(--edge-right); gap:8px 20px; }
@@ -82,12 +83,8 @@ body:has(.settings-panel:not([hidden])) #touch { visibility:hidden; }
 <div id="error" role="alert" hidden></div>
 <div id="dock">
   <div id="touch" role="group" aria-label="Touch flight controls" hidden>
-    <div class="touch-group">
-      <button data-key="ArrowLeft" aria-label="Turn left">◀</button>
-      <button data-key="ArrowRight" aria-label="Turn right">▶</button>
-      <button data-key="ArrowUp" aria-label="Thrust">▲</button>
-    </div>
-    <div class="touch-group"><button data-key="Space">Fire</button><button id="jump">Jump</button></div>
+    <button id="fire" type="button">Fire</button>
+    <button id="jump" type="button">Jump</button>
   </div>
   <div id="controls"><button id="pilot">Take control</button><button id="pause">Pause</button><span id="hint"></span></div>
 </div>
@@ -188,7 +185,8 @@ const settings = {
   "gameplay": {
     "director": true,
     "ufo": true,
-    "idle": 25
+    "idle": 25,
+    "fireSide": "right"
   }
 };
 
@@ -288,6 +286,7 @@ const sections = [
   { label: "Gameplay", open: false, groups: [{ fields: [
     { path: "gameplay.director", label: "Attract-mode comet events", type: "boolean" },
     { path: "gameplay.ufo", label: "UFO rival", type: "boolean" },
+    { path: "gameplay.fireSide", label: "Touch fire button side", type: "select", options: { left: "Left", right: "Right" }, help: "Place the touch Fire button on either side of the screen." },
     { path: "gameplay.idle", label: "Resume autopilot after", type: "range", min: 0, max: 120, step: 1, unit: " s", help: "Set to 0 to keep manual control until you switch pilots." },
   ] }] },
 ];
@@ -345,6 +344,7 @@ let editor;
 
 function applySettings(next) {
   config = next;
+  $("touch").dataset.side = config.gameplay.fireSide;
   document.body.classList.toggle('clear', config.graphics.transparent);
 }
 
@@ -546,24 +546,23 @@ let rocks=[], shots=[], dust=[], ship, rival=null, score=0, wave=1, lives=3;
 let manual=false, lastInput=0, nextComet=14, nextRival=19, nextWave=0, hudCache='';
 const records={auto:Math.max(0,Number(read('deep-field-auto-best',0))||0),player:Math.max(0,Number(read('deep-field-player-best',0))||0)};
 const keys=new Set();
-const touchKeys=new Map();
+let steering=null;
+let firePointer=null;
 const coarsePointer=matchMedia('(any-pointer: coarse)');
 let touchObserved=false;
 
 function updateInputUI() {
   const touchCapable=touchObserved||coarsePointer.matches||(navigator.maxTouchPoints||0)>0;
   $('touch').hidden=!manual||!touchCapable;
+  canvas.classList.toggle('touch-steering',manual&&touchCapable);
   $('hint').textContent=manual&&!touchCapable?'↑ or W to thrust · ←/→ or A/D to turn · Space to fire · H to jump':'';
 }
 function clearInput() {
   keys.clear();
-  touchKeys.clear();
+  steering=null;
+  firePointer=null;
 }
-function held(code) {
-  if(keys.has(code))return true;
-  for(const active of touchKeys.values())if(active===code)return true;
-  return false;
-}
+
 function rock(x,y,r,vx,vy,comet=false) {
   const ring=Array.from({length:11},(_,i)=>{
     const a=i*TAU/11, distance=rand(.73,1.18);
@@ -708,20 +707,54 @@ addEventListener('pointerdown',event=>{
 },{capture:true});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)clearInput();});
 reduced.addEventListener('change',e=>{if(e.matches)setPause(true);});
-for(const button of $('touch').querySelectorAll('[data-key]')) {
-  button.onpointerdown=e=>{
-    e.preventDefault();
-    if(!manual||paused)return;
-    button.setPointerCapture(e.pointerId);
-    touchKeys.set(e.pointerId,button.dataset.key);
-    lastInput=time;
-  };
-  button.onpointerup=button.onpointercancel=button.onlostpointercapture=event=>touchKeys.delete(event.pointerId);
+function rememberSteering(event) {
+  steering={id:event.pointerId,x:event.clientX,y:event.clientY};
+  lastInput=time;
 }
+canvas.addEventListener('pointerdown',event=>{
+  if(event.pointerType!=='touch'||!manual||paused||steering)return;
+  event.preventDefault();
+  canvas.setPointerCapture(event.pointerId);
+  rememberSteering(event);
+});
+canvas.addEventListener('pointermove',event=>{
+  if(steering?.id===event.pointerId)rememberSteering(event);
+});
+const fireButton=$('fire');
+fireButton.addEventListener('pointerdown',event=>{
+  if(!manual||paused||firePointer!==null)return;
+  event.preventDefault();
+  fireButton.setPointerCapture(event.pointerId);
+  firePointer=event.pointerId;
+  lastInput=time;
+  if(ship.dead<=0)fire(ship,'ship');
+});
+for(const type of ['pointerup','pointercancel','lostpointercapture']){
+  canvas.addEventListener(type,event=>{if(steering?.id===event.pointerId)steering=null;});
+  fireButton.addEventListener(type,event=>{if(firePointer===event.pointerId)firePointer=null;});
+}
+document.addEventListener('focusin',event=>{
+  if(event.target.closest?.('.settings-panel'))clearInput();
+});
+
+function touchTarget() {
+  const rect=canvas.getBoundingClientRect();
+  let x=clamp((steering.x-rect.left)/rect.width,0,1)*W-W*.5;
+  let y=clamp((steering.y-rect.top)/rect.height,0,1)*H-H*.5;
+  if(config.view.mode==='3D'){
+    const [tilt,yaw]=cameraAngles();
+    const scale=config.view.zoom*1.07;
+    y/=Math.max(.15,scale*Math.cos(tilt)-y*Math.sin(tilt)/1450);
+    x*= (1+y*Math.sin(tilt)/1450)/scale;
+    [x,y]=[x*Math.cos(yaw)+y*Math.sin(yaw),-x*Math.sin(yaw)+y*Math.cos(yaw)];
+  }
+  return [clamp(x+W*.5,0,W-1),clamp(y+H*.5,0,H-1)];
+}
+
 function step(dt) {
   time+=dt;
   if(!reduced.matches) nebulaPhase=(nebulaPhase+dt*.19*config.graphics.nebulaSpeed)%TAU;
-  if(manual&&(keys.size||touchKeys.size))lastInput=time;
+  if(manual&&(keys.size||steering||firePointer!==null))lastInput=time;
   if(manual&&config.gameplay.idle&&time-lastInput>config.gameplay.idle)setPilot(false);
   ship.safe-=dt;ship.cool-=dt;ship.jump-=dt;
   if(ship.dead>0){
@@ -729,9 +762,26 @@ function step(dt) {
     if(ship.dead<=0){if(lives<=0)resetRound();else ship=newShip();}
   } else {
     let turn=0,thrust=false,shoot=false;
+    const following=manual&&steering;
     if(manual) {
-      turn=Number(held('ArrowRight')||held('KeyD'))-Number(held('ArrowLeft')||held('KeyA'));
-      thrust=held('ArrowUp')||held('KeyW');shoot=held('Space');
+      shoot=keys.has('Space')||firePointer!==null;
+      if(following){
+        const [x,y]=touchTarget();
+        const dx=x-ship.x,dy=y-ship.y;
+        const distance=Math.hypot(dx,dy);
+        const speed=Math.min(540,distance*5);
+        const blend=1-Math.exp(-12*dt);
+        const factor=speed/Math.max(1,distance);
+        ship.vx+=(dx*factor-ship.vx)*blend;
+        ship.vy+=(dy*factor-ship.vy)*blend;
+        if(distance>5){
+          turn=clamp(delta(Math.atan2(dy,dx)-ship.a,TAU)*4,-2,2);
+          thrust=distance>15;
+        }
+      }else{
+        turn=Number(keys.has('ArrowRight')||keys.has('KeyD'))-Number(keys.has('ArrowLeft')||keys.has('KeyA'));
+        thrust=keys.has('ArrowUp')||keys.has('KeyW');
+      }
     } else {
       const [target]=nearest(ship),[threat,distance]=nearest(ship,.75);
       let angle=time*.65;
@@ -745,7 +795,7 @@ function step(dt) {
     ship.a+=turn*3.65*dt;
     if(thrust){
       const x=Math.cos(ship.a),y=Math.sin(ship.a);
-      ship.vx+=x*145*dt;ship.vy+=y*145*dt;
+      if(!following){ship.vx+=x*145*dt;ship.vy+=y*145*dt;}
       if(config.graphics.trails&&Math.random()<dt*52)
         particles(wrap(ship.x-x*13,W),wrap(ship.y-y*13,H),ship.vx-x*95,ship.vy-y*95,2,[.24,.79,1],28);
     }
@@ -801,11 +851,15 @@ function step(dt) {
 const vertices=[];
 const cyan=[.48,.88,1], amber=[1,.57,.33], pink=[1,.39,.67];
 const advanced=()=>config.graphics.style==='Advanced';
+function cameraAngles() {
+  const tilt=config.view.tilt*Math.PI/180;
+  const yaw=config.view.orbit&&!reduced.matches?.15*Math.sin(time*.24):0;
+  return [tilt,yaw];
+}
 function project(x,y,z=0) {
   let px=(x-W*.5),py=(y-H*.5);
   if(config.view.mode==='3D') {
-    const tilt=config.view.tilt*Math.PI/180;
-    const yaw=config.view.orbit&&!reduced.matches?.15*Math.sin(time*.24):0;
+    const [tilt,yaw]=cameraAngles();
     [px,py]=[px*Math.cos(yaw)-py*Math.sin(yaw),px*Math.sin(yaw)+py*Math.cos(yaw)];
     const depth=py*Math.sin(tilt)-z*Math.cos(tilt);
     py=py*Math.cos(tilt)+z*Math.sin(tilt);
