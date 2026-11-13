@@ -49,9 +49,11 @@
 #controls, #touch { position:static; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
 #dock button { pointer-events:auto; }
 #controls .settings-open { position:static; }
-#touch { justify-content:flex-end; user-select:none; }
-#touch[data-side="left"] { justify-content:flex-start; }
-#space.touch-steering { touch-action:none; }
+#touch { justify-content:space-between; align-items:end; user-select:none; flex-wrap:nowrap; }
+#touch[data-side="left"] { flex-direction:row-reverse; }
+#touch-actions { display:flex; gap:6px; }
+#joystick { position:relative; width:clamp(72px,18vmin,104px); aspect-ratio:1; border:1px solid #5989a8; border-radius:50%; background:#142631aa; touch-action:none; pointer-events:auto; }
+#joystick-knob { position:absolute; top:50%; left:50%; width:44%; aspect-ratio:1; border:1px solid #8df4e7; border-radius:50%; background:#3d768c; transform:translate(calc(-50% + var(--stick-x, 0px)),calc(-50% + var(--stick-y, 0px))); pointer-events:none; }
 #touch button { min-width:44px; min-height:44px; touch-action:none; }
 #touch button:active { background:#356078; }
 #hud { top:var(--edge-top); left:var(--edge-left); right:var(--edge-right); gap:8px 20px; }
@@ -83,8 +85,9 @@ body:has(.settings-panel:not([hidden])) #touch { visibility:hidden; }
 <div id="error" role="alert" hidden></div>
 <div id="dock">
   <div id="touch" role="group" aria-label="Touch flight controls" hidden>
-    <button id="fire" type="button">Fire</button>
-    <button id="jump" type="button">Jump</button>
+    <div id="joystick" role="group" aria-label="Steering joystick"><span id="joystick-knob" aria-hidden="true"></span></div>
+    <div id="touch-actions"><button id="fire" type="button">Fire</button>
+    <button id="jump" type="button">Jump</button></div>
   </div>
   <div id="controls"><button id="pilot">Take control</button><button id="pause">Pause</button><span id="hint"></span></div>
 </div>
@@ -186,7 +189,8 @@ const settings = {
     "director": true,
     "ufo": true,
     "idle": 25,
-    "fireSide": "right"
+    "fireSide": "right",
+    "joystickSpeed": 210
   }
 };
 
@@ -200,7 +204,7 @@ const presets = {
 const sections = [
   { label: "View", open: true, groups: [{ fields: [
     { path: "view.mode", label: "Projection", type: "select", options: {"2D": "2D", "3D": "3D"} },
-    { path: "view.tilt", label: "Tilt", type: "range", min: 0, max: 55, step: 1, unit: "\u00b0", when: s => s.view.mode === "3D" },
+    { path: "view.tilt", label: "Tilt", type: "range", min: -55, max: 55, step: 1, help: "Negative tilts the board away for a view from above. Zero is flat.", unit: "\u00b0", when: s => s.view.mode === "3D" },
     { path: "view.zoom", label: "Zoom", type: "range", min: 0.7, max: 1.4, step: 0.01, when: s => s.view.mode === "3D" },
     { path: "view.orbit", label: "Camera orbit", type: "boolean", when: s => s.view.mode === "3D" },
   ] }] },
@@ -286,7 +290,8 @@ const sections = [
   { label: "Gameplay", open: false, groups: [{ fields: [
     { path: "gameplay.director", label: "Attract-mode comet events", type: "boolean" },
     { path: "gameplay.ufo", label: "UFO rival", type: "boolean" },
-    { path: "gameplay.fireSide", label: "Touch fire button side", type: "select", options: { left: "Left", right: "Right" }, help: "Place the touch Fire button on either side of the screen." },
+    { path: "gameplay.joystickSpeed", label: "Joystick max speed", type: "range", min: 80, max: 340, step: 10, help: "Sets how fast the ship moves at full joystick deflection." },
+    { path: "gameplay.fireSide", label: "Touch fire button side", type: "select", options: { left: "Left", right: "Right" }, help: "The joystick stays on the opposite side." },
     { path: "gameplay.idle", label: "Resume autopilot after", type: "range", min: 0, max: 120, step: 1, unit: " s", help: "Set to 0 to keep manual control until you switch pilots." },
   ] }] },
 ];
@@ -547,6 +552,8 @@ let manual=false, lastInput=0, nextComet=14, nextRival=19, nextWave=0, hudCache=
 const records={auto:Math.max(0,Number(read('deep-field-auto-best',0))||0),player:Math.max(0,Number(read('deep-field-player-best',0))||0)};
 const keys=new Set();
 let steering=null;
+let joystickBraking=false;
+const joystick=$("joystick");
 let firePointer=null;
 const coarsePointer=matchMedia('(any-pointer: coarse)');
 let touchObserved=false;
@@ -554,12 +561,12 @@ let touchObserved=false;
 function updateInputUI() {
   const touchCapable=touchObserved||coarsePointer.matches||(navigator.maxTouchPoints||0)>0;
   $('touch').hidden=!manual||!touchCapable;
-  canvas.classList.toggle('touch-steering',manual&&touchCapable);
   $('hint').textContent=manual&&!touchCapable?'↑ or W to thrust · ←/→ or A/D to turn · Space to fire · H to jump':'';
 }
 function clearInput() {
   keys.clear();
-  steering=null;
+  resetJoystick();
+  joystickBraking=false;
   firePointer=null;
 }
 
@@ -707,18 +714,34 @@ addEventListener('pointerdown',event=>{
 },{capture:true});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)clearInput();});
 reduced.addEventListener('change',e=>{if(e.matches)setPause(true);});
-function rememberSteering(event) {
-  steering={id:event.pointerId,x:event.clientX,y:event.clientY};
+function resetJoystick() {
+  steering=null;
+  joystick.style.removeProperty('--stick-x');
+  joystick.style.removeProperty('--stick-y');
+}
+
+function updateJoystick(event) {
+  const rect=joystick.getBoundingClientRect();
+  const radius=rect.width*.32;
+  const x=(event.clientX-rect.left-rect.width/2)/radius;
+  const y=(event.clientY-rect.top-rect.height/2)/radius;
+  const distance=Math.hypot(x,y);
+  const strength=clamp((distance-.13)/.87,0,1);
+  const divisor=Math.max(distance,.001);
+  steering={id:event.pointerId,x:x/divisor*strength,y:y/divisor*strength};
+  joystick.style.setProperty('--stick-x',x/Math.max(1,distance)*radius+'px');
+  joystick.style.setProperty('--stick-y',y/Math.max(1,distance)*radius+'px');
   lastInput=time;
 }
-canvas.addEventListener('pointerdown',event=>{
-  if(event.pointerType!=='touch'||!manual||paused||steering)return;
+joystick.addEventListener('pointerdown',event=>{
+  if(!manual||paused||steering)return;
   event.preventDefault();
-  canvas.setPointerCapture(event.pointerId);
-  rememberSteering(event);
+  joystick.setPointerCapture(event.pointerId);
+  joystickBraking=false;
+  updateJoystick(event);
 });
-canvas.addEventListener('pointermove',event=>{
-  if(steering?.id===event.pointerId)rememberSteering(event);
+joystick.addEventListener('pointermove',event=>{
+  if(steering?.id===event.pointerId)updateJoystick(event);
 });
 const fireButton=$('fire');
 fireButton.addEventListener('pointerdown',event=>{
@@ -730,26 +753,16 @@ fireButton.addEventListener('pointerdown',event=>{
   if(ship.dead<=0)fire(ship,'ship');
 });
 for(const type of ['pointerup','pointercancel','lostpointercapture']){
-  canvas.addEventListener(type,event=>{if(steering?.id===event.pointerId)steering=null;});
+  joystick.addEventListener(type,event=>{
+    if(steering?.id!==event.pointerId)return;
+    resetJoystick();
+    joystickBraking=true;
+  });
   fireButton.addEventListener(type,event=>{if(firePointer===event.pointerId)firePointer=null;});
 }
 document.addEventListener('focusin',event=>{
   if(event.target.closest?.('.settings-panel'))clearInput();
 });
-
-function touchTarget() {
-  const rect=canvas.getBoundingClientRect();
-  let x=clamp((steering.x-rect.left)/rect.width,0,1)*W-W*.5;
-  let y=clamp((steering.y-rect.top)/rect.height,0,1)*H-H*.5;
-  if(config.view.mode==='3D'){
-    const [tilt,yaw]=cameraAngles();
-    const scale=config.view.zoom*1.07;
-    y/=Math.max(.15,scale*Math.cos(tilt)-y*Math.sin(tilt)/1450);
-    x*= (1+y*Math.sin(tilt)/1450)/scale;
-    [x,y]=[x*Math.cos(yaw)+y*Math.sin(yaw),-x*Math.sin(yaw)+y*Math.cos(yaw)];
-  }
-  return [clamp(x+W*.5,0,W-1),clamp(y+H*.5,0,H-1)];
-}
 
 function step(dt) {
   time+=dt;
@@ -766,17 +779,19 @@ function step(dt) {
     if(manual) {
       shoot=keys.has('Space')||firePointer!==null;
       if(following){
-        const [x,y]=touchTarget();
-        const dx=x-ship.x,dy=y-ship.y;
-        const distance=Math.hypot(dx,dy);
-        const speed=Math.min(540,distance*5);
-        const blend=1-Math.exp(-12*dt);
-        const factor=speed/Math.max(1,distance);
+        const [tilt,yaw]=config.view.mode==='3D'?cameraAngles():[0,0];
+        const strength=Math.hypot(steering.x,steering.y);
+        const screenY=steering.y/Math.cos(tilt);
+        const dx=steering.x*Math.cos(yaw)+screenY*Math.sin(yaw);
+        const dy=-steering.x*Math.sin(yaw)+screenY*Math.cos(yaw);
+        const speed=config.gameplay.joystickSpeed*strength;
+        const factor=speed/Math.max(.001,Math.hypot(dx,dy));
+        const blend=1-Math.exp(-10*dt);
         ship.vx+=(dx*factor-ship.vx)*blend;
         ship.vy+=(dy*factor-ship.vy)*blend;
-        if(distance>5){
+        if(strength){
           turn=clamp(delta(Math.atan2(dy,dx)-ship.a,TAU)*4,-2,2);
-          thrust=distance>15;
+          thrust=true;
         }
       }else{
         turn=Number(keys.has('ArrowRight')||keys.has('KeyD'))-Number(keys.has('ArrowLeft')||keys.has('KeyA'));
@@ -800,7 +815,8 @@ function step(dt) {
         particles(wrap(ship.x-x*13,W),wrap(ship.y-y*13,H),ship.vx-x*95,ship.vy-y*95,2,[.24,.79,1],28);
     }
     ship.thrust=thrust;
-    const drag=Math.exp(-dt*.38);
+    if(turn||thrust)joystickBraking=false;
+    const drag=Math.exp(-dt*(manual&&joystickBraking?8:.38));
     ship.vx*=drag;ship.vy*=drag;
     move(ship,dt);
     if(shoot)fire(ship,'ship');
