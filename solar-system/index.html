@@ -41,6 +41,8 @@
   #timeline-panel, #observer-panel, #compare-panel, #tour-panel {
     flex-basis:100%; display:flex; align-items:center; flex-wrap:wrap; gap:.4rem
   }
+  #events { max-width:100% }
+  #event-status { color:#b7cce7 }
   #toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem }
   .timeline-row { display:flex; flex:1 0 100%; min-width:0; align-items:center; gap:.5rem }
   .timeline-row input[type=range] { flex:1 1 0; min-width:0 }
@@ -73,10 +75,8 @@
     <input id="date" type="datetime-local" aria-label="Simulation date and time (UTC)">
     <select id="events" aria-label="Jump to an event">
       <option value="">Jump to an event…</option>
-      <option value="solar">2024 total solar eclipse</option>
-      <option value="lunar">2025 total lunar eclipse</option>
-      <option value="io">Next Io shadow transit</option>
     </select>
+    <output id="event-status" aria-live="polite"></output>
   </div>
   <div id="observer-panel" hidden>
     <label for="observer-world">View from</label>
@@ -946,18 +946,19 @@ function start(T) {
     dateInput.value=new Date(time).toISOString().slice(0,19);
   };
 
-  // Find a minimum of the shadow-axis distance on Jupiter's sunlit side.
-  function nextIoTransit(after) {
+  // Find the closest approach of a Galilean moon's shadow to Jupiter's center.
+  function nextShadowTransit(moon,after) {
     function distanceAt(ms) {
       const lightDirection=planetPosition(jupiter,ms).negate().normalize();
-      const offset=moonPosition(io,ms);
+      const offset=moonPosition(moon,ms);
       const along=offset.dot(lightDirection);
       return along>0 ? offset.addScaledVector(lightDirection,-along).length() : Infinity;
     }
     const step=day/96;
+    const end=Math.min(maxTime,after+Math.max(10,2*moon.period)*day);
     let older=distanceAt(after);
     let previous=distanceAt(after+step);
-    for (let ms=after+2*step;ms<=Math.min(maxTime,after+10*day);ms+=step) {
+    for (let ms=after+2*step;ms<=end;ms+=step) {
       const current=distanceAt(ms);
       if (previous<=older && previous<=current && previous<jupiter.radius*1.15) {
         let lo=ms-2*step, hi=ms;
@@ -974,35 +975,120 @@ function start(T) {
     }
     return NaN;
   }
-  // Greatest eclipse times from NASA GSFC's solar and lunar eclipse catalogs.
-  const eclipses={
-    solar:[Date.UTC(2024,3,8,18,17,15),earth],
-    lunar:[Date.UTC(2025,2,14,6,58,42),earthMoon]
-  };
-  $('events').onchange=()=>{
-    const event=$('events').value;
-    $('events').value='';
-    if (!event) return;
-    const [ms,body]=eclipses[event] ?? [nextIoTransit(time+60000),jupiter];
-    if (!Number.isFinite(ms)) {
-      $('events').options[0].textContent='No Io shadow transit found in the next 10 days';
-      return;
+
+  const eventMenu=$('events');
+  const eventStatus=$('event-status');
+  const eventActions=new Map();
+
+  function addEvents(label,entries) {
+    const group=document.createElement('optgroup');
+    group.label=label;
+    for (const entry of entries) {
+      const id=String(eventActions.size);
+      const option=new Option(entry.label,id);
+      option.disabled=Boolean(entry.method && typeof astro?.[entry.method]!=='function');
+      group.append(option);
+      eventActions.set(id,entry);
     }
-    $('events').options[0].textContent='Jump to an event…';
+    eventMenu.append(group);
+  }
+
+  // Greatest eclipse times in UT from NASA GSFC's eclipse catalogs.
+  addEvents('Solar eclipse bookmarks',[
+    ['2024-04-08T18:17:15Z','Apr 8, 2024'],
+    ['2026-08-12T17:45:54Z','Aug 12, 2026'],
+    ['2027-08-02T10:06:38Z','Aug 2, 2027'],
+    ['2028-07-22T02:55:27Z','Jul 22, 2028']
+  ].map(([stamp,label])=>({
+    label:label+' · Total solar eclipse',at:Date.parse(stamp),body:earth,caster:earthMoon
+  })));
+  addEvents('Lunar eclipse bookmarks',[
+    ['2025-03-14T06:58:42Z','Mar 14, 2025'],
+    ['2026-03-03T11:33:37Z','Mar 3, 2026']
+  ].map(([stamp,label])=>({
+    label:label+' · Total lunar eclipse',at:Date.parse(stamp),body:earthMoon
+  })));
+  addEvents('Next eclipses',[
+    {label:'Next solar eclipse',body:earth,caster:earthMoon,method:'SearchGlobalSolarEclipse',
+      search:after=>astro.SearchGlobalSolarEclipse(after)?.peak},
+    {label:'Next lunar eclipse',body:earthMoon,method:'SearchLunarEclipse',
+      search:after=>astro.SearchLunarEclipse(after)?.peak}
+  ]);
+  addEvents('Next lunar phases',[
+    ['New Moon',0],['First quarter Moon',90],['Full Moon',180],['Last quarter Moon',270]
+  ].map(([label,phase])=>({
+    label:'Next '+label,body:earthMoon,observerFov:2,method:'SearchMoonPhase',
+    search:after=>astro.SearchMoonPhase(phase,after,35)
+  })));
+  addEvents('Next equinoxes and solstices',[
+    ['March equinox',0],['June solstice',90],['September equinox',180],['December solstice',270]
+  ].map(([label,longitude])=>({
+    label:'Next '+label,body:earth,method:'SearchSunLongitude',
+    search:after=>astro.SearchSunLongitude(longitude,after,370)
+  })));
+  addEvents('Next planetary oppositions',planets.slice(3).map(body=>({
+    label:'Next '+body.name+' opposition',body,observerFov:.25,method:'SearchRelativeLongitude',
+    search:after=>astro.SearchRelativeLongitude(body.name,0,after)
+  })));
+  addEvents('Next Jupiter moon shadow transits',satellitesByHost.get(jupiter).map(moon=>({
+    label:'Next '+moon.name+' shadow transit',body:jupiter,caster:moon,
+    search:after=>nextShadowTransit(moon,+after),
+    unavailable:'No '+moon.name+' shadow transit found in the modeled search window.'
+  })));
+  if (!astro) eventStatus.textContent='Calculated eclipses, lunar phases, seasons, and oppositions require Astronomy Engine.';
+
+  function showEvent(entry,ms) {
+    const {body,caster}=entry;
     activity(true);
     view='';
     changeFocus(body);
     config.mode='3d';
     config.shadows=true;
     config.moons=true;
-    cameraAnchor=body;
-    config.zoom=body===earthMoon ? 100 : body===earth ? 56 : 28;
-    const relative=(body.parent ? planetPosition(body.parent,ms) : planetPosition(body,ms)).negate().normalize();
-    yaw=Math.atan2(relative.x,relative.z)+.34;
-    manualTilt=T.MathUtils.clamp(Math.asin(relative.y)/rad+14,-80,80);
-    pinned=body;
-    $('inspect').value=body.name;
+    if (entry.observerFov && config.observerView) {
+      view='observer';
+      $('observer-world').value='Earth';
+      resetObserver();
+      $('observer-target').value=body.name;
+      observerFov=entry.observerFov;
+    } else {
+      cameraAnchor=body;
+      config.zoom=body===earthMoon ? 100 : body===earth ? 56 : 28;
+      const direction=planetPosition(body.parent ?? body,ms).negate().normalize();
+      if (caster) {
+        const offset=moonPosition(caster,ms).divideScalar(body.radius);
+        offset.addScaledVector(direction,-offset.dot(direction));
+        const distanceSquared=offset.lengthSq();
+        if (distanceSquared<1) direction.multiplyScalar(Math.sqrt(1-distanceSquared)).add(offset);
+      }
+      yaw=Math.atan2(direction.x,direction.z);
+      manualTilt=T.MathUtils.clamp(Math.asin(direction.y)/rad,-85,85);
+      pinned=body;
+      $('inspect').value=body.name;
+    }
     setTime(ms,true);
+  }
+
+  eventMenu.onchange=()=>{
+    const entry=eventActions.get(eventMenu.value);
+    eventMenu.value='';
+    if (!entry) return;
+    const after=time+minute;
+    let ms=entry.at;
+    if (entry.search && after<maxTime) {
+      try {
+        const result=entry.search(new Date(after));
+        ms=typeof result==='number' ? result : +result?.date;
+      } catch (error) {
+        console.warn('Could not calculate '+entry.label,error);
+      }
+    }
+    if (!Number.isFinite(ms) || ms<minTime || ms>maxTime || (entry.search && ms<after)) {
+      eventStatus.textContent=entry.unavailable ?? 'No matching event found within the simulation dates.';
+      return;
+    }
+    showEvent(entry,ms);
+    eventStatus.textContent=entry.label.replace(/^Next /,'')+' · '+utc.format(new Date(ms))+' UTC';
   };
 
   function updateObserver(positions) {
