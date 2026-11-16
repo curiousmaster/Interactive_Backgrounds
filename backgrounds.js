@@ -317,6 +317,14 @@ export const backgrounds = [
             "forming bright seams. Your pointer adds a source to reshape the pattern.",
     },
     {
+        name: "Solar System",
+        folder: "solar-system",
+        tags: ["space", "astronomy", "3d", "interactive"],
+        description:
+            "Explore the Sun, planets, moons, and rings in a top-down 2D atlas or an interactive 3D view. " +
+            "Adjust the simulation clock and hover or tap to inspect celestial bodies.",
+    },
+    {
         name: "Scanning Light",
         folder: "scanning-light",
         tags: ["abstract", "optics"],
