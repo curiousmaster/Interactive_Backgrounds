@@ -157,7 +157,7 @@ function start(T) {
   const sunlight = new T.PointLight(0xfff0da,2.1,0,0);
   scene.add(light,light.target,sunlight,new T.AmbientLight(0xaabfe8,.58));
   const textureLoader = new T.TextureLoader().setCrossOrigin('anonymous');
-  const textureBase = 'https://cdn.solarsystemscope.com/textures/download/';
+  const textureBase = './textures/';
   const textureSource = 'https://www.solarsystemscope.com/textures/';
   const solarRadius = 695700;
   const sun = {name:'Sun',radius:solarRadius,period:0,spin:25.38,tilt:7.25,color:'#ffbb55',map:'sun',display:.72};
