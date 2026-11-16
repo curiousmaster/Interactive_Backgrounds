@@ -42,7 +42,9 @@
     flex-basis:100%; display:flex; align-items:center; flex-wrap:wrap; gap:.4rem
   }
   #toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem }
-  #scrub { flex:1 1 10rem; min-width:0 }
+  .timeline-row { display:flex; flex:1 0 100%; min-width:0; align-items:center; gap:.5rem }
+  .timeline-row input[type=range] { flex:1 1 0; min-width:0 }
+  #speed-value { min-width:4.5ch; text-align:right; font-variant-numeric:tabular-nums }
   #labels span { opacity:var(--label-opacity,1); transition:opacity .18s }
   #labels, #leader, #card, #controls, #solar-settings { transition:opacity .45s }
   body.ambient #labels, body.ambient #leader, body.ambient #card,
@@ -58,7 +60,16 @@
 <aside id="card" aria-label="Object information" hidden></aside>
 <nav id="controls" aria-label="Simulation controls" hidden>
   <div id="timeline-panel" hidden>
-    <label for="scrub">Timeline</label><input id="scrub" type="range" step="any">
+    <div class="timeline-row">
+      <label for="scrub">Timeline</label>
+      <input id="scrub" type="range">
+      <button id="timeline-center" type="button" title="Center the timeline on the current simulation time">Recenter</button>
+    </div>
+    <div class="timeline-row">
+      <label for="timeline-speed">Speed (days/s)</label>
+      <input id="timeline-speed" type="range">
+      <output id="speed-value" for="timeline-speed"></output>
+    </div>
     <input id="date" type="datetime-local" aria-label="Simulation date and time (UTC)">
     <select id="events" aria-label="Jump to an event">
       <option value="">Jump to an event…</option>
@@ -112,42 +123,18 @@ function start(T) {
   const minTime = Date.UTC(1800,0,1);
   const maxTime = Date.UTC(2050,11,31,23,59,59);
   const maxZoom = 100;
+  const minute = 60000;
+  const clockInterval = 1000;
+  const speedRange = {min:-60,max:60,step:.05};
   const defaults = {
-    "mode": "3d",
-    "tilt": 38,
-    "zoom": 1.4918246976412728,
-    "orbit": false,
-    "orbitSpeed": 3,
-    "speed": 60,
-    "paused": false,
-    "size": 0.3,
-    "moonSize": 0.7,
-    "stars": true,
-    "trails": true,
-    "trailOpacity": 0.45,
-    "moons": true,
-    "rings": true,
-    "labels": true,
-    "textures": true,
-    "highResolution": false,
-    "background": "#050812",
-    "cursorZoom": true,
-    "smartLabels": true,
-    "timeline": true,
-    "flybys": true,
-    "idleTour": false,
-    "tourDelay": 25,
-    "flybyDuration": 18,
-    "shadows": true,
-    "earthLights": true,
-    "earthClouds": true,
-    "earthAtmosphere": true,
-    "asteroidBelt": true,
-    "ringGrains": true,
-    "observerView": true,
-    "comparison": true,
-    "ambient": true,
-    "ambientDelay": 8
+    mode:'3d', tilt:38, zoom:1, orbit:false, orbitSpeed:3, speed:1,
+    paused:false, size:1, moonSize:1, stars:true, trails:true, trailOpacity:.45,
+    moons:true, rings:true, labels:true, textures:location.protocol !== 'file:',
+    highResolution:false, background:'#050812', cursorZoom:true, smartLabels:true,
+    timeline:true, flybys:true, idleTour:false, tourDelay:25, flybyDuration:18,
+    shadows:true, earthLights:true, earthClouds:true, earthAtmosphere:true,
+    asteroidBelt:true, ringGrains:true, observerView:true, comparison:true,
+    ambient:false, ambientDelay:8
   };
   const config = { ...defaults };
   const presets = {
@@ -165,13 +152,13 @@ function start(T) {
     ],
     Time: [
       {key:'paused',label:'Pause simulation'},
-      {key:'speed',label:'Simulation days per second',min:-60,max:60,step:.25}
+      {key:'speed',label:'Simulation days per second',...speedRange}
     ],
     Features: [
       {key:'trails',label:'Orbital paths'},
       {key:'trailOpacity',label:'Path opacity',min:.05,max:1,step:.05,when:c=>c.trails},
       {key:'moons',label:'Moons in planet focus'},
-      {key:'moonSize',label:'Moon size multiplier',min:.1,max:3,step:.1,when:c=>c.moons},
+      {key:'moonSize',label:'Moon size multiplier',min:.5,max:3,step:.1,when:c=>c.moons},
       {key:'rings',label:'Planetary rings'},
       {key:'textures',label:'Texture maps'},
       {key:'highResolution',label:'Optional 8K close-up maps',when:c=>c.textures},
@@ -198,7 +185,7 @@ function start(T) {
       {key:'ambientDelay',label:'Idle time before hiding controls (s)',min:3,max:60,step:1,when:c=>c.ambient}
     ],
     Style: [
-      {key:'size',label:'Overview body size multiplier',min:.1,max:3,step:.1},
+      {key:'size',label:'Overview body size multiplier',min:.5,max:3,step:.1},
       {key:'background',label:'Background color',validate:v=>CSS.supports('color',v)}
     ]
   };
@@ -720,7 +707,12 @@ function start(T) {
   const utc = new Intl.DateTimeFormat('en-GB',{
     timeZone:'UTC',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'
   });
-  const resetTime = () => { time=T.MathUtils.clamp(Date.now(),minTime,maxTime); trailTime=NaN; syncTimeline(); };
+  function resetTime() {
+    time=T.MathUtils.clamp(Date.now(),minTime,maxTime);
+    trailTime=NaN;
+    if (timelineOpen) centerTimeline();
+    updateClock();
+  }
   function resize() {
     width = window.innerWidth;
     height = window.innerHeight;
@@ -742,7 +734,7 @@ function start(T) {
   let observerFov = 44;
   let observerEye = new T.Vector3();
   let observerDirection = new T.Vector3();
-  let lastTimelineSync = NaN;
+  let lastClockUpdate = -Infinity;
   const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
   const showcase = [
     {name:'Saturn · through the ring plane',host:saturn,
@@ -883,36 +875,72 @@ function start(T) {
 
   const scrub=$('scrub');
   const dateInput=$('date');
-  dateInput.min=new Date(minTime).toISOString().slice(0,16);
-  dateInput.max=new Date(maxTime).toISOString().slice(0,16);
+  const speedInput=$('timeline-speed');
+  const speedOutput=$('speed-value');
+  const clock=$('clock');
+  Object.assign(speedInput,speedRange);
+  scrub.step=minute;
+  dateInput.min=new Date(minTime).toISOString().slice(0,19);
+  dateInput.max=new Date(maxTime).toISOString().slice(0,19);
   dateInput.step=1;
-  function syncTimeline() {
-    if (!timelineOpen) return;
-    const stamp=new Date(time).toISOString();
-    if (+scrub.min>time || +scrub.max<time || !Number.isFinite(lastTimelineSync)) {
-      scrub.min=Math.max(minTime,time-15*day);
-      scrub.max=Math.min(maxTime,time+15*day);
-      lastTimelineSync=time;
-    }
-    scrub.value=time;
-    scrub.setAttribute('aria-valuetext',utc.format(new Date(time))+' UTC');
-    if (document.activeElement!==dateInput) dateInput.value=stamp.slice(0,19);
+
+  function labelScrub() {
+    scrub.setAttribute('aria-valuetext',utc.format(new Date(scrub.valueAsNumber))+' UTC');
   }
+
+  function centerTimeline() {
+    // Hold this window and thumb steady until the user seeks or recenters.
+    const center=Math.floor(time/minute)*minute;
+    scrub.min=Math.max(minTime,center-15*day);
+    scrub.max=Math.min(Math.floor(maxTime/minute)*minute,center+15*day);
+    scrub.value=center;
+    labelScrub();
+  }
+
+  function updateClock(now=performance.now()) {
+    lastClockUpdate=now;
+    const date=new Date(time);
+    const iso=date.toISOString();
+    const stamp=utc.format(date)+' UTC';
+    if (clock.textContent!==stamp) clock.textContent=stamp;
+    if (clock.dateTime!==iso) clock.dateTime=iso;
+    if (timelineOpen && document.activeElement!==dateInput) {
+      const value=iso.slice(0,19);
+      if (dateInput.value!==value) dateInput.value=value;
+    }
+  }
+
   function setTime(ms,recenter) {
     if (!Number.isFinite(ms)) return;
     time=T.MathUtils.clamp(ms,minTime,maxTime);
+    const wasPlaying=!config.paused;
     config.paused=true;
-    if (recenter) trailTime=lastTimelineSync=NaN;
-    syncTimeline();
-    updateControls();
+    if (recenter) {
+      trailTime=NaN;
+      if (timelineOpen) centerTimeline();
+      updateClock();
+    }
+    if (wasPlaying || recenter) updateControls();
   }
+
   $('timeline').onclick=()=>{
     timelineOpen=!timelineOpen;
-    lastTimelineSync=NaN;
-    syncTimeline();
+    if (timelineOpen) {
+      centerTimeline();
+      updateClock();
+    }
     syncTheater();
   };
-  scrub.oninput=()=>setTime(scrub.valueAsNumber,false);
+  $('timeline-center').onclick=centerTimeline;
+  scrub.oninput=()=>{
+    labelScrub();
+    setTime(scrub.valueAsNumber,false);
+  };
+  scrub.onchange=()=>updateClock();
+  speedInput.oninput=()=>{
+    config.speed=speedInput.valueAsNumber;
+    updateControls();
+  };
   dateInput.onchange=()=>{
     setTime(Date.parse(dateInput.value+'Z'),true);
     dateInput.value=new Date(time).toISOString().slice(0,19);
@@ -1061,6 +1089,9 @@ function start(T) {
     $('two').setAttribute('aria-pressed',String(config.mode==='2d'));
     $('three').setAttribute('aria-pressed',String(config.mode==='3d'));
     $('pause').textContent = config.paused?'Play':'Pause';
+    speedInput.value=config.speed;
+    speedOutput.value=config.speed;
+    speedInput.setAttribute('aria-valuetext',config.speed+' days per second');
     syncTheater();
     editor?.sync();
   }
@@ -1077,7 +1108,11 @@ function start(T) {
   },now:resetTime});
   $('two').onclick = () => { activity(true); config.mode='2d'; updateControls(); };
   $('three').onclick = () => { activity(true); config.mode='3d'; updateControls(); };
-  $('pause').onclick = () => { config.paused=!config.paused; updateControls(); };
+  $('pause').onclick = () => {
+    config.paused=!config.paused;
+    if (config.paused) updateClock();
+    updateControls();
+  };
   $('now').onclick = resetTime;
   $('overview').onclick = () => { activity(true); view=''; changeFocus(null); config.zoom=1; updateControls(); };
   $('inspect').onchange = () => {
@@ -1484,12 +1519,7 @@ function start(T) {
     if (!drag && pointer && !pinned && !view && !flyby && !ambientActive) hovered=pick(pointer.x,pointer.y);
     else if (flyby || ambientActive) hovered=null;
     renderCard();
-    if (timelineOpen && !config.paused) syncTimeline();
-    const stamp=utc.format(date)+' UTC';
-    if ($('clock').textContent!==stamp) {
-      $('clock').textContent=stamp;
-      $('clock').dateTime=date.toISOString();
-    }
+    if (now-lastClockUpdate>=clockInterval) updateClock(now);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
