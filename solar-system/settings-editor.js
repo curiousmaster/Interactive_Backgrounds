@@ -23,7 +23,12 @@ window.mountSolarSettings = function ({ config, defaults, presets, sections, onC
   }
   toggle.setAttribute('aria-expanded', 'false');
   toggle.onclick = () => show(panel.hidden);
-  root.onkeydown = event => { if (event.key === 'Escape' && !panel.hidden) show(false); };
+  root.onkeydown = event => {
+    if (event.key === 'Escape' && !panel.hidden) {
+      event.preventDefault();
+      show(false);
+    }
+  };
 
   add(panel, 'h2', 'Solar System');
   const search = add(panel, 'input');
@@ -67,8 +72,7 @@ window.mountSolarSettings = function ({ config, defaults, presets, sections, onC
         }
         config[key] = value;
         status.textContent = '';
-        onChange();
-        sync();
+        onChange(key);
       });
       rows.push({ field, row, group, refresh });
     }
@@ -83,9 +87,9 @@ window.mountSolarSettings = function ({ config, defaults, presets, sections, onC
   upload.accept = '.json,application/json';
   let savedSections;
   function sync() {
+    const query = search.value.trim().toLowerCase();
     for (const { row, field, refresh } of rows) {
       refresh();
-      const query = search.value.trim().toLowerCase();
       row.hidden = Boolean((field.when && !field.when(config)) || (query && !field.label.toLowerCase().includes(query)));
     }
     for (const group of groups) group.hidden = !rows.some(row => row.group === group && !row.row.hidden);
@@ -106,7 +110,6 @@ window.mountSolarSettings = function ({ config, defaults, presets, sections, onC
     Object.assign(config, defaults, values);
     status.textContent = '';
     onChange();
-    sync();
   }
   preset.onchange = () => apply(presets[preset.value]);
   add(actions, 'button', 'Now').onclick = now;

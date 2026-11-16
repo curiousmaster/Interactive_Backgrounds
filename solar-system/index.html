@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Solar System</title>
+<link rel="icon" href="data:,">
 <style>
   * { box-sizing: border-box }
   [hidden] { display: none !important }
@@ -37,6 +38,16 @@
   #card:not(.pinned) { pointer-events:none }
   #card p { margin:.35rem 0 }
   #card button { margin:.45rem .35rem 0 0 }
+  #timeline-panel, #observer-panel, #compare-panel, #tour-panel {
+    flex-basis:100%; display:flex; align-items:center; flex-wrap:wrap; gap:.4rem
+  }
+  #toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem }
+  #scrub { flex:1 1 10rem; min-width:0 }
+  #labels span { opacity:var(--label-opacity,1); transition:opacity .18s }
+  #labels, #leader, #card, #controls, #solar-settings { transition:opacity .45s }
+  body.ambient #labels, body.ambient #leader, body.ambient #card,
+  body.ambient #controls, body.ambient #solar-settings { opacity:0; pointer-events:none }
+  @media (max-width:520px) { #toolbar { gap:.3rem } #clock { font-size:.8rem } #controls button { padding:.3rem .45rem } }
   #status { position:fixed; top:.85rem; left:.85rem; max-width:calc(100vw - 10rem); color:#afd0fa }
 </style>
 </head>
@@ -46,13 +57,41 @@
 <svg id="leader" aria-hidden="true"><path fill="none" stroke="#9dbce8" stroke-opacity=".75" /></svg>
 <aside id="card" aria-label="Object information" hidden></aside>
 <nav id="controls" aria-label="Simulation controls" hidden>
+  <div id="timeline-panel" hidden>
+    <label for="scrub">Timeline</label><input id="scrub" type="range" step="any">
+    <input id="date" type="datetime-local" aria-label="Simulation date and time (UTC)">
+    <select id="events" aria-label="Jump to an event">
+      <option value="">Jump to an event…</option>
+      <option value="solar">2024 total solar eclipse</option>
+      <option value="lunar">2025 total lunar eclipse</option>
+      <option value="io">Next Io shadow transit</option>
+    </select>
+  </div>
+  <div id="observer-panel" hidden>
+    <label for="observer-world">View from</label>
+    <select id="observer-world"><option>Earth</option><option>Mars</option><option>Titan</option></select>
+    <label for="observer-target">Look at</label><select id="observer-target"></select>
+    <span id="observer-info"></span>
+  </div>
+  <div id="compare-panel" hidden>
+    <label for="compare-first">Compare</label><select id="compare-first"></select>
+    <label for="compare-second">with</label><select id="compare-second"></select>
+    <span id="compare-info"></span>
+  </div>
+  <div id="tour-panel" hidden><span id="tour-stop"></span><button id="tour-next">Next flyby</button></div>
+  <div id="toolbar">
   <button id="two">2D</button><button id="three">3D</button>
   <button id="pause">Pause</button><button id="now">Now</button>
   <button id="overview" hidden>Overview</button>
   <select id="inspect" aria-label="Inspect object"><option value="">Inspect object…</option></select>
+  <button id="timeline" aria-controls="timeline-panel">Timeline</button>
+  <button id="tour" aria-controls="tour-panel">Flybys</button>
+  <button id="observer" aria-controls="observer-panel">Observer</button>
+  <button id="compare" aria-controls="compare-panel">Compare</button>
   <time id="clock"></time>
+  </div>
 </nav>
-<script src="./settings-editor.js"></script>
+<script src="./setting-editor.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
 <script type="module">
 const $ = id => document.getElementById(id);
@@ -70,22 +109,30 @@ function start(T) {
   const rad = Math.PI / 180;
   const day = 86400000;
   const epoch = Date.UTC(2000, 0, 1, 12);
+  const minTime = Date.UTC(1800,0,1);
+  const maxTime = Date.UTC(2050,11,31,23,59,59);
+  const maxZoom = 100;
   const defaults = {
     mode:'3d', tilt:38, zoom:1, orbit:false, orbitSpeed:3, speed:1,
     paused:false, size:1, moonSize:1, stars:true, trails:true, trailOpacity:.45,
-    moons:true, rings:true, labels:true, textures:true, background:'#050812'
+    moons:true, rings:true, labels:true, textures:location.protocol !== 'file:',
+    highResolution:false, background:'#050812', cursorZoom:true, smartLabels:true,
+    timeline:true, flybys:true, idleTour:false, tourDelay:25, flybyDuration:18,
+    shadows:true, earthLights:true, earthClouds:true, earthAtmosphere:true,
+    asteroidBelt:true, ringGrains:true, observerView:true, comparison:true,
+    ambient:false, ambientDelay:8
   };
   const config = { ...defaults };
   const presets = {
     'Solar overview': {}, 'Flat atlas': { mode:'2d' }, 'Slow orbit': { orbit:true, speed:4 },
-    'Quiet background': { labels:false, orbit:true, trailOpacity:.24 }
+    'Quiet background': { ambient:true, idleTour:true, orbit:true, speed:.05, trailOpacity:.24 }
   };
   const is3d = c => c.mode === '3d';
   const sections = {
     View: [
       {key:'mode',label:'View mode',options:{'2d':'2D · top down','3d':'3D · perspective'}},
       {key:'tilt',label:'Camera tilt',min:5,max:85,step:1,when:is3d},
-      {key:'zoom',label:'Zoom',min:.5,max:100,step:0.5},
+      {key:'zoom',label:'Zoom',min:.6,max:maxZoom,step:.05},
       {key:'orbit',label:'Auto-orbit camera',when:is3d},
       {key:'orbitSpeed',label:'Camera orbit speed (°/s)',min:.5,max:15,step:.5,when:c=>is3d(c)&&c.orbit}
     ],
@@ -99,9 +146,29 @@ function start(T) {
       {key:'moons',label:'Moons in planet focus'},
       {key:'moonSize',label:'Moon size multiplier',min:.1,max:3,step:.1,when:c=>c.moons},
       {key:'rings',label:'Planetary rings'},
-      {key:'textures',label:'External texture maps'},
+      {key:'textures',label:'Texture maps'},
+      {key:'highResolution',label:'Optional 8K close-up maps',when:c=>c.textures},
+      {key:'cursorZoom',label:'Zoom toward the cursor'},
+      {key:'smartLabels',label:'Zoom-aware labels and paths'},
+      {key:'timeline',label:'Timeline and event bookmarks'},
+      {key:'shadows',label:'Moon and ring shadows'},
+      {key:'earthLights',label:'Earth night lights'},
+      {key:'earthClouds',label:'Earth clouds'},
+      {key:'earthAtmosphere',label:'Earth atmosphere'},
+      {key:'asteroidBelt',label:'Asteroid belt'},
+      {key:'ringGrains',label:'Saturn ring grains',when:c=>c.rings},
+      {key:'observerView',label:'Observer view'},
+      {key:'comparison',label:'Body size comparison'},
       {key:'labels',label:'Object labels'},
       {key:'stars',label:'Star field'}
+    ],
+    'Flybys and ambient': [
+      {key:'flybys',label:'Cinematic flybys'},
+      {key:'flybyDuration',label:'Seconds per flyby',min:8,max:45,step:1,when:c=>c.flybys},
+      {key:'idleTour',label:'Start or resume flybys when idle',when:c=>c.flybys},
+      {key:'tourDelay',label:'Idle time before flybys (s)',min:5,max:120,step:1,when:c=>c.flybys&&c.idleTour},
+      {key:'ambient',label:'Ambient mode'},
+      {key:'ambientDelay',label:'Idle time before hiding controls (s)',min:3,max:60,step:1,when:c=>c.ambient}
     ],
     Style: [
       {key:'size',label:'Overview body size multiplier',min:.1,max:3,step:.1},
@@ -152,7 +219,8 @@ function start(T) {
   const perspective = new T.PerspectiveCamera(44,1,.005,5000);
   const flat = new T.OrthographicCamera(-1,1,1,-1,.005,5000);
   const ray = new T.Raycaster();
-  const sphere = new T.SphereGeometry(1,48,32);
+  const sphere = new T.SphereGeometry(1,40,28);
+  const detailSphere = new T.SphereGeometry(1,96,64);
   const light = new T.DirectionalLight(0xfff0da,2.1);
   const sunlight = new T.PointLight(0xfff0da,2.1,0,0);
   scene.add(light,light.target,sunlight,new T.AmbientLight(0xaabfe8,.58));
@@ -168,10 +236,11 @@ function start(T) {
       ({name,parent,radius,a,period,e,i,spin:period,color,map,phase:index*1.62+.6,node:index*.74,tilt:0})));
   const jovianMaps = {Io:'jup1vss2',Europa:'jup2vuu2',Ganymede:'jup3vuu2',Callisto:'jup4vuu2'};
   for (const moon of moons) {
-    if (jovianMaps[moon.name]) moon.externalMap = 'https://space.jpl.nasa.gov/tmaps/pix/'+jovianMaps[moon.name]+'.jpg';
+    if (jovianMaps[moon.name]) moon.externalMap = textureBase+jovianMaps[moon.name]+'.jpg';
     if (moon.name === 'Nereid') moon.spin = .480;
   }
   const bodies = [sun,...planets,...moons];
+  const satellitesByHost = new Map(planets.map(body=>[body,moons.filter(moon=>moon.parent===body)]));
   for (const body of bodies) {
     body.root = new T.Group();
     body.axis = new T.Group();
@@ -188,7 +257,7 @@ function start(T) {
   }
 
   function loadMap(body, large = false) {
-    if ((!body.map && !body.externalMap) || !config.textures || (large && body.externalMap)) return;
+    if ((!body.map && !body.externalMap) || !config.textures || location.protocol==='file:' || (large && body.externalMap)) return;
     const key = large ? 'detail' : 'overview';
     if (body[key]) return;
     body[key] = 'loading';
@@ -207,10 +276,15 @@ function start(T) {
     Neptune:[[1.69,1.75,'#8093b7',.13],[2.13,2.36,'#829cc8',.09],[2.53,2.57,'#a3aed0',.25]]
   };
   let saturnMap;
-  if (config.textures) textureLoader.load(textureBase+'2k_saturn_ring_alpha.png', texture => {
-    texture.colorSpace = T.SRGBColorSpace;
-    saturnMap = texture;
-  },undefined,()=>{});
+  let saturnRequested = false;
+  function loadSaturnMap() {
+    if (!config.textures || saturnRequested || location.protocol==='file:') return;
+    saturnRequested = true;
+    textureLoader.load(textureBase+'2k_saturn_ring_alpha.png',texture=>{
+      texture.colorSpace = T.SRGBColorSpace;
+      saturnMap = texture;
+    },undefined,()=>{});
+  }
   for (const body of planets.filter(body => rings[body.name])) {
     body.rings = new T.Group();
     body.axis.add(body.rings);
@@ -326,6 +400,279 @@ function start(T) {
     scene.add(body.path);
   }
 
+  const earth = planets[2];
+  const saturn = planets[5];
+  const jupiter = planets[4];
+  const io = moons.find(body=>body.name==='Io');
+  const earthMoon = moons.find(body=>body.name==='Moon');
+  const maxCasters = 7;
+
+  function makeCityMap() {
+    const map=document.createElement('canvas');
+    map.width=1024;
+    map.height=512;
+    const context=map.getContext('2d');
+    // Longitude, latitude, intensity. These are stylized city lights.
+    const cities=[
+      [-74,40.7,1],[-118,34,1],[-122.4,37.8,.8],[-87.6,41.9,.8],[-95.4,29.8,.7],
+      [-79.4,43.7,.7],[-99.1,19.4,.9],[-46.6,-23.6,1],[-58.4,-34.6,.8],[-77,-12,.7],
+      [-70.7,-33.4,.7],[-.13,51.5,1],[2.35,48.9,.9],[13.4,52.5,.7],[4.9,52.4,.65],
+      [12.5,41.9,.7],[-3.7,40.4,.65],[37.6,55.8,.85],[29,41,.8],[31.2,30,.8],
+      [3.4,6.5,.7],[28,-26.2,.7],[55.3,25.2,.75],[72.9,19.1,1],[77.2,28.6,.9],
+      [90.4,23.8,.8],[100.5,13.8,.8],[106.8,-6.2,.85],[121,14.6,.75],[114.2,22.3,.85],
+      [121.5,31.2,1],[116.4,39.9,.9],[127,37.6,.9],[139.7,35.7,1],[135.5,34.7,.8],
+      [151.2,-33.9,.8],[144.9,-37.8,.7],[174.8,-36.8,.5],[-123.1,49.3,.6]
+    ];
+    for (const [longitude,latitude,strength] of cities) {
+      const x=(longitude+180)/360*map.width;
+      const y=(90-latitude)/180*map.height;
+      const spread=2+strength*4;
+      const glow=context.createRadialGradient(x,y,0,x,y,spread);
+      glow.addColorStop(0,'rgba(255,255,255,'+strength+')');
+      glow.addColorStop(.35,'rgba(255,255,255,'+strength*.35+')');
+      glow.addColorStop(1,'rgba(255,255,255,0)');
+      context.fillStyle=glow;
+      context.fillRect(x-spread,y-spread,spread*2,spread*2);
+    }
+    const texture=new T.CanvasTexture(map);
+    texture.wrapS=T.RepeatWrapping;
+    return texture;
+  }
+  const cityMap=makeCityMap();
+  const solarUniforms=new Map();
+  const lightingGLSL=`
+    varying vec3 solarSurface;
+    varying vec2 solarUv;
+    uniform vec3 solarDirection;
+    uniform float apparentSun;
+    uniform int casterCount;
+    uniform vec4 casters[${maxCasters}];
+    uniform vec3 ringPole;
+    uniform bool ringShadow;
+    uniform bool skyView;
+    uniform bool cityLights;
+    uniform sampler2D cityMap;
+  `;
+  const effectsGLSL=`
+    vec3 surface = normalize(solarSurface);
+    float sunDot = dot(surface,solarDirection);
+    if (skyView) outgoingLight=diffuseColor.rgb*(0.012+0.988*max(0.0,sunDot));
+    float illumination = 1.0;
+    for (int i=0; i<${maxCasters}; i++) {
+      if (i>=casterCount) break;
+      vec3 rayToCaster = casters[i].xyz-surface;
+      float along = dot(rayToCaster,solarDirection);
+      if (along<=0.0) continue;
+      float offset = length(rayToCaster-solarDirection*along);
+      float blur = max(0.001,along*apparentSun);
+      float radius = casters[i].w;
+      float strength = min(1.0,radius*radius/(blur*blur));
+      illumination *= 1.0-strength*(1.0-smoothstep(max(0.0,radius-blur),radius+blur,offset));
+    }
+    if (ringShadow) {
+      float denominator=dot(solarDirection,ringPole);
+      if (abs(denominator)>0.0001) {
+        float reach=-dot(surface,ringPole)/denominator;
+        float distanceInRing=length(surface+solarDirection*reach);
+        if (reach>0.0 && distanceInRing>1.24 && distanceInRing<2.35) {
+          if (distanceInRing<1.53) illumination *= 0.70;
+          else if (distanceInRing<1.95) illumination *= 0.28;
+          else if (distanceInRing>2.03) illumination *= 0.48;
+        }
+      }
+    }
+    outgoingLight *= mix(1.0,mix(0.12,1.0,illumination),smoothstep(-0.015,0.025,sunDot));
+    if (cityLights) {
+      outgoingLight += vec3(1.0,0.54,0.16)*texture2D(cityMap,solarUv).a*
+        (1.0-smoothstep(-0.23,0.02,sunDot))*1.9;
+    }
+  `;
+  for (const body of [...planets,...moons]) {
+    const uniforms={
+      solarDirection:{value:new T.Vector3(1,0,0)}, apparentSun:{value:.00465},
+      casters:{value:Array.from({length:maxCasters},()=>new T.Vector4())},
+      casterCount:{value:0}, ringPole:{value:new T.Vector3(0,1,0)},
+      ringShadow:{value:false}, skyView:{value:false},
+      cityLights:{value:false}, cityMap:{value:cityMap}
+    };
+    solarUniforms.set(body,uniforms);
+    body.material.onBeforeCompile=shader=>{
+      Object.assign(shader.uniforms,uniforms);
+      shader.vertexShader=shader.vertexShader
+        .replace('#include <common>','#include <common>\nvarying vec3 solarSurface; varying vec2 solarUv;')
+        .replace('#include <begin_vertex>','#include <begin_vertex>\nsolarSurface=mat3(modelMatrix)*position; solarUv=uv;');
+      shader.fragmentShader=shader.fragmentShader
+        .replace('#include <common>','#include <common>\n'+lightingGLSL)
+        .replace('#include <opaque_fragment>',effectsGLSL+'\n#include <opaque_fragment>');
+    };
+  }
+
+  const shellVertex=`
+    varying vec3 shellDirection;
+    varying vec3 shellPosition;
+    varying vec3 shellLocal;
+    void main() {
+      shellDirection=normalize(mat3(modelMatrix)*position);
+      shellPosition=(modelMatrix*vec4(position,1.0)).xyz;
+      shellLocal=position;
+      gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+    }
+  `;
+  const earthSun=solarUniforms.get(earth).solarDirection;
+  const earthClouds=new T.Mesh(sphere,new T.ShaderMaterial({
+    vertexShader:shellVertex,transparent:true,depthWrite:false,
+    uniforms:{lightDirection:earthSun,drift:{value:0}},
+    fragmentShader:`
+      varying vec3 shellDirection;
+      varying vec3 shellLocal;
+      uniform vec3 lightDirection;
+      uniform float drift;
+      float hash(vec3 p) { return fract(sin(dot(p,vec3(41.7,93.1,17.4)))*43758.5453); }
+      float noise(vec3 p) {
+        vec3 q=floor(p), f=fract(p);
+        f=f*f*(3.0-2.0*f);
+        return mix(mix(mix(hash(q),hash(q+vec3(1,0,0)),f.x),
+                       mix(hash(q+vec3(0,1,0)),hash(q+vec3(1,1,0)),f.x),f.y),
+                   mix(mix(hash(q+vec3(0,0,1)),hash(q+vec3(1,0,1)),f.x),
+                       mix(hash(q+vec3(0,1,1)),hash(q+vec3(1,1,1)),f.x),f.y),f.z);
+      }
+      void main() {
+        float s=sin(drift), c=cos(drift);
+        vec3 p=vec3(c*shellLocal.x+s*shellLocal.z,shellLocal.y,-s*shellLocal.x+c*shellLocal.z);
+        vec3 q=p*vec3(4.0,10.0,4.0);
+        float broad=noise(q+noise(p*5.0)*2.0);
+        float density=broad*0.58+noise(q*3.2)*0.29+noise(q*10.0)*0.13;
+        float daySide=smoothstep(-0.18,0.72,dot(normalize(shellDirection),lightDirection));
+        gl_FragColor=vec4(vec3(0.83,0.89,0.97)*(0.11+0.89*daySide),
+                          smoothstep(0.49,0.77,density)*0.76);
+      }
+    `
+  }));
+  earthClouds.scale.setScalar(1.008);
+  earthClouds.renderOrder=3;
+  earth.mesh.add(earthClouds);
+  const earthAtmosphere=new T.Mesh(sphere,new T.ShaderMaterial({
+    vertexShader:shellVertex,transparent:true,depthWrite:false,blending:T.AdditiveBlending,
+    uniforms:{lightDirection:earthSun,viewDirection:{value:new T.Vector3()},flatView:{value:false}},
+    fragmentShader:`
+      varying vec3 shellDirection;
+      varying vec3 shellPosition;
+      uniform vec3 lightDirection;
+      uniform vec3 viewDirection;
+      uniform bool flatView;
+      void main() {
+        vec3 n=normalize(shellDirection);
+        vec3 viewer=flatView ? viewDirection : normalize(cameraPosition-shellPosition);
+        float facing=max(dot(n,viewer),0.0);
+        float rim=pow(1.0-facing,5.0)*smoothstep(0.0,0.11,facing);
+        float daySide=smoothstep(-0.28,0.75,dot(n,lightDirection));
+        gl_FragColor=vec4(0.18,0.54,1.0,rim*(0.09+0.76*daySide));
+      }
+    `
+  }));
+  earthAtmosphere.scale.setScalar(1.027);
+  earthAtmosphere.renderOrder=4;
+  earth.mesh.add(earthAtmosphere);
+
+  function createDebris(count,planetary) {
+    const geometry=new T.IcosahedronGeometry(1,0);
+    const material=new T.MeshLambertMaterial({transparent:true,depthWrite:false});
+    const debris=new T.InstancedMesh(geometry,material,count);
+    const transform=new T.Object3D();
+    const color=new T.Color();
+    const orbits=[];
+    for (let i=0;i<count;i++) {
+      const angle=random()*tau;
+      const radius=planetary ? 1.26+random()*1.08 : 2.08+random()*1.23;
+      const thickness=(random()+random()-1)*(planetary?.017:.19);
+      const size=(planetary?.0012:.003)+random()**3*(planetary?.006:.017);
+      const gap=planetary && ((radius>1.95&&radius<2.03)||(radius>2.27&&radius<2.31));
+      orbits.push({angle,radius,thickness,size:gap?0:size});
+      color.setHSL(planetary?.105:.075,planetary?.18:.15,.36+random()*.41);
+      debris.setColorAt(i,color);
+    }
+    debris.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    debris.frustumCulled=false;
+    function advance(ms) {
+      // Keplerian angular drift for the belt and differential motion for the ring.
+      const days=(ms-epoch)/day;
+      for (let i=0;i<count;i++) {
+        const {angle,radius,thickness,size}=orbits[i];
+        const period=planetary ? .245*(radius/1.5)**1.5 : 365.256*radius**1.5;
+        const phase=angle+(days%period)/period*tau;
+        transform.position.set(radius*Math.cos(phase),thickness,radius*Math.sin(phase));
+        transform.scale.set(size,size*.64,size*.87);
+        transform.rotation.set(angle,phase,0);
+        transform.updateMatrix();
+        debris.setMatrixAt(i,transform.matrix);
+      }
+      debris.instanceMatrix.needsUpdate=true;
+    }
+    return {mesh:debris,advance};
+  }
+  const asteroidDebris=createDebris(1450,false);
+  const ringDebris=createDebris(4400,true);
+  scene.add(asteroidDebris.mesh);
+  saturn.axis.add(ringDebris.mesh);
+  let asteroidTime=NaN;
+  let ringTime=NaN;
+
+  function physicalPositions(ms) {
+    const positions=new Map([[sun,new T.Vector3()]]);
+    const date=new Date(ms);
+    const jovian=hasJupiter ? astro.JupiterMoons(date) : null;
+    for (const body of planets) positions.set(body,planetPosition(body,ms).multiplyScalar(auKm));
+    for (const body of moons) positions.set(body,positions.get(body.parent).clone().add(moonPosition(body,ms,jovian)));
+    return positions;
+  }
+
+  function updateLighting(positions,comparisonMode) {
+    for (const [body,uniforms] of solarUniforms) {
+      if (!body.root.visible) continue;
+      const origin=positions.get(body);
+      const sunVector=origin.clone().negate();
+      uniforms.apparentSun.value=sun.radius/sunVector.length();
+      uniforms.solarDirection.value.copy(sunVector.normalize());
+      uniforms.skyView.value=view==='observer';
+      uniforms.cityLights.value=config.earthLights && body===earth && !comparisonMode;
+      uniforms.ringShadow.value=config.shadows && config.rings && !comparisonMode && body===saturn;
+      if (uniforms.ringShadow.value) uniforms.ringPole.value.copy(yAxis).applyQuaternion(body.axis.quaternion);
+      let count=0;
+      if (config.shadows && !comparisonMode) {
+        const candidates=body.parent ? [body.parent] : satellitesByHost.get(body) ?? [];
+        for (const caster of candidates) {
+          if (count===maxCasters) break;
+          const offset=positions.get(caster).clone().sub(origin).divideScalar(body.radius);
+          const along=offset.dot(uniforms.solarDirection.value);
+          const radius=caster.radius/body.radius;
+          if (along<=0 || offset.addScaledVector(uniforms.solarDirection.value,-along).length()>
+              1+radius+along*uniforms.apparentSun.value) continue;
+          offset.addScaledVector(uniforms.solarDirection.value,along);
+          uniforms.casters.value[count++].set(offset.x,offset.y,offset.z,radius);
+        }
+      }
+      uniforms.casterCount.value=count;
+    }
+  }
+  function updateDebris() {
+    const asteroid=asteroidDebris.mesh;
+    asteroid.visible=config.asteroidBelt && !focus && !view;
+    asteroid.material.opacity=T.MathUtils.lerp(.4,.85,T.MathUtils.clamp((config.zoom-1)/4,0,1));
+    if (asteroid.visible && (!Number.isFinite(asteroidTime) || Math.abs(time-asteroidTime)>day*.05)) {
+      asteroidDebris.advance(time);
+      asteroidTime=time;
+    }
+    const grains=ringDebris.mesh;
+    const proximity=3.5-camera.position.length();
+    const grainOpacity=flyby ? .72 : T.MathUtils.smoothstep(proximity,-1,1)*.8;
+    grains.visible=config.rings && config.ringGrains && !view && focus===saturn && config.mode==='3d' && grainOpacity>.015;
+    grains.material.opacity=grainOpacity;
+    if (grains.visible && (!Number.isFinite(ringTime) || Math.abs(time-ringTime)>day*.0005)) {
+      ringDebris.advance(time);
+      ringTime=time;
+    }
+  }
+
   let time = Date.now();
   let last = performance.now();
   let focus = null;
@@ -335,7 +682,8 @@ function start(T) {
   let camera = perspective;
   let yaw = .28;
   let manualTilt = null;
-  let panX = 0, panY = 0;
+  const pan = new T.Vector3();
+  let cameraAnchor = null;
   let extent = 34;
   let trailTime = NaN;
   let lastFocus;
@@ -345,7 +693,7 @@ function start(T) {
   const utc = new Intl.DateTimeFormat('en-GB',{
     timeZone:'UTC',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'
   });
-  const resetTime = () => { time=Date.now(); trailTime=NaN; };
+  const resetTime = () => { time=T.MathUtils.clamp(Date.now(),minTime,maxTime); trailTime=NaN; syncTimeline(); };
   function resize() {
     width = window.innerWidth;
     height = window.innerHeight;
@@ -355,30 +703,374 @@ function start(T) {
   resize();
 
   let editor;
+  let view = '';
+  let timelineOpen = false;
+  let flyby = null;
+  let nextFlyby = 0;
+  let lastActivity = performance.now();
+  let ambientActive = false;
+  let keyboardNavigation = false;
+  let observerYaw = 0;
+  let observerPitch = 0;
+  let observerFov = 44;
+  let observerEye = new T.Vector3();
+  let observerDirection = new T.Vector3();
+  let lastTimelineSync = NaN;
+  const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
+  const showcase = [
+    {name:'Saturn · through the ring plane',host:saturn,
+      points:[[3.7,1.85,2.8],[2.3,.52,1],[1.56,-.025,.15],[1.7,-.36,-1.8],[-.42,-.095,-4.4]],
+      target:[0,0,0]},
+    {name:'Earth · atmosphere and night lights',host:earth,
+      points:[[2.9,1.25,2.4],[1.35,.65,1.85],[-.2,.38,1.69],[-1.72,.52,.69],[-2.8,.9,-1.5]],
+      target:[0,0,0]},
+    {name:'Jupiter · tracking Io',host:jupiter,follow:io,
+      points:[[.95,.55,1.8],[.55,.25,1.2],[-.3,.2,.94],[-.6,.4,1.04],[-1.1,.5,1.5]],
+      target:[0,0,0]}
+  ];
+  for (const shot of showcase) {
+    shot.curve=new T.CatmullRomCurve3(shot.points.map(point=>new T.Vector3(...point)));
+  }
+  function activity(override=false) {
+    lastActivity=performance.now();
+    if (ambientActive) setAmbient(false);
+    if (flyby && (override || flyby.automatic)) stopFlyby();
+  }
+  function setAmbient(active) {
+    if (ambientActive===active) return;
+    ambientActive=active;
+    document.body.classList.toggle('ambient',active);
+    $('controls').inert=active;
+    $('solar-settings').inert=active;
+    $('card').inert=active;
+  }
+  function syncTheater() {
+    $('timeline').hidden=!config.timeline;
+    $('timeline-panel').hidden=!config.timeline||!timelineOpen;
+    $('timeline').setAttribute('aria-pressed',String(!$('timeline-panel').hidden));
+    $('observer').hidden=!config.observerView;
+    $('observer').setAttribute('aria-pressed',String(view==='observer'));
+    $('observer-panel').hidden=view!=='observer';
+    $('compare').hidden=!config.comparison;
+    $('compare').setAttribute('aria-pressed',String(view==='compare'));
+    $('compare-panel').hidden=view!=='compare';
+    $('tour').hidden=!config.flybys;
+    $('tour').setAttribute('aria-pressed',String(Boolean(flyby)));
+    $('tour-panel').hidden=!flyby;
+    $('overview').hidden=!focus&&!view;
+    $('inspect').hidden=Boolean(view);
+    $('two').disabled=$('three').disabled=Boolean(view);
+  }
+
+  const observerTargets=bodies.filter(body=>!body.parent||['Moon','Titan'].includes(body.name));
+  const byName=new Map(bodies.map(body=>[body.name,body]));
+  for (const select of [$('compare-first'),$('compare-second')]) {
+    for (const body of bodies) select.add(new Option(body.name,body.name));
+  }
+  $('compare-first').value='Earth';
+  $('compare-second').value='Jupiter';
+  function resetObserver() {
+    const origin=byName.get($('observer-world').value);
+    const select=$('observer-target');
+    const previous=select.value;
+    select.replaceChildren(...observerTargets.filter(body=>body!==origin).map(body=>new Option(body.name,body.name)));
+    select.value=previous && previous!==origin.name ? previous : origin===earth ? 'Moon' : origin.parent?.name ?? 'Earth';
+    observerYaw=observerPitch=0;
+    observerFov=44;
+  }
+  resetObserver();
+  $('observer-world').onchange=resetObserver;
+  $('observer-target').onchange=()=>{ observerYaw=observerPitch=0; };
+
+  function activateView(next) {
+    activity(true);
+    view=view===next ? '' : next;
+    changeFocus(null);
+    updateControls();
+  }
+  $('observer').onclick=()=>activateView('observer');
+  $('compare').onclick=()=>activateView('compare');
+
+  function startFlyby(automatic,carry=0) {
+    const previous=flyby?.previous ?? {
+      focus,mode:config.mode,anchor:cameraAnchor,pan:pan.clone(),zoom:config.zoom,
+      pinned,hovered,yaw,manualTilt
+    };
+    const shot=showcase[nextFlyby++%showcase.length];
+    view='';
+    changeFocus(shot.host);
+    config.mode='3d';
+    flyby={shot,elapsed:carry,previous,automatic};
+    $('tour-stop').textContent=shot.name;
+    updateControls();
+  }
+  function stopFlyby() {
+    if (!flyby) return;
+    const previous=flyby.previous;
+    flyby=null;
+    changeFocus(previous.focus);
+    config.mode=previous.mode;
+    config.zoom=previous.zoom;
+    cameraAnchor=previous.anchor;
+    pan.copy(previous.pan);
+    pinned=previous.pinned;
+    hovered=previous.hovered;
+    yaw=previous.yaw;
+    manualTilt=previous.manualTilt;
+    $('inspect').value=pinned?.name ?? '';
+    updateControls();
+  }
+  $('tour').onclick=()=>flyby ? stopFlyby() : startFlyby(false);
+  $('tour-next').onclick=()=>startFlyby(false);
+
+  function updatePresentation(now,delta) {
+    const idle=(now-lastActivity)/1000;
+    const active=document.activeElement;
+    const editing=active?.closest('#controls, #solar-settings, #card') &&
+      (keyboardNavigation || active.matches('input, select'));
+    const settingsOpen=$('solar-settings-panel') && !$('solar-settings-panel').hidden;
+    const canIdle=!editing&&!settingsOpen&&!drag&&!view;
+    setAmbient(config.ambient && idle>=config.ambientDelay && canIdle);
+    if (config.flybys && config.idleTour && !reducedMotion.matches &&
+        idle>=config.tourDelay && canIdle && !timelineOpen && !flyby) startFlyby(true);
+    if (flyby) {
+      flyby.elapsed+=delta;
+      if (flyby.elapsed>=config.flybyDuration) startFlyby(flyby.automatic,flyby.elapsed%config.flybyDuration);
+    }
+  }
+  window.addEventListener('pointermove',()=>activity(),{capture:true,passive:true});
+  window.addEventListener('pointerdown',event=>{
+    keyboardNavigation=false;
+    if (ambientActive && event.target===canvas) {
+      activity(true);
+      event.stopImmediatePropagation();
+    } else {
+      activity(event.target===canvas);
+    }
+  },true);
+  window.addEventListener('wheel',event=>activity(event.target===canvas),{capture:true,passive:true});
+  window.addEventListener('keydown',()=>{
+    keyboardNavigation=true;
+    activity();
+  },true);
+
+  const scrub=$('scrub');
+  const dateInput=$('date');
+  dateInput.min=new Date(minTime).toISOString().slice(0,16);
+  dateInput.max=new Date(maxTime).toISOString().slice(0,16);
+  dateInput.step=1;
+  function syncTimeline() {
+    if (!timelineOpen) return;
+    const stamp=new Date(time).toISOString();
+    if (+scrub.min>time || +scrub.max<time || !Number.isFinite(lastTimelineSync)) {
+      scrub.min=Math.max(minTime,time-15*day);
+      scrub.max=Math.min(maxTime,time+15*day);
+      lastTimelineSync=time;
+    }
+    scrub.value=time;
+    scrub.setAttribute('aria-valuetext',utc.format(new Date(time))+' UTC');
+    if (document.activeElement!==dateInput) dateInput.value=stamp.slice(0,19);
+  }
+  function setTime(ms,recenter) {
+    if (!Number.isFinite(ms)) return;
+    time=T.MathUtils.clamp(ms,minTime,maxTime);
+    config.paused=true;
+    if (recenter) trailTime=lastTimelineSync=NaN;
+    syncTimeline();
+    updateControls();
+  }
+  $('timeline').onclick=()=>{
+    timelineOpen=!timelineOpen;
+    lastTimelineSync=NaN;
+    syncTimeline();
+    syncTheater();
+  };
+  scrub.oninput=()=>setTime(scrub.valueAsNumber,false);
+  dateInput.onchange=()=>{
+    setTime(Date.parse(dateInput.value+'Z'),true);
+    dateInput.value=new Date(time).toISOString().slice(0,19);
+  };
+
+  // Find a minimum of the shadow-axis distance on Jupiter's sunlit side.
+  function nextIoTransit(after) {
+    function distanceAt(ms) {
+      const lightDirection=planetPosition(jupiter,ms).negate().normalize();
+      const offset=moonPosition(io,ms);
+      const along=offset.dot(lightDirection);
+      return along>0 ? offset.addScaledVector(lightDirection,-along).length() : Infinity;
+    }
+    const step=day/96;
+    let older=distanceAt(after);
+    let previous=distanceAt(after+step);
+    for (let ms=after+2*step;ms<=Math.min(maxTime,after+10*day);ms+=step) {
+      const current=distanceAt(ms);
+      if (previous<=older && previous<=current && previous<jupiter.radius*1.15) {
+        let lo=ms-2*step, hi=ms;
+        for (let pass=0;pass<24;pass++) {
+          const a=lo+(hi-lo)/3, b=hi-(hi-lo)/3;
+          if (distanceAt(a)<distanceAt(b)) hi=b;
+          else lo=a;
+        }
+        const best=(lo+hi)/2;
+        if (distanceAt(best)<jupiter.radius) return best;
+      }
+      older=previous;
+      previous=current;
+    }
+    return NaN;
+  }
+  // Greatest eclipse times from NASA GSFC's solar and lunar eclipse catalogs.
+  const eclipses={
+    solar:[Date.UTC(2024,3,8,18,17,15),earth],
+    lunar:[Date.UTC(2025,2,14,6,58,42),earthMoon]
+  };
+  $('events').onchange=()=>{
+    const event=$('events').value;
+    $('events').value='';
+    if (!event) return;
+    const [ms,body]=eclipses[event] ?? [nextIoTransit(time+60000),jupiter];
+    if (!Number.isFinite(ms)) {
+      $('events').options[0].textContent='No Io shadow transit found in the next 10 days';
+      return;
+    }
+    $('events').options[0].textContent='Jump to an event…';
+    activity(true);
+    view='';
+    changeFocus(body);
+    config.mode='3d';
+    config.shadows=true;
+    config.moons=true;
+    cameraAnchor=body;
+    config.zoom=body===earthMoon ? 100 : body===earth ? 56 : 28;
+    const relative=(body.parent ? planetPosition(body.parent,ms) : planetPosition(body,ms)).negate().normalize();
+    yaw=Math.atan2(relative.x,relative.z)+.34;
+    manualTilt=T.MathUtils.clamp(Math.asin(relative.y)/rad+14,-80,80);
+    pinned=body;
+    $('inspect').value=body.name;
+    setTime(ms,true);
+  };
+
+  function updateObserver(positions) {
+    const origin=byName.get($('observer-world').value);
+    const target=byName.get($('observer-target').value);
+    const center=positions.get(origin);
+    observerDirection.copy(positions.get(target)).sub(center).normalize();
+    // Put the virtual observer just above the target-facing surface.
+    observerEye.copy(center).addScaledVector(observerDirection,origin.radius*1.002);
+    const direction=positions.get(target).clone().sub(observerEye);
+    const range=direction.length();
+    let description=target.name+' · '+(2*Math.asin(Math.min(1,target.radius/range))/rad).toFixed(3)+'°';
+    if (target!==sun) {
+      const towardSun=positions.get(target).clone().negate().normalize();
+      const lit=(1+towardSun.dot(direction.normalize().negate()))/2;
+      description+=' · '+Math.round(100*lit)+'% illuminated';
+    }
+    if ($('observer-info').textContent!==description) $('observer-info').textContent=description;
+    return origin;
+  }
+
+  function comparisonLayout() {
+    const first=byName.get($('compare-first').value);
+    const second=byName.get($('compare-second').value);
+    const sum=first.radius+second.radius;
+    const ratio=(Math.max(first.radius,second.radius)/Math.min(first.radius,second.radius)).toFixed(2);
+    const info=first===second ? first.radius.toLocaleString('en')+' km mean radius' :
+      first.radius.toLocaleString('en')+' vs '+second.radius.toLocaleString('en')+' km · '+ratio+'×';
+    if ($('compare-info').textContent!==info) $('compare-info').textContent=info;
+    return {first,second,sum};
+  }
+
+  function specialCamera() {
+    const aspect=width/height;
+    if (view==='compare') {
+      camera=flat;
+      const half=Math.max(.95,1.25/aspect);
+      flat.left=-half*aspect;
+      flat.right=half*aspect;
+      flat.top=half;
+      flat.bottom=-half;
+      flat.up.copy(yAxis);
+      flat.position.set(0,0,7);
+      flat.lookAt(0,0,0);
+      return true;
+    }
+    if (view==='observer') {
+      camera=perspective;
+      camera.aspect=aspect;
+      camera.fov=observerFov;
+      camera.position.set(0,0,0);
+      camera.up.copy(yAxis);
+      const direction=observerDirection.clone().applyAxisAngle(yAxis,observerYaw);
+      const right=direction.clone().cross(yAxis).normalize();
+      direction.applyAxisAngle(right,observerPitch);
+      camera.lookAt(direction);
+      return true;
+    }
+    if (flyby) {
+      const {shot,elapsed}=flyby;
+      camera=perspective;
+      camera.aspect=aspect;
+      camera.fov=aspect<1 ? 52 : 44;
+      const p=T.MathUtils.smoothstep(elapsed/config.flybyDuration,0,1);
+      const target=shot.follow ? shot.follow.root.position.clone() : new T.Vector3(...shot.target);
+      const rotation=shot.host.axis.quaternion;
+      const offset=shot.curve.getPoint(p);
+      // Keep the Saturn shot in its equatorial plane and start the Earth shot on the dusk limb.
+      if (shot.host===saturn) offset.applyQuaternion(rotation);
+      if (shot.host===earth) offset.applyAxisAngle(yAxis,Math.atan2(
+        solarUniforms.get(earth).solarDirection.value.x,solarUniforms.get(earth).solarDirection.value.z
+      )+Math.PI/2);
+      camera.position.copy(target).add(offset);
+      camera.up.copy(yAxis);
+      if (shot.host===saturn) camera.up.applyQuaternion(rotation);
+      camera.lookAt(target);
+      return true;
+    }
+    return false;
+  }
+
   function updateControls() {
     document.body.style.background = config.background;
     $('two').setAttribute('aria-pressed',String(config.mode==='2d'));
     $('three').setAttribute('aria-pressed',String(config.mode==='3d'));
     $('pause').textContent = config.paused?'Play':'Pause';
+    syncTheater();
     editor?.sync();
   }
-  editor = window.mountSolarSettings({config,defaults,presets,sections,onChange:()=>{
-    manualTilt=null;
+  editor = window.mountSolarSettings({config,defaults,presets,sections,onChange:key=>{
+    if (flyby && (!key || ['mode','zoom','tilt','flybys'].includes(key))) {
+      const changed=key ? {[key]:config[key]} : {...config};
+      stopFlyby();
+      Object.assign(config,changed);
+    }
+    if (!key || key==='tilt') manualTilt=null;
+    if ((!config.observerView && view==='observer') || (!config.comparison && view==='compare')) view='';
+    if (!config.timeline) timelineOpen=false;
     updateControls();
   },now:resetTime});
-  $('two').onclick = () => { config.mode='2d'; updateControls(); };
-  $('three').onclick = () => { config.mode='3d'; updateControls(); };
+  $('two').onclick = () => { activity(true); config.mode='2d'; updateControls(); };
+  $('three').onclick = () => { activity(true); config.mode='3d'; updateControls(); };
   $('pause').onclick = () => { config.paused=!config.paused; updateControls(); };
   $('now').onclick = resetTime;
-  $('overview').onclick = () => changeFocus(null);
+  $('overview').onclick = () => { activity(true); view=''; changeFocus(null); config.zoom=1; updateControls(); };
   $('inspect').onchange = () => {
+    const selected=$('inspect').value;
+    activity(true);
+    $('inspect').value=selected;
     pinned = bodies.find(body=>body.name===$('inspect').value) || null;
     hovered = null;
-    if (pinned?.parent && (focus!==pinned.parent || !config.moons)) {
+    if (pinned?.parent) {
       config.moons=true;
-      changeFocus(pinned.parent,false);
+      if (focus!==pinned.parent) {
+        changeFocus(pinned.parent,false);
+        config.zoom=1;
+      }
       editor.sync();
-    } else if (pinned && focus && pinned!==focus) changeFocus(null,false);
+    } else if (pinned && focus && pinned!==focus) {
+      changeFocus(null,false);
+      config.zoom=1;
+      editor.sync();
+    }
   };
   updateControls();
   $('controls').hidden=false;
@@ -386,21 +1078,24 @@ function start(T) {
   $('status').textContent='Using approximate orbital elements. The ephemeris library could not load.';
   function changeFocus(body,clear=true) {
     focus=body?.parent || body;
-    panX=0;
-    panY=0;
+    pan.set(0,0,0);
+    cameraAnchor=null;
     if (clear) {
       pinned=null;
       hovered=null;
       $('inspect').value='';
     }
-    $('overview').hidden=!focus;
+    $('overview').hidden=!focus && !view;
   }
 
   function updatePaths() {
     const rebuild = lastFocus!==focus || !Number.isFinite(trailTime) || Math.abs(time-trailTime)>day*120;
     for (const body of [...planets,...moons]) {
-      body.path.visible = config.trails && (focus ? body.parent===focus && config.moons : !body.parent);
-      body.path.material.opacity = config.trailOpacity;
+      body.path.visible = !view && config.trails && (focus ? body.parent===focus && (config.moons || flyby?.shot.follow===body) : !body.parent);
+      const pathDetail = !config.smartLabels ? 1 : focus ?
+        T.MathUtils.smoothstep(config.zoom,.75,2.4) : T.MathUtils.lerp(1,.24,T.MathUtils.smoothstep(config.zoom,4,20));
+      body.path.material.opacity = config.trailOpacity*pathDetail*(flyby ? .24 : 1);
+      body.path.visible &&= body.path.material.opacity>.005;
       if (!rebuild || !body.path.visible) continue;
       rebuildPath(body);
     }
@@ -421,23 +1116,44 @@ function start(T) {
     body.path.geometry.dispose();
     body.path.geometry=new T.BufferGeometry().setFromPoints(points);
   }
-  function updateBodies(date) {
-    const jovian = focus?.name==='Jupiter' && hasJupiter ? astro.JupiterMoons(date) : null;
+  function updateBodies(date,positions) {
+    loadSaturnMap();
+    const comparison=view==='compare' ? comparisonLayout() : null;
+    const observer=view==='observer' ? updateObserver(positions) : null;
     pickList.length=0;
     for (const body of bodies) {
-      const visible = focus ? body===focus || (config.moons && body.parent===focus) : !body.parent;
+      const visible=comparison ? body===comparison.first||body===comparison.second :
+        observer ? body!==observer && (!body.parent||config.moons||body.name===$('observer-target').value) :
+        focus ? body===focus || (body.parent===focus && (config.moons||flyby?.shot.follow===body)) : !body.parent;
       body.root.visible=visible;
       if (!visible) { body.label.hidden=true; continue; }
-      const pos = body===focus || body===sun ? new T.Vector3() :
-        body.parent ? moonPosition(body,time,jovian).multiplyScalar(1/body.parent.radius) : planetPosition(body,time);
-      body.root.position.copy(pos);
-      const size = body===focus ? 1 : body.parent ?
+      const world=positions.get(body);
+      const relative=body.parent ? world.clone().sub(positions.get(body.parent)) : null;
+      let pos=new T.Vector3();
+      let size=body===focus ? 1 : body.parent ?
         Math.max(.075,body.radius/body.parent.radius)*config.moonSize : body.display*config.size;
+      if (comparison) {
+        size=body.radius/comparison.sum*.82;
+        if (comparison.first===comparison.second) size=.74;
+        else pos.x=body===comparison.first ? -.12-comparison.second.radius/comparison.sum*.82 :
+          .12+comparison.first.radius/comparison.sum*.82;
+      } else if (observer) {
+        const offset=world.clone().sub(observerEye);
+        const distance=offset.length();
+        const depth=25+Math.log1p(distance/100)*5;
+        pos=offset.multiplyScalar(depth/distance);
+        size=depth*body.radius/distance;
+      } else if (relative) {
+        pos=relative.clone().divideScalar(body.parent.radius);
+      } else if (body!==focus && body!==sun) {
+        pos=world.clone().divideScalar(auKm);
+      }
+      body.root.position.copy(pos);
       body.mesh.scale.setScalar(size);
       body.visualRadius=size;
       if (body.parent && body.name !== 'Nereid') {
         // Keep the model's +X meridian oriented toward the host.
-        body.axis.quaternion.setFromUnitVectors(xAxis,pos.clone().negate().normalize());
+        body.axis.quaternion.setFromUnitVectors(xAxis,relative.clone().negate().normalize());
         body.mesh.rotation.y=0;
         if (body.name === 'Moon') setAxis(body,date);
       } else {
@@ -445,7 +1161,7 @@ function start(T) {
         setAxis(body,date);
       }
       if (body.rings) {
-        body.rings.visible=config.rings;
+        body.rings.visible=config.rings && !comparison;
         body.rings.scale.setScalar(size);
         if (body.fallbackRings) {
           const mapped=Boolean(config.textures && saturnMap);
@@ -460,9 +1176,10 @@ function start(T) {
         }
       }
       loadMap(body);
-      if (focus===body && !['venus_atmosphere','uranus','neptune'].includes(body.map)) loadMap(body,true);
+      if (config.highResolution && focus===body && (config.zoom>=2 || flyby) &&
+          !['venus_atmosphere','uranus','neptune'].includes(body.map)) loadMap(body,true);
       const map = config.textures ?
-        (focus===body && body.detail?.isTexture ? body.detail : body.overview?.isTexture ? body.overview : null) : null;
+        (config.highResolution && focus===body && body.detail?.isTexture ? body.detail : body.overview?.isTexture ? body.overview : null) : null;
       if (body.material.map!==map) {
         body.material.map=map;
         body.material.needsUpdate=true;
@@ -470,21 +1187,32 @@ function start(T) {
       body.material.color.set(map?'#ffffff':body.color);
       pickList.push(body.mesh);
     }
-    const direction=focus && focus!==sun ? planetPosition(focus,time).negate().normalize() : new T.Vector3(1,.35,.7);
+    const direction=focus && focus!==sun ? positions.get(focus).clone().negate().normalize() : new T.Vector3(.55,.6,1);
     light.position.copy(direction).multiplyScalar(500);
-    light.visible=Boolean(focus && focus!==sun);
-    sunlight.visible=!focus;
+    light.visible=Boolean(comparison || (focus && focus!==sun));
+    sunlight.visible=!focus && !view;
+    updateLighting(positions,Boolean(comparison));
+    earthClouds.visible=config.earthClouds && !comparison;
+    earthClouds.material.uniforms.drift.value=((time-epoch)/day*.145)%tau;
+    earthAtmosphere.visible=config.earthAtmosphere && !comparison;
   }
   function updateCamera(delta) {
+    if (specialCamera()) {
+      camera.updateProjectionMatrix();
+      camera.updateMatrixWorld();
+      return;
+    }
+    perspective.fov=44;
+    perspective.up.copy(yAxis);
     const satellites=focus ? moons.filter(body=>body.parent===focus) : [];
     const outer=focus && config.moons ? Math.max(0,...satellites.filter(body=>body.name!=='Nereid').map(body=>body.a*(1+body.e)/focus.radius)) : 0;
     const targetExtent=focus ? Math.max(4,outer*1.18) : 34;
     extent=T.MathUtils.damp(extent,targetExtent,7,delta);
-    if (config.orbit && config.mode==='3d' && !drag) yaw+=delta*config.orbitSpeed*rad;
+    if ((config.orbit || ambientActive) && config.mode==='3d' && !drag) yaw+=delta*(config.orbit ? config.orbitSpeed : .65)*rad;
     const aspect=width/height;
     const fit=extent/config.zoom;
     const halfHeight=fit/Math.min(1,aspect);
-    const target=new T.Vector3(panX,0,panY).multiplyScalar(halfHeight);
+    const target=pan.clone().add(cameraAnchor?.root.position ?? new T.Vector3());
     if (config.mode==='2d') {
       camera=flat;
       flat.left=-halfHeight*aspect;
@@ -492,12 +1220,13 @@ function start(T) {
       flat.top=halfHeight;
       flat.bottom=-halfHeight;
       flat.up.set(0,0,-1);
-      flat.position.copy(target).addScaledVector(yAxis,halfHeight*2+10);
+      flat.position.copy(target).addScaledVector(yAxis,halfHeight*2+(focus ? 500 : 50));
     } else {
       camera=perspective;
       perspective.aspect=aspect;
       const tilt=(manualTilt??config.tilt)*rad;
-      const distance=halfHeight/Math.tan(perspective.fov*rad/2);
+      const anchorRadius=cameraAnchor?.visualRadius ?? (focus ? 1 : 0);
+      const distance=Math.max(anchorRadius*1.06,.01,halfHeight/Math.tan(perspective.fov*rad/2));
       perspective.position.copy(target).add(new T.Vector3(
         Math.sin(yaw)*Math.cos(tilt),Math.sin(tilt),Math.cos(yaw)*Math.cos(tilt)
       ).multiplyScalar(distance));
@@ -510,17 +1239,40 @@ function start(T) {
     const p=vector.clone().project(camera);
     return {x:(p.x+1)*width/2,y:(1-p.y)*height/2, visible:p.z>=-1&&p.z<=1&&Math.abs(p.x)<1.05&&Math.abs(p.y)<1.05};
   }
+  const viewRight=new T.Vector3();
   function updateLabels() {
     projected.clear();
-    for (const body of bodies.filter(body=>body.root.visible)) {
+    const visible=bodies.filter(body=>body.root.visible);
+    const selected=pinned||hovered;
+    const lookTarget=view==='observer' ? byName.get($('observer-target').value) : null;
+    const priority=body=>body===selected ? 100 : body===focus||body===lookTarget ? 50 : body.parent ? 0 : 25;
+    visible.sort((a,b)=>priority(b)-priority(a));
+    const used=[];
+    viewRight.copy(xAxis).applyQuaternion(camera.quaternion);
+    for (const body of visible) {
       const point=screenPoint(body.root.position);
-      const edge=screenPoint(body.root.position.clone().addScaledVector(
-        xAxis.clone().applyQuaternion(camera.quaternion),body.visualRadius
-      ));
+      const edge=screenPoint(body.root.position.clone().addScaledVector(viewRight,body.visualRadius));
       point.radius=Math.abs(edge.x-point.x);
+      const inDetail=point.visible && point.radius>(body.mesh.geometry===detailSphere ? 70 : 95);
+      body.mesh.geometry=config.smartLabels && inDetail ? detailSphere : sphere;
       projected.set(body,point);
-      body.label.hidden=!config.labels || !point.visible;
-      body.label.style.transform='translate('+Math.round(point.x+point.radius+5)+'px,'+Math.round(point.y-8)+'px)';
+      const x=Math.round(point.x+point.radius+5);
+      const y=Math.round(point.y-8);
+      const labelWidth=body.name.length*6.3+6;
+      const rect={left:x,top:y,right:x+labelWidth,bottom:y+16};
+      const overlap=used.some(other=>rect.left<other.right && rect.right>other.left &&
+        rect.top<other.bottom && rect.bottom>other.top);
+      const moonOpacity=body.parent && !view ?
+        T.MathUtils.smoothstep(Math.max(config.zoom,point.radius/4),.75,2.25) : 1;
+      const opacity=(config.smartLabels && body!==selected ? moonOpacity : 1)*(flyby ? .38 : 1);
+      const show=config.labels && point.visible && opacity>.01 &&
+        (!config.smartLabels || (!overlap && rect.left<width && (body===selected||rect.right<width+3)));
+      if (show) used.push(rect);
+      body.label.hidden=!show;
+      if (show) {
+        body.label.style.setProperty('--label-opacity',opacity.toFixed(3));
+        body.label.style.transform='translate('+x+'px,'+y+'px)';
+      }
     }
   }
   function pick(x,y) {
@@ -546,7 +1298,7 @@ function start(T) {
   function renderCard() {
     const body=pinned||hovered;
     const point=projected.get(body);
-    card.hidden=!body || (body.parent && !config.moons) || (!point?.visible && !pinned);
+    card.hidden=Boolean(view) || !body || (body.parent && !config.moons) || (!point?.visible && !pinned);
     path.setAttribute('d','');
     if (card.hidden) { cardBody=null; return; }
     const state=body.material.map?'mapped':!config.textures?'disabled':body.overview==='unavailable'?'unavailable':'plain';
@@ -570,7 +1322,7 @@ function start(T) {
         credit.rel='noopener noreferrer';
       } else cardText('p',state==='unavailable'?'Texture unavailable · approximate appearance':state==='disabled'?'Textures disabled':'Approximate appearance');
       if (pinned) {
-        if (!focus || (body.parent||body)!==focus) cardText('button','Focus').onclick=()=>changeFocus(body,false);
+        if (!focus || (body.parent||body)!==focus) cardText('button','Focus').onclick=()=>{ changeFocus(body,false); config.zoom=1; updateControls(); };
         cardText('button','Close').onclick=()=>{ pinned=null; hovered=null; $('inspect').value=''; };
       } else cardText('p','Click or tap to pin');
     }
@@ -590,7 +1342,7 @@ function start(T) {
   let drag=null;
   let pointer=null;
   canvas.addEventListener('pointerdown',event=>{
-    if (drag || event.button!==0) return;
+    if (drag || event.button!==0 || view==='compare') return;
     drag={id:event.pointerId,x:event.clientX,y:event.clientY,startX:event.clientX,startY:event.clientY,moved:false};
     canvas.setPointerCapture(event.pointerId);
   });
@@ -600,19 +1352,22 @@ function start(T) {
     drag.moved ||= Math.hypot(event.clientX-drag.startX,event.clientY-drag.startY)>5;
     if (!drag.moved) return;
     const dx=event.clientX-drag.x, dy=event.clientY-drag.y;
-    if (config.mode==='3d') {
+    if (view==='observer') {
+      observerYaw-=dx*observerFov*rad/height;
+      observerPitch=T.MathUtils.clamp(observerPitch+dy*observerFov*rad/height,-1.48,1.48);
+    } else if (config.mode==='3d') {
       yaw-=dx*.006;
-      manualTilt=T.MathUtils.clamp((manualTilt??config.tilt)+dy*.25,5,89);
+      manualTilt=T.MathUtils.clamp((manualTilt??config.tilt)+dy*.25,-85,89);
     } else {
-      panX-=2*dx/height;
-      panY-=2*dy/height;
+      const scale=(flat.top-flat.bottom)/height;
+      pan.add(new T.Vector3(-dx*scale,0,-dy*scale));
     }
     drag.x=event.clientX;
     drag.y=event.clientY;
   });
   canvas.addEventListener('pointerup',event=>{
     if (drag?.id!==event.pointerId) return;
-    if (!drag.moved) {
+    if (!drag.moved && !view) {
       const hit=pick(event.clientX,event.clientY);
       pinned=hit===pinned?null:hit;
       $('inspect').value=pinned?.name||'';
@@ -622,31 +1377,87 @@ function start(T) {
   });
   canvas.addEventListener('pointercancel',event=>{ if (drag?.id===event.pointerId) drag=null; });
   canvas.addEventListener('pointerleave',()=>{pointer=null;hovered=null;});
+  const zoomPlane=new T.Plane();
+  const pointerNdc=new T.Vector2();
+  function cursorOnPlane() {
+    ray.setFromCamera(pointerNdc,camera);
+    return ray.ray.intersectPlane(zoomPlane,new T.Vector3());
+  }
   canvas.addEventListener('wheel',event=>{
     event.preventDefault();
-    config.zoom=T.MathUtils.clamp(config.zoom*Math.exp(-event.deltaY*.001),1,100);
+    if (view==='compare' || !camera) return;
+    const scroll=event.deltaY*(event.deltaMode===1 ? 16 : event.deltaMode===2 ? height : 1);
+    const factor=Math.exp(-scroll*.001);
+    if (view==='observer') {
+      observerFov=T.MathUtils.clamp(observerFov/factor,.25,78);
+      return;
+    }
+    const previousZoom=config.zoom;
+    const zoom=T.MathUtils.clamp(previousZoom*factor,.6,maxZoom);
+    if (previousZoom===zoom) return;
+    let before=null;
+    const hit=config.cursorZoom && factor>1 ? pick(event.clientX,event.clientY) : null;
+    if (config.cursorZoom) {
+      pointerNdc.set(event.clientX/width*2-1,1-event.clientY/height*2);
+      const center=cameraAnchor?.root.position.clone() ?? new T.Vector3();
+      zoomPlane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new T.Vector3()),hit?.root.position ?? center.add(pan));
+      before=cursorOnPlane();
+    }
+    config.zoom=zoom;
+    if (hit && hit!==cameraAnchor && zoom>=3) {
+      if (!focus && hit.parent===undefined && hit!==sun && config.mode==='3d') {
+        changeFocus(hit,false);
+        extent=Math.max(4,...(satellitesByHost.get(hit) ?? []).filter(body=>body.name!=='Nereid')
+          .map(body=>body.a*(1+body.e)/hit.radius*1.18));
+        config.zoom=Math.min(maxZoom,Math.max(3,extent/1.7));
+      }
+      cameraAnchor=hit;
+      pan.set(0,0,0);
+    } else if (before) {
+      updateCamera(0);
+      const after=cursorOnPlane();
+      if (after) pan.add(before.sub(after));
+    }
     editor.sync();
   },{passive:false});
   window.addEventListener('keydown',event=>{
     if (event.key==='Escape' && !event.defaultPrevented && !$('solar-settings').contains(event.target)) {
-      pinned=null; hovered=null; pointer=null; $('inspect').value='';
+      if (flyby) stopFlyby();
+      else if (view) activateView('');
+      else { pinned=null; hovered=null; pointer=null; $('inspect').value=''; }
     }
   });
 
+  let lastPositionTime=NaN;
+  let positions;
   function frame(now) {
-    const delta=Math.min(.1,(now-last)/1000);
+    const delta=Math.max(0,Math.min(.1,(now-last)/1000));
     last=now;
-    if (!config.paused) time=T.MathUtils.clamp(time+delta*config.speed*day,Date.UTC(1800,0,1),Date.UTC(2050,11,31));
+    updatePresentation(now,delta);
+    if (!config.paused) {
+      const speed=flyby ? T.MathUtils.clamp(config.speed,-.025,.025) : config.speed;
+      time=T.MathUtils.clamp(time+delta*speed*day,minTime,maxTime);
+    }
+    if (time!==lastPositionTime) {
+      positions=physicalPositions(time);
+      lastPositionTime=time;
+    }
     const date=new Date(time);
-    updateBodies(date);
+    updateBodies(date,positions);
     updatePaths();
     updateCamera(delta);
-    stars.visible=config.stars;
+    updateDebris();
+    const atmosphere=earthAtmosphere.material.uniforms;
+    atmosphere.flatView.value=camera.isOrthographicCamera;
+    camera.getWorldDirection(atmosphere.viewDirection.value).negate();
+    stars.visible=config.stars && view!=='compare';
     stars.position.copy(camera.position);
     renderer.render(scene,camera);
     updateLabels();
-    if (!drag && pointer && !pinned) hovered=pick(pointer.x,pointer.y);
+    if (!drag && pointer && !pinned && !view && !flyby && !ambientActive) hovered=pick(pointer.x,pointer.y);
+    else if (flyby || ambientActive) hovered=null;
     renderCard();
+    if (timelineOpen && !config.paused) syncTimeline();
     const stamp=utc.format(date)+' UTC';
     if ($('clock').textContent!==stamp) {
       $('clock').textContent=stamp;
