@@ -97,14 +97,14 @@ function start(T) {
       {key:'trails',label:'Orbital paths'},
       {key:'trailOpacity',label:'Path opacity',min:.05,max:1,step:.05,when:c=>c.trails},
       {key:'moons',label:'Moons in planet focus'},
-      {key:'moonSize',label:'Moon size multiplier',min:.5,max:3,step:.1,when:c=>c.moons},
+      {key:'moonSize',label:'Moon size multiplier',min:.1,max:3,step:.1,when:c=>c.moons},
       {key:'rings',label:'Planetary rings'},
       {key:'textures',label:'External texture maps'},
       {key:'labels',label:'Object labels'},
       {key:'stars',label:'Star field'}
     ],
     Style: [
-      {key:'size',label:'Overview body size multiplier',min:.5,max:3,step:.1},
+      {key:'size',label:'Overview body size multiplier',min:.1,max:3,step:.1},
       {key:'background',label:'Background color',validate:v=>CSS.supports('color',v)}
     ]
   };
