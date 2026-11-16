@@ -140,7 +140,7 @@ function start(T) {
     timeline:true, flybys:true, idleTour:false, tourDelay:25, flybyDuration:18,
     shadows:true, earthLights:true, earthClouds:true, earthAtmosphere:true,
     asteroidBelt:true, ringGrains:true, observerView:true, comparison:true,
-    ambient:false, ambientDelay:8
+    comets:true, cometTails:true, ambient:false, ambientDelay:8
   };
   const config = { ...defaults };
   const presets = {
@@ -179,6 +179,8 @@ function start(T) {
       {key:'ringGrains',label:'Saturn ring grains',when:c=>c.rings},
       {key:'observerView',label:'Observer view'},
       {key:'comparison',label:'Body size comparison'},
+      {key:'comets',label:'Comets'},
+      {key:'cometTails',label:'Comet ion and dust tails',when:c=>c.comets},
       {key:'labels',label:'Object labels'},
       {key:'stars',label:'Star field'}
     ],
@@ -266,7 +268,19 @@ function start(T) {
     orbit:{epoch:(59337.8171-40587)*day-69184,a:43.269536,e:.1339372,
       inclination:24.3846266,node:322.797458,perihelion:169.4550,mean:120.4534}
   };
-  const orbitingBodies=[...planets,pluto,ed138];
+  // JPL Small-Body Database snapshots. Times of perihelion are Julian dates in TDB.
+  const comets=[
+    ['1P/Halley','1P',2446469.973616,17.928635,.967935996,162.19053,59.098947,112.241431,27728.04609],
+    ['2P/Encke','2P',2460240.034840,2.218337,.846996923,11.339612,334.013809,187.283430,1206.81257],
+    ['67P/Churyumov–Gerasimenko','67P',2457247.588658,3.462249,.640908131,7.040295,50.135574,12.798250,2353.07607],
+    ['C/2020 F3 (NEOWISE)','C/2020 F3',2459034.178898,358.467957,.999178026,128.937503,61.010428,37.278658,2478985.218]
+  ].map(([name,designator,tp,a,e,inclination,node,perihelion,period])=>({
+    name,kind:'Comet',comet:true,designator,period,display:.085,color:'#8c7c6d',
+    reference:'https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr='+encodeURIComponent(designator),
+    orbit:{epoch:(tp-2440587.5)*day-69184,a,e,inclination,node,perihelion,mean:0}
+  }));
+  const [halley,encke,rosettaComet,neowise]=comets;
+  const orbitingBodies=[...planets,pluto,ed138,...comets];
   const overviewExtent=Math.max(34,ed138.orbit.a*(1+ed138.orbit.e)*1.04);
   const moons = planets.flatMap(parent => (moonRows[parent.name] || []).map(
     ([name,radius,a,period,e,i,color='#b5a999',map],index) =>
@@ -374,8 +388,13 @@ function start(T) {
 
   function orbitPoint(a,e,i,node,arg,mean) {
     mean %= tau;
-    let eccentric = mean;
-    for (let n=0;n<12;n++) eccentric -= (eccentric-e*Math.sin(eccentric)-mean)/(1-e*Math.cos(eccentric));
+    if (Math.abs(mean)>Math.PI) mean-=Math.sign(mean)*tau;
+    let eccentric = e>.8 ? (mean<0 ? -Math.PI : Math.PI) : mean;
+    for (let n=0;n<28;n++) {
+      const correction=(eccentric-e*Math.sin(eccentric)-mean)/(1-e*Math.cos(eccentric));
+      eccentric-=correction;
+      if (Math.abs(correction)<1e-12) break;
+    }
     const x = a*(Math.cos(eccentric)-e);
     const y = a*Math.sqrt(1-e*e)*Math.sin(eccentric);
     const u = x*Math.cos(arg)-y*Math.sin(arg);
@@ -811,7 +830,7 @@ function start(T) {
     $('two').disabled=$('three').disabled=Boolean(view);
   }
 
-  const observerTargets=bodies.filter(body=>body.radius && (!body.parent||['Moon','Titan'].includes(body.name)));
+  const observerTargets=bodies.filter(body=>(body.radius||body.comet) && (!body.parent||['Moon','Titan'].includes(body.name)));
   const byName=new Map(bodies.map(body=>[body.name,body]));
   for (const select of [$('compare-first'),$('compare-second')]) {
     for (const body of bodies) if (body.radius) select.add(new Option(body.name,body.name));
@@ -877,7 +896,14 @@ function start(T) {
   }
   resetObserver();
   $('observer-world').onchange=resetObserver;
-  $('observer-target').onchange=()=>{ observerYaw=observerPitch=0; };
+  $('observer-target').onchange=()=>{
+    observerYaw=observerPitch=0;
+    if (byName.get($('observer-target').value)?.comet) {
+      config.comets=true;
+      observerFov=7;
+      updateControls();
+    }
+  };
 
   function activateView(next) {
     activity(true);
@@ -1114,6 +1140,27 @@ function start(T) {
     search:after=>nextShadowTransit(moon,+after),
     unavailable:'No '+moon.name+' shadow transit found in the modeled search window.'
   })));
+  addEvents('Comet perihelia',comets.map(body=>({
+    label:body.name+' · Perihelion',body,at:body.orbit.epoch
+  })));
+  // NASA and ESA mission milestones. Date-only records use noon UTC in the simulation.
+  addEvents('Historical events',[
+    ['Apollo 11 lands on the Moon','1969-07-20T20:17:40Z',earthMoon],
+    ['Voyager 1 flies by Jupiter','1979-03-05',jupiter],
+    ['Voyager 1 flies by Saturn','1980-11-12',saturn],
+    ['Voyager 2 flies by Uranus','1986-01-24',planets[6]],
+    ['Giotto flies by Halley','1986-03-14T00:03:02Z',halley],
+    ['Voyager 2 flies by Neptune','1989-08-25',planets[7]],
+    ['Shoemaker–Levy 9 impacts Jupiter','1994-07-16',jupiter],
+    ['Rosetta arrives at comet 67P','2014-08-06',rosettaComet],
+    ['Philae touches down on comet 67P','2014-11-12T15:34:06Z',rosettaComet],
+    ['New Horizons flies by Pluto','2015-07-14',pluto],
+    ['NEOWISE closest to Earth','2020-07-23',neowise,7]
+  ].map(([label,stamp,body,observerFov])=>{
+    const dateOnly=stamp.length===10;
+    return {label:stamp.slice(0,10)+' · '+label,body,observerFov,dateOnly,
+      at:Date.parse(dateOnly ? stamp+'T12:00:00Z' : stamp)};
+  }));
   if (!astro) eventStatus.textContent='Calculated eclipses, lunar phases, seasons, and oppositions require Astronomy Engine.';
 
   function showEvent(entry,ms) {
@@ -1124,6 +1171,7 @@ function start(T) {
     config.mode='3d';
     config.shadows=true;
     config.moons=true;
+    if (body.comet) config.comets=true;
     if (entry.observerFov && config.observerView) {
       view='observer';
       $('observer-world').value='Earth';
@@ -1132,7 +1180,7 @@ function start(T) {
       observerFov=entry.observerFov;
     } else {
       cameraAnchor=body;
-      config.zoom=body===earthMoon ? 100 : body===earth ? 56 : 28;
+      config.zoom=body.comet ? 1.1 : body===earthMoon ? 100 : body===earth ? 56 : 28;
       const direction=planetPosition(body.parent ?? body,ms).negate().normalize();
       if (caster) {
         const offset=moonPosition(caster,ms).divideScalar(body.radius);
@@ -1140,6 +1188,7 @@ function start(T) {
         const distanceSquared=offset.lengthSq();
         if (distanceSquared<1) direction.multiplyScalar(Math.sqrt(1-distanceSquared)).add(offset);
       }
+      if (body.comet) direction.applyAxisAngle(yAxis,Math.PI/2);
       yaw=Math.atan2(direction.x,direction.z);
       manualTilt=T.MathUtils.clamp(Math.asin(direction.y)/rad,-85,85);
       pinned=body;
@@ -1167,7 +1216,8 @@ function start(T) {
       return;
     }
     showEvent(entry,ms);
-    eventStatus.textContent=entry.label.replace(/^Next /,'')+' · '+utc.format(new Date(ms))+' UTC';
+    eventStatus.textContent=entry.dateOnly ? entry.label :
+      entry.label.replace(/^Next /,'')+' · '+utc.format(new Date(ms))+' UTC';
   };
 
   function updateObserver(positions) {
@@ -1179,8 +1229,9 @@ function start(T) {
     observerEye.copy(center).addScaledVector(observerDirection,origin.radius*1.002);
     const direction=positions.get(target).clone().sub(observerEye);
     const range=direction.length();
-    let description=target.name+' · '+(2*Math.asin(Math.min(1,target.radius/range))/rad).toFixed(3)+'°';
-    if (target!==sun) {
+    let description=target.comet ? target.name+' · '+(range/auKm).toFixed(2)+' AU from '+origin.name :
+      target.name+' · '+(2*Math.asin(Math.min(1,target.radius/range))/rad).toFixed(3)+'°';
+    if (target!==sun && !target.comet) {
       const towardSun=positions.get(target).clone().negate().normalize();
       const lit=(1+towardSun.dot(direction.normalize().negate()))/2;
       description+=' · '+Math.round(100*lit)+'% illuminated';
@@ -1262,6 +1313,12 @@ function start(T) {
     if (!key || key==='tilt') manualTilt=null;
     if ((!config.observerView && view==='observer') || (!config.comparison && view==='compare')) view='';
     if (!config.timeline) timelineOpen=false;
+    if (!config.comets && (focus?.comet || pinned?.comet ||
+        (view==='observer' && byName.get($('observer-target').value)?.comet))) {
+      view='';
+      changeFocus(null);
+      config.zoom=1;
+    }
     updateControls();
   },now:resetTime});
   $('two').onclick = () => { activity(true); config.mode='2d'; updateControls(); };
@@ -1279,7 +1336,12 @@ function start(T) {
     $('inspect').value=selected;
     pinned = bodies.find(body=>body.name===$('inspect').value) || null;
     hovered = null;
-    if (pinned?.parent) {
+    if (pinned?.comet) {
+      config.comets=true;
+      changeFocus(pinned,false);
+      config.zoom=1;
+      updateControls();
+    } else if (pinned?.parent) {
       config.moons=true;
       if (focus!==pinned.parent) {
         changeFocus(pinned.parent,false);
@@ -1311,7 +1373,7 @@ function start(T) {
   function updatePaths() {
     const rebuild = lastFocus!==focus || !Number.isFinite(trailTime) || Math.abs(time-trailTime)>day*120;
     for (const body of [...orbitingBodies,...moons]) {
-      body.path.visible = !view && config.trails && (focus ? body.parent===focus && (config.moons || flyby?.shot.follow===body) : !body.parent);
+      body.path.visible = (!body.comet||config.comets) && !view && config.trails && (focus ? body.parent===focus && (config.moons || flyby?.shot.follow===body) : !body.parent);
       const pathDetail = !config.smartLabels ? 1 : focus ?
         T.MathUtils.smoothstep(config.zoom,.75,2.4) : T.MathUtils.lerp(1,.24,T.MathUtils.smoothstep(config.zoom,4,20));
       body.path.material.opacity = config.trailOpacity*pathDetail*(flyby ? .24 : 1);
@@ -1328,7 +1390,10 @@ function start(T) {
     const points = [];
     const cycle = body.period*day;
     for (let sample=0;sample<=160;sample++) {
-      const date = time+(sample/160-.5)*cycle;
+      // Sample eccentric anomaly so the highly eccentric perihelion arc stays smooth.
+      const angle=(sample/160-.5)*tau;
+      const date=body.comet ? body.orbit.epoch+(angle-body.orbit.e*Math.sin(angle))/tau*cycle :
+        time+(sample/160-.5)*cycle;
       points.push(body.parent ? moonPosition(body,date).multiplyScalar(1/body.parent.radius) : planetPosition(body,date));
     }
     // A satellite or planet can precess during one revolution, so keep the
@@ -1336,6 +1401,89 @@ function start(T) {
     body.path.geometry.dispose();
     body.path.geometry=new T.BufferGeometry().setFromPoints(points);
   }
+  // A stylized two-lobed nucleus for 67P.
+  const nucleus67P=sphere.clone();
+  const nucleusPoints=nucleus67P.attributes.position;
+  for (let i=0;i<nucleusPoints.count;i++) {
+    const x=nucleusPoints.getX(i);
+    const waist=.92-.56*Math.exp(-18*x*x)+.14*x;
+    nucleusPoints.setXYZ(i,x*1.35,nucleusPoints.getY(i)*waist,nucleusPoints.getZ(i)*waist+.14*x);
+  }
+  nucleus67P.computeVertexNormals();
+  nucleus67P.computeBoundingSphere();
+  const tailSamples=340;
+  function createCometTail(body,color) {
+    const geometry=new T.BufferGeometry();
+    const positions=new T.BufferAttribute(new Float32Array(tailSamples*3),3);
+    positions.setUsage(T.DynamicDrawUsage);
+    geometry.setAttribute('position',positions);
+    const fade=Float32Array.from({length:tailSamples},(_,i)=>(1-i/tailSamples)**1.6);
+    geometry.setAttribute('tailFade',new T.BufferAttribute(fade,1));
+    const material=new T.ShaderMaterial({
+      uniforms:{tint:{value:new T.Color(color)},strength:{value:0},pixelSize:{value:Math.min(devicePixelRatio,2)*5}},
+      vertexShader:`
+        attribute float tailFade;
+        varying float fade;
+        uniform float pixelSize;
+        void main() {
+          fade=tailFade;
+          gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);
+          gl_PointSize=pixelSize*(.7+.55*tailFade);
+        }
+      `,
+      fragmentShader:`
+        varying float fade;
+        uniform vec3 tint;
+        uniform float strength;
+        void main() {
+          float glow=max(0.,1.-2.*length(gl_PointCoord-.5));
+          gl_FragColor=vec4(tint,glow*glow*fade*strength);
+        }
+      `,
+      transparent:true,depthWrite:false,blending:T.AdditiveBlending
+    });
+    const points=new T.Points(geometry,material);
+    points.frustumCulled=false;
+    points.visible=false;
+    body.root.add(points);
+    return points;
+  }
+  for (const body of comets) {
+    body.ionTail=createCometTail(body,0x70bfff);
+    body.dustTail=createCometTail(body,0xffc98e);
+  }
+
+  function updateCometTails(body,heliocentric,tailScale) {
+    const distance=heliocentric.length();
+    const activity=1-T.MathUtils.smoothstep(distance,1.25,5);
+    const visible=config.cometTails && activity>.015 && view!=='compare';
+    body.ionTail.visible=body.dustTail.visible=visible;
+    if (!visible) return;
+    const away=heliocentric.clone().normalize();
+    const trailing=planetPosition(body,time-.1*day).sub(planetPosition(body,time));
+    trailing.addScaledVector(away,-trailing.dot(away)).normalize();
+    const side=away.clone().cross(trailing).normalize();
+    for (const tail of [body.ionTail,body.dustTail]) {
+      const dust=tail===body.dustTail;
+      const length=tailScale*activity*(dust?.82:1);
+      tail.material.uniforms.strength.value=activity*(dust?.34:.42);
+      const positions=tail.geometry.attributes.position;
+      for (let i=0;i<tailSamples;i++) {
+        const t=(i/tailSamples)**1.85;
+        const spread=(dust?.12:.045)*length*(.05+t);
+        const angle=i*2.399963;
+        const wide=Math.sin(angle)*spread*(.2+.8*Math.sin(i*6.13)**2);
+        const narrow=Math.cos(angle)*spread;
+        const along=t*length;
+        const curve=dust ? -.46*length*t*t : 0;
+        positions.setXYZ(i,away.x*along+side.x*wide+trailing.x*(narrow-curve),
+          away.y*along+side.y*wide+trailing.y*(narrow-curve),
+          away.z*along+side.z*wide+trailing.z*(narrow-curve));
+      }
+      positions.needsUpdate=true;
+    }
+  }
+
   function updateBodies(date,positions) {
     loadSaturnMap();
     const comparing=view==='compare';
@@ -1344,14 +1492,14 @@ function start(T) {
     for (const body of bodies) {
       const comparisonBody=comparing ? comparison.bodies.get(body) : null;
       const visible=comparing ? Boolean(comparisonBody) :
-        observer ? body.radius && body!==observer && (!body.parent||config.moons||body.name===$('observer-target').value) :
+        observer ? (body.radius||body.name===$('observer-target').value) && body!==observer && (!body.parent||config.moons||body.name===$('observer-target').value) :
         focus ? body===focus || (body.parent===focus && (config.moons||flyby?.shot.follow===body)) : !body.parent;
-      body.root.visible=visible;
-      if (!visible) { body.label.hidden=true; continue; }
+      body.root.visible=visible && (!body.comet||config.comets);
+      if (!body.root.visible) { body.label.hidden=true; continue; }
       const world=positions.get(body);
       const relative=body.parent ? world.clone().sub(positions.get(body.parent)) : null;
       let pos=new T.Vector3();
-      let size=body===focus ? 1 : body.parent ?
+      let size=body===focus ? (body.comet?.14:1) : body.parent ?
         Math.max(.075,body.radius/body.parent.radius)*config.moonSize : body.display*config.size;
       if (comparisonBody) {
         size=comparisonBody.radius;
@@ -1361,13 +1509,15 @@ function start(T) {
         const distance=offset.length();
         const depth=25+Math.log1p(distance/100)*5;
         pos=offset.multiplyScalar(depth/distance);
-        size=depth*body.radius/distance;
+        size=body.comet ? depth*.00065 : depth*body.radius/distance;
       } else if (relative) {
         pos=relative.clone().divideScalar(body.parent.radius);
       } else if (body!==focus && body!==sun) {
         pos=world.clone().divideScalar(auKm);
       }
       body.root.position.copy(pos);
+      if (body.comet) updateCometTails(body,world.clone().divideScalar(auKm),focus===body && !observer ? 4.5 :
+        observer ? Math.min(1.8,pos.length()*.055) : 2.1);
       body.mesh.scale.setScalar(size);
       body.visualRadius=size;
       if (body.parent && body.name !== 'Nereid') {
@@ -1473,7 +1623,7 @@ function start(T) {
       const edge=screenPoint(body.root.position.clone().addScaledVector(viewRight,body.visualRadius));
       point.radius=Math.abs(edge.x-point.x);
       const inDetail=point.visible && point.radius>(body.mesh.geometry===detailSphere ? 70 : 95);
-      body.mesh.geometry=config.smartLabels && inDetail ? detailSphere : sphere;
+      body.mesh.geometry=body===rosettaComet ? nucleus67P : config.smartLabels && inDetail ? detailSphere : sphere;
       projected.set(body,point);
       const inComparison=view==='compare';
       const labelWidth=body.name.length*6.3+6;
@@ -1535,15 +1685,16 @@ function start(T) {
       if (body.radius) cardText('p','Mean radius · '+body.radius.toLocaleString('en')+' km');
       if (body.diameterEstimate) cardText('p','Estimated diameter · '+body.diameterEstimate+' (albedo-dependent)');
       if (body.reference) {
-        const source=cardText('a',body===pluto ? 'NASA Pluto facts' : 'Discovery paper and orbit');
+        const source=cardText('a',body===pluto ? 'NASA Pluto facts' : body.comet ? 'JPL orbit data' : 'Discovery paper and orbit');
         source.href=body.reference;
         source.target='_blank';
         source.rel='noopener noreferrer';
       }
-      if (body.period) cardText('p','Orbital period · '+body.period.toLocaleString('en')+' days');
+      if (body.period && body!==neowise) cardText('p','Orbital period · '+body.period.toLocaleString('en')+' days');
       if (body.spin) cardText('p','Rotation · '+Math.abs(body.spin).toLocaleString('en')+' days'+(body.parent && body.name!=='Nereid'?' · synchronous':body.spin<0||body.tilt>90?' · retrograde':''));
       if (!body.parent && Number.isFinite(body.tilt)) cardText('p','Axial tilt · '+body.tilt+'°');
       if (body!==sun) cardText('p','Orbit · '+((body.parent ? moonEphemeris(body) : astro && !body.orbit)?'Astronomy Engine':'approximate Keplerian model'));
+      if (body.comet) cardText('p','Nucleus and tails are illustrative.');
       if (body===ed138) cardText('p','Display size and surface are illustrative.');
       if (point && body.parent) cardText('p','Moon size is enlarged where needed for selection.');
       if (state==='mapped') {
