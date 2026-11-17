@@ -366,6 +366,14 @@ export const backgrounds = [
             "dynamic lighting, and subtle twinkling effects.",
     },
     {
+        name: "Three-Body Problem",
+        folder: "three-body-problem",
+        tags: ["space", "physics", "3d", "interactive"],
+        description:
+            "Watch bodies trace stable orbits and chaotic flybys in a 3D gravity simulation. " +
+            "Explore 14 presets with liquid orbital planes, tidal streamers, eclipse glints, and long-exposure trails.",
+    },
+    {
         name: "Topographic Contours",
         folder: "topographic-contours",
         tags: ["geometric", "nature"],

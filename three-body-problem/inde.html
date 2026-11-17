@@ -1,0 +1,1647 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Three-Body Problem</title>
+<style>
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; color: #e6edf8; font: 14px system-ui, sans-serif; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; }
+  button, input, select, textarea { font: inherit; color: inherit; accent-color: #8ad9ff; }
+  button, select, input:not([type=range],[type=checkbox]), textarea {
+    background: #172131; border: 1px solid #39485e; border-radius: 6px; padding: 6px 9px;
+  }
+  button, summary { cursor: pointer; }
+  :focus-visible { outline: 2px solid #8ad9ff; outline-offset: 2px; }
+  :root {
+    --top-gap: max(12px, env(safe-area-inset-top));
+    --right-gap: max(12px, env(safe-area-inset-right));
+    --bottom-gap: max(12px, env(safe-area-inset-bottom));
+    --left-gap: max(12px, env(safe-area-inset-left));
+  }
+  .settings-open, .settings-panel { position: fixed; top: var(--top-gap); right: var(--right-gap); }
+  #recenter { position: fixed; left: var(--left-gap); bottom: var(--bottom-gap); }
+  .settings-panel {
+    width: min(330px, calc(100% - var(--left-gap) - var(--right-gap)));
+    max-height: calc(100vh - var(--top-gap) - var(--bottom-gap));
+    max-height: calc(100dvh - var(--top-gap) - var(--bottom-gap));
+    overflow: auto; overscroll-behavior: contain; padding: 14px; background: #0c1423f5; border: 1px solid #39485e;
+    border-radius: 12px; box-shadow: 0 10px 40px #0007; color-scheme: dark;
+  }
+  header, .settings-line, .settings-preset { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .settings-line { flex-wrap: wrap; }
+  .settings-line > *, .settings-preset select { min-width: 0; max-width: 100%; }
+  .settings-panel { overflow-wrap: anywhere; }
+  @media (max-width: 600px) and (orientation: portrait) {
+    .settings-panel {
+      top: auto; bottom: var(--bottom-gap); left: var(--left-gap); width: auto;
+      max-height: min(72vh, calc(100vh - var(--top-gap) - var(--bottom-gap)));
+      max-height: min(72dvh, calc(100dvh - var(--top-gap) - var(--bottom-gap)));
+    }
+    #recenter { top: var(--top-gap); bottom: auto; }
+  }
+  @media (pointer: coarse) {
+    button, .settings-panel select, .settings-panel summary { min-height: 44px; }
+    .settings-panel summary { padding-block: 11px; }
+    .settings-panel input[type="range"] { min-height: 32px; }
+    .settings-panel input[type="checkbox"] { width: 22px; height: 22px; margin: 0; }
+    .settings-panel input[type="search"], .settings-panel input[type="text"],
+    .settings-panel select, .settings-panel textarea { font-size: 16px; }
+  }
+  h1 { font-size: 18px; margin: 0; }
+  .settings-actions, .settings-color { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .settings-actions, .settings-preset, input[type=search] { margin: 8px 0; }
+  .settings-color input[type=color] { width: 30px; height: 28px; padding: 2px; }
+  .settings-color input[type=text] { width: 106px; }
+  textarea, input[type=search], input[type=range] { width: 100%; }
+  details { border-top: 1px solid #2a374b; padding: 8px 0; }
+  .settings-section-help {
+    position: fixed; z-index: 2; width: min(245px, calc(100vw - 16px));
+    padding: 8px 10px; border: 1px solid #39485e; border-radius: 8px;
+    background: #172131; color: #e6edf8; line-height: 1.4; pointer-events: none;
+  }
+  .settings-feature-group { margin: 0 0 8px 8px; }
+  .settings-feature-group > summary { font-weight: 600; }
+  .settings-subsection { margin-left: 10px; }
+  .settings-subsection summary input { float: right; }
+  .settings-row { margin-top: 10px; }
+  small, output, .settings-status { color: #aebfd6; }
+  .settings-status:empty { display: none; }
+  #notice { position: fixed; inset: auto 16px 16px; color: white; }
+</style>
+</head>
+<body>
+<canvas id="scene" aria-label="Three orbiting bodies and their trails"></canvas>
+<button id="recenter" type="button" hidden>Reset pan</button>
+<div id="settings"></div>
+<p id="notice" role="status" hidden></p>
+<script>
+(async () => {
+  "use strict";
+
+  await new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `settings-editor.js?v=${Date.now()}`;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("Could not load settings-editor.js."));
+    document.head.appendChild(script);
+  });
+
+  const config = {
+    simulation: { orbit: "eight", gravity: 1, bodyCount: 3, bodySize: 9, speed: 0.85, perturbation: 0.001, inclination: 0 },
+    view: { threeD: false, perspective: true, tilt: 24, zoom: 1, orbit: false, orbitSpeed: 12 },
+    trails: { enabled: true, length: 6, opacity: 0.75 },
+    glow: { enabled: true, strength: 0.8 },
+    features: {
+      liquid: { enabled: false, amplitude: 0.32, refraction: 0.6 },
+      caustics: { enabled: false, intensity: 0.7 },
+      dust: { enabled: false, count: 1800, opacity: 0.55 },
+      streamers: { enabled: false, count: 2400, opacity: 0.7 },
+      filaments: { enabled: false, count: 18, opacity: 0.6 },
+      spectral: { enabled: false, strength: 4 },
+      eclipse: { enabled: false, intensity: 0.8 },
+      exposure: { enabled: false, duration: 24, intensity: 0.55 },
+      crossings: { enabled: false, ripple: true, flash: true, tint: true, intensity: 0.8 },
+      ribbons: { enabled: false, width: 4 },
+      lensing: { enabled: false, strength: 0.8 },
+      flashes: { enabled: false, intensity: 1, distance: 0.5 },
+      contours: { enabled: false, opacity: 0.35 },
+      deepTime: { enabled: false, duration: 28, opacity: 0.35 },
+      shadows: {
+        enabled: false, planeOpacity: 0.4, planeWidth: 2, lineColor: "#4A7AAD", opacity: 0.4,
+        infinite: false, density: 1, fillColor: "#162840", fillOpacity: 0
+      },
+      barycenter: { enabled: false, track: false, lag: 2.5, crosshair: true },
+      lifecycle: { enabled: false, intensity: 0.8 },
+      divergence: { enabled: false, connectors: true },
+      density: { enabled: false, opacity: 0.5 }
+    },
+    colors: { background: "#000000", first: "#77DFFF", second: "#FFAD79", third: "#C0A4FF" }
+  };
+  function spatialPreset(simulation, view, colors, effects = {}, crossing = {}) {
+    return {
+      simulation: { orbit: "encounter", inclination: 55, ...simulation },
+      view: { threeD: true, tilt: 52, ...view },
+      colors,
+      features: {
+        shadows: { enabled: true, infinite: true, planeOpacity: 0.30, fillOpacity: 0.15 },
+        crossings: { enabled: true, ...crossing },
+        ...effects
+      }
+    };
+  }
+
+  const presets = {
+    "Figure Eight": {},
+    "Lagrange Triangle": {
+      simulation: { orbit: "triangle", speed: 0.70 },
+      features: { exposure: { enabled: true, duration: 28, intensity: 0.7 },
+        filaments: { enabled: true, count: 10, opacity: 0.25 } }
+    },
+    "Close Encounter": {
+      simulation: { orbit: "encounter" }, view: { threeD: true, tilt: 32 },
+      features: { streamers: { enabled: true, count: 1600, opacity: 0.6 },
+        flashes: { enabled: true, intensity: 0.85 } }
+    },
+    "Split Orbit": {
+      simulation: { orbit: "split", speed: 1.3 }, trails: { length: 9 },
+      features: { spectral: { enabled: true, strength: 5 }, divergence: { enabled: true } }
+    },
+    "Inclined Encounter": spatialPreset({}, {}, { first: "#7BE8FF", second: "#FFAC72", third: "#E0B5FF" },
+      { liquid: { enabled: true, amplitude: 0.28, refraction: 0.35 } }, { intensity: 0.55 }),
+    "Glass Rain": spatialPreset({ orbit: "swarm", bodyCount: 7, inclination: 72, speed: 0.65 }, { tilt: 65 },
+      { background: "#020A13", first: "#83EEFF", second: "#BAF9FF", third: "#6BA2FA" },
+      { ribbons: { enabled: true, width: 3 }, liquid: { enabled: true, amplitude: 0.4, refraction: 0.8 },
+        caustics: { enabled: true, intensity: 1.1 } }, { flash: false }),
+    "Ember Skim": spatialPreset({ inclination: 20, speed: 1.15 }, { tilt: 43 },
+      { background: "#110605", first: "#FF6847", second: "#FFC067", third: "#FFF3C4" },
+      { flashes: { enabled: true }, lifecycle: { enabled: true },
+        streamers: { enabled: true, count: 2100, opacity: 0.8 },
+        spectral: { enabled: true, strength: 4.5 } }),
+    "Violet Undertow": spatialPreset({ orbit: "swarm", bodyCount: 4, inclination: 48, speed: 0.5 }, { tilt: 57 },
+      { background: "#090616", first: "#D5A8FF", second: "#826FFF", third: "#54D6FC" },
+      { ribbons: { enabled: true, width: 5 }, exposure: { enabled: true, duration: 32, intensity: 0.7 },
+        dust: { enabled: true, count: 2000, opacity: 0.6 } }, { flash: false }),
+    "Twin Horizons": spatialPreset({ orbit: "split", inclination: 60, perturbation: 0.006 }, { tilt: 42 },
+      { background: "#050B0E", first: "#6CFFD9", second: "#FF8DB0", third: "#9D99FF" },
+      { divergence: { enabled: true }, spectral: { enabled: true, strength: 6 },
+        exposure: { enabled: true, duration: 14, intensity: 0.35 } }, { intensity: 0.6 }),
+    "Lensed Midnight": spatialPreset({ inclination: 81, speed: 0.7 }, { tilt: 68 },
+      { background: "#03030D", first: "#9CD8FF", second: "#FFF0B3", third: "#D495FF" },
+      { lensing: { enabled: true, strength: 1.45 }, eclipse: { enabled: true, intensity: 1.25 },
+        dust: { enabled: true, count: 1500, opacity: 0.35 } }),
+    "Copper Instrument": spatialPreset({ inclination: 58, speed: 0.75 }, { tilt: 39 },
+      { background: "#100B09", first: "#FFC88D", second: "#E9855B", third: "#EFE4BD" },
+      { shadows: { enabled: true, lineColor: "#AA6840", fillColor: "#2E1811", fillOpacity: 0.65 },
+        contours: { enabled: true }, caustics: { enabled: true, intensity: 0.85 },
+        filaments: { enabled: true, count: 18, opacity: 0.55 } }, { tint: false }),
+    "Polar Sweep": spatialPreset({ orbit: "swarm", bodyCount: 5, inclination: 85 }, { tilt: 60, orbit: true, orbitSpeed: 6 },
+      { background: "#030F12", first: "#BAFFF7", second: "#55DBAD", third: "#C8DBFF" },
+      { barycenter: { enabled: true, track: true, crosshair: false },
+        filaments: { enabled: true, count: 14, opacity: 0.35 },
+        eclipse: { enabled: true, intensity: 0.9 } }),
+    "Particle Cascade": spatialPreset({ orbit: "swarm", bodyCount: 10, bodySize: 6, inclination: 67, speed: 1.3 },
+      { tilt: 54, zoom: 0.75 }, { background: "#0D0611", first: "#FF75BD", second: "#74EEFF", third: "#FFD471" },
+      { lifecycle: { enabled: true }, density: { enabled: true, opacity: 0.3 },
+        dust: { enabled: true, count: 1900, opacity: 0.55 },
+        streamers: { enabled: true, count: 2500, opacity: 0.7 } }, { intensity: 0.65 }),
+    "Quiet Tide": spatialPreset({ inclination: 35, speed: 0.4 }, { tilt: 46 },
+      { background: "#050D12", first: "#85D3CD", second: "#CCE4C1", third: "#90ADCC" },
+      { shadows: { enabled: true, infinite: true, planeOpacity: 0.20 },
+        liquid: { enabled: true, amplitude: 0.15, refraction: 0.2 },
+        exposure: { enabled: true, duration: 20, intensity: 0.3 } }, { flash: false, intensity: 0.4 })
+  };
+  const range = (path, label, min, max, step, help, when, unit) =>
+    ({ path, label, type: "range", min, max, step, help, when, unit });
+  const toggle = (path, label, help, when) => ({ path, label, type: "boolean", help, when });
+  const section = (label, fields, open = false) => ({ label, open, groups: [{ fields }] });
+  const is3D = settings => settings.view.threeD;
+  function feature(key, label, category, fields) {
+    const enabledPath = "features." + key + ".enabled";
+    return {
+      ...section(label, [toggle(enabledPath, "Enable " + label), ...fields]),
+      parent: "Features",
+      category,
+      enabledPath
+    };
+  }
+  const sections = [
+    section("Simulation", [
+      { path: "simulation.orbit", label: "Orbit", type: "select", when: () => false,
+        options: { eight: "Figure Eight", triangle: "Lagrange Triangle", encounter: "Close Encounter", split: "Split Orbit", swarm: "Inclined swarm" } },
+      range("simulation.gravity", "Gravity", 0.1, 3, 0.05, "Strength of the attraction between bodies.", undefined, "×"),
+      range("simulation.bodySize", "Body size", 3, 24, 1, "Diameter of the glowing body core.", undefined, " px"),
+      range("simulation.bodyCount", "Number of bodies", 2, 12, 1, "Active bodies per simulation. Classical orbits use three bodies."),
+      range("simulation.speed", "Speed", 0.1, 3, 0.05, "Simulation time advanced per second.", undefined, "×"),
+      range("simulation.inclination", "Orbital inclination", 0, 85, 1,
+        "Incline the initial trajectories out of the plane. Zero keeps motion planar.", undefined, "°"),
+      range("simulation.perturbation", "Initial offset", 0.0001, 0.02, 0.0001,
+        "Displaces one body in the faint comparison simulation.", s => s.simulation.orbit === "split")
+    ], true),
+    section("View", [
+      toggle("view.threeD", "3D camera", "Drag the canvas to rotate the view."),
+      toggle("view.perspective", "Perspective", "Makes nearer trail segments appear larger.", is3D),
+      range("view.tilt", "Tilt", -80, 80, 1, "Initial camera angle above the orbital plane.", is3D, "°"),
+      range("view.zoom", "Zoom", 0.4, 3, 0.05, "Scale the scene. Pinch on touch screens or scroll with a mouse."),
+      toggle("view.orbit", "Auto orbit", "Slowly rotate the camera.", is3D),
+      range("view.orbitSpeed", "Orbit speed", 2, 40, 1, "Camera rotation per second.", s => is3D(s) && s.view.orbit, "°/s")
+    ]),
+    section("Trails and glow", [
+      toggle("trails.enabled", "Trails", "Draw each body's recent trajectory."),
+      range("trails.length", "Trail length", 1, 12, 0.25, "History in simulation seconds.", s => s.trails.enabled, " s"),
+      range("trails.opacity", "Trail opacity", 0.05, 1, 0.05, "Brightness of the newest trail segments.", s => s.trails.enabled),
+      toggle("glow.enabled", "Body glow", "Show a soft halo around each body."),
+      range("glow.strength", "Glow strength", 0, 1.5, 0.05, "Halo intensity.", s => s.glow.enabled)
+    ]),
+    feature("shadows", "Orbital plane shadows", "Orbital plane", [
+      range("features.shadows.planeOpacity", "Plane opacity", 0, 1, 0.05, "Opacity of the reference grid in 3D camera mode."),
+      range("features.shadows.planeWidth", "Plane line width", 1, 10, 0.5, "Thickness of the reference grid lines.", undefined, " px"),
+      { path: "features.shadows.lineColor", label: "Plane line color", type: "color",
+        help: "Choose the grid line color. An optional alpha channel multiplies plane opacity." },
+      toggle("features.shadows.infinite", "Infinite plane", "Extend the grid across the view and fade it into the distance."),
+      range("features.shadows.density", "Line density", 0.25, 4, 0.25, "Grid intervals per simulation unit."),
+      { path: "features.shadows.fillColor", label: "Plane fill color", type: "color",
+        help: "Choose a fill color. An optional alpha channel multiplies the fill opacity." },
+      range("features.shadows.fillOpacity", "Fill opacity", 0, 1, 0.05, "Fade the plane fill independently of its lines."),
+      range("features.shadows.opacity", "Shadow opacity", 0, 1, 0.05, "Opacity of projected bodies, trails, and guide lines in 3D camera mode.")
+    ]),
+    feature("crossings", "Plane crossings", "Orbital plane", [
+      toggle("features.crossings.ripple", "Ripple", "Send an expanding ring across the plane."),
+      toggle("features.crossings.flash", "Crossing flash", "Highlight the point where the body crosses."),
+      toggle("features.crossings.tint", "Below-plane trail tint", "Cool the trail below the plane and highlight the crossing."),
+      range("features.crossings.intensity", "Crossing intensity", 0.1, 1.5, 0.05, "Strength of the flash and ripple.")
+    ]),
+    feature("liquid", "Liquid orbital plane", "Orbital plane", [
+      range("features.liquid.amplitude", "Wave height", 0.05, 0.6, 0.01, "Vertical displacement after a crossing."),
+      range("features.liquid.refraction", "Refraction", 0, 1.5, 0.05, "Bend the starfield around moving wavefronts.")
+    ]),
+    feature("caustics", "Interference light", "Orbital plane", [
+      range("features.caustics.intensity", "Light intensity", 0.1, 2, 0.05, "Brightness of light concentrated by overlapping waves.")
+    ]),
+    feature("ribbons", "Velocity ribbons", "Trails and exposure", [
+      range("features.ribbons.width", "Ribbon width", 1, 12, 1, "Maximum width during fast passes.", undefined, " px")
+    ]),
+    feature("spectral", "Spectral trail shearing", "Trails and exposure", [
+      range("features.spectral.strength", "Color separation", 1, 12, 0.5, "Maximum red and cyan separation at fast turns.", undefined, " px")
+    ]),
+    feature("deepTime", "Deep-time trails", "Trails and exposure", [
+      range("features.deepTime.duration", "Archive length", 12, 36, 1, "Maximum simulation time visible in the archive.", undefined, " s"),
+      range("features.deepTime.opacity", "Archive opacity", 0.05, 1, 0.05, "Brightness of older, cooler trails.")
+    ]),
+    feature("exposure", "Long-exposure trails", "Trails and exposure", [
+      range("features.exposure.duration", "Exposure time", 3, 36, 1, "Seconds of orbit history that build up in the exposure.", undefined, " s"),
+      range("features.exposure.intensity", "Exposure intensity", 0.1, 1.5, 0.05, "How quickly overlapping passes brighten.")
+    ]),
+    feature("density", "Orbit density map", "Trails and exposure", [
+      range("features.density.opacity", "Heatmap opacity", 0.05, 1, 0.05, "Brightness of regions occupied over the last 36 simulation seconds.")
+    ]),
+    feature("dust", "Volumetric dust wakes", "Particles and gravity", [
+      range("features.dust.count", "Dust particles", 300, 4800, 100, "Number of depth-layered dust particles."),
+      range("features.dust.opacity", "Dust opacity", 0.1, 1, 0.05, "Brightness of the dust and its wakes.")
+    ]),
+    feature("streamers", "Tidal streamers", "Particles and gravity", [
+      range("features.streamers.count", "Tracers", 400, 6000, 100, "Particles orbiting the bodies and pulled into tidal streams."),
+      range("features.streamers.opacity", "Streamer opacity", 0.1, 1, 0.05, "Brightness of the tracer streams.")
+    ]),
+    feature("filaments", "Gravity filaments", "Particles and gravity", [
+      range("features.filaments.count", "Threads per body", 6, 36, 1, "Number of streamlines seeded near each body."),
+      range("features.filaments.opacity", "Thread opacity", 0.1, 1, 0.05, "Brightness of the gravity streamlines.")
+    ]),
+    feature("contours", "Gravity contours", "Particles and gravity", [
+      range("features.contours.opacity", "Contour opacity", 0.05, 1, 0.05, "Brightness of equal-potential lines.")
+    ]),
+    feature("lensing", "Gravitational lensing", "Particles and gravity", [
+      range("features.lensing.strength", "Distortion", 0.1, 2, 0.05, "How strongly bodies bend the starfield.")
+    ]),
+    feature("flashes", "Close-encounter flashes", "Bodies and encounters", [
+      range("features.flashes.intensity", "Flare intensity", 0.1, 2, 0.05, "Brightness of the flare and trail highlights."),
+      range("features.flashes.distance", "Encounter distance", 0.2, 1, 0.05, "Separation at which the flare starts to build.")
+    ]),
+    feature("eclipse", "Eclipse glints", "Bodies and encounters", [
+      range("features.eclipse.intensity", "Glint intensity", 0.1, 1.5, 0.05, "Brightness along the edge of an eclipsed glow.")
+    ]),
+    feature("lifecycle", "Spawn and escape effects", "Bodies and encounters", [
+      range("features.lifecycle.intensity", "Particle intensity", 0.1, 1, 0.05, "Brightness of spawn sparks and escape streaks.")
+    ]),
+    feature("barycenter", "Barycenter tracking", "Tracking and comparison", [
+      toggle("features.barycenter.track", "Follow center of mass", "Smoothly pan the camera to follow the main simulation."),
+      range("features.barycenter.lag", "Tracking lag", 0.25, 10, 0.25,
+        "Higher values make the camera follow more slowly.", s => s.features.barycenter.track, " s"),
+      toggle("features.barycenter.crosshair", "Show crosshair", "Draw a plus sign at the center of mass.")
+    ]),
+    feature("divergence", "Split Orbit divergence", "Tracking and comparison", [
+      toggle("features.divergence.connectors", "Show separation lines", "Join corresponding bodies when Split Orbit is active.")
+    ]),
+    section("Colors", Object.entries({ background: "Background", first: "First body", second: "Second body", third: "Third body" })
+      .map(([key, label]) => ({ path: "colors." + key, label, type: "color", help: "Use #RRGGBB or #RRGGBBAA." })))
+  ];
+
+  const canvas = document.querySelector("#scene");
+  const notice = document.querySelector("#notice");
+  const gl = canvas.getContext("webgl", { alpha: true, antialias: true });
+  const STEP = 1 / 240;
+  const SAMPLE_EVERY = 4;
+  const HISTORY_SIZE = 2161;
+  const GRID_SIZE = 29;
+  const FIELD_COLORS = {
+    star: [0.66, 0.79, 1, 1], contour: [0.36, 0.65, 0.93, 1],
+    archive: [0.30, 0.24, 0.67, 1], shadow: [0.29, 0.48, 0.68, 1],
+    marker: [0.96, 0.94, 0.75, 1], flash: [1, 0.92, 0.75, 1],
+    densityLow: [0.23, 0.16, 0.74, 1], densityHigh: [1, 0.39, 0.19, 1]
+  };
+  const TRIANGLE_RADIUS = 1.05;
+  const TRIANGLE_RATE = Math.sqrt(3 / (Math.sqrt(3) * TRIANGLE_RADIUS) ** 3);
+  const DEG = Math.PI / 180;
+  let systems, tick, elapsed, accumulator, previousFrame, frameRequest;
+  let paused = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let yaw = 0, pitch = 0;
+  let panX = 0, panY = 0;
+  const recenter = document.querySelector("#recenter");
+  const pointers = new Map();
+  let zoomChanged = false;
+  let focusX = 0, focusY = 0;
+
+  function spawnState(bodies, index, generation, gravity, inclination = 0) {
+    const mass = bodies.reduce((sum, b) => sum + b.m, 0);
+    const center = key => bodies.reduce((sum, b) => sum + b[key] * b.m, 0) / (mass || 1);
+    const cx = center("x"), cy = center("y");
+    const phase = index * 2.399963 + generation * 1.618034;
+    let angle, radius, x, y;
+    for (let attempt = 0; attempt < 16; attempt++) {
+      angle = phase + attempt * 2.399963;
+      radius = 1.4 + (index % 4) * 0.2 + attempt * 0.06;
+      x = cx + radius * Math.cos(angle);
+      y = cy + radius * Math.sin(angle);
+      if (bodies.every(b => Math.hypot(x - b.x, y - b.y) > 0.35)) break;
+    }
+    const speed = 0.85 * Math.sqrt(gravity * mass / radius);
+    const lift = Math.sin(inclination * DEG);
+    return [x, y, center("vx") - speed * Math.sin(angle), center("vy") + speed * Math.cos(angle), 1,
+      center("z") + radius * lift * Math.sin(phase), center("vz") + speed * lift * Math.cos(phase)];
+  }
+
+  function makeSystem(orbit, bodyCount, gravity, inclination, offset = 0) {
+    let initial;
+    if (orbit === "triangle") {
+      const radius = TRIANGLE_RADIUS;
+      const omega = TRIANGLE_RATE;
+      initial = Array.from({ length: 3 }, (_, i) => {
+        const a = i * 2 * Math.PI / 3;
+        return [radius * Math.cos(a), radius * Math.sin(a),
+          -omega * radius * Math.sin(a), omega * radius * Math.cos(a), 1];
+      });
+    } else if (orbit === "encounter" || orbit === "split") {
+      initial = [[-0.38, 0, 0, -0.82, 1], [0.38, 0, 0, 0.82, 1], [-2.9, orbit === "split" ? 0.5 : 0.95, 1.08, -0.08, 0.55]];
+    } else {
+      initial = [
+        [-0.97000436, 0.24308753, 0.466203685, 0.43236573, 1],
+        [0.97000436, -0.24308753, 0.466203685, 0.43236573, 1],
+        [0, 0, -0.93240737, -0.86473146, 1]
+      ];
+    }
+    initial.length = Math.min(initial.length, bodyCount);
+    initial = initial.map(([x, y, vx, vy, mass], index) => {
+      if (!inclination) return [x, y, vx, vy, mass, 0, 0];
+      const encounter = orbit === "encounter" || orbit === "split";
+      if (encounter && index === 2) {
+        const angle = inclination * DEG;
+        return [x, y * Math.cos(angle), vx, vy * Math.cos(angle), mass, -x * Math.sin(angle) * 0.65,
+          -vx * Math.sin(angle)];
+      }
+      const angle = inclination * DEG * (encounter ? 0.08 : (index % 2 ? -0.8 : 0.65));
+      const phase = index * 2.399963;
+      const along = x * Math.cos(phase) + y * Math.sin(phase);
+      const velocity = vx * Math.cos(phase) + vy * Math.sin(phase);
+      return [x, y, vx, vy, mass, along * Math.sin(angle), velocity * Math.sin(angle)];
+    });
+    while (initial.length < bodyCount) {
+      initial.push(spawnState(initial.map(([x, y, vx, vy, m, z, vz]) => ({ x, y, vx, vy, m, z, vz })),
+        initial.length, 0, 1, inclination));
+    }
+    initial[0][0] += offset;
+    const mass = initial.reduce((sum, body) => sum + body[4], 0);
+    const center = initial[0].map((_, axis) =>
+      initial.reduce((sum, body) => sum + body[axis] * body[4], 0) / mass);
+    const bodies = initial.map(([x, y, vx, vy, m, z, vz]) => ({
+      x: x - center[0], y: y - center[1], vx: (vx - center[2]) * Math.sqrt(gravity), vy: (vy - center[3]) * Math.sqrt(gravity),
+      z: z - center[5], vz: (vz - center[6]) * Math.sqrt(gravity),
+      m, ax: 0, ay: 0, az: 0, samples: 0, fade: 1, departure: 0, generation: 0, history: new Float32Array(HISTORY_SIZE * 3), generations: new Uint32Array(HISTORY_SIZE)
+    }));
+    accelerations(bodies, gravity);
+    return { bodies, orbit, gravity, inclination, crossings: [], time: 0, cursor: 0, samples: 0 };
+  }
+
+  function accelerations(bodies, gravity) {
+    for (const body of bodies) body.ax = body.ay = body.az = 0;
+    for (let i = 0; i < bodies.length; i++) {
+      for (let j = i + 1; j < bodies.length; j++) {
+        const a = bodies[i], b = bodies[j];
+        const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+        // A small softening radius bounds acceleration at near-coincident positions.
+        const force = gravity * (dx * dx + dy * dy + dz * dz + 1e-6) ** -1.5;
+        a.ax += b.m * dx * force;
+        a.ay += b.m * dy * force;
+        a.az += b.m * dz * force;
+        b.ax -= a.m * dx * force;
+        b.ay -= a.m * dy * force;
+        b.az -= a.m * dz * force;
+      }
+    }
+  }
+
+  function step(system) {
+    // Use the exact circular solution for the rotating triangle. Numerical
+    // roundoff can eventually break the equal-mass triangle's symmetry.
+    if (system.orbit === "triangle" && system.bodies.length === 3 && !system.inclination) {
+      system.time = (system.time + STEP * Math.sqrt(system.gravity)) % (2 * Math.PI / TRIANGLE_RATE);
+      system.bodies.forEach((body, i) => {
+        const angle = system.time * TRIANGLE_RATE + i * 2 * Math.PI / 3;
+        body.x = TRIANGLE_RADIUS * Math.cos(angle);
+        body.y = TRIANGLE_RADIUS * Math.sin(angle);
+      });
+      return;
+    }
+    for (const b of system.bodies) {
+      b.vx += b.ax * STEP / 2;
+      b.vy += b.ay * STEP / 2;
+      b.vz += b.az * STEP / 2;
+      b.x += b.vx * STEP;
+      const oldZ = b.z;
+      b.y += b.vy * STEP;
+      b.z += b.vz * STEP;
+      if ((oldZ < 0 && b.z >= 0 || oldZ > 0 && b.z <= 0) && Math.abs(b.vz) > 0.025) {
+        const t = b.z / (b.z - oldZ);
+        const crossing = { x: b.x - b.vx * STEP * t, y: b.y - b.vy * STEP * t,
+          index: system.bodies.indexOf(b), tick: tick - t, speed: Math.abs(b.vz) };
+        system.crossings.push(crossing);
+        if (system.crossings.length > 32) system.crossings.shift();
+        b.lastCrossing = crossing.tick;
+      }
+    }
+    accelerations(system.bodies, system.gravity);
+    for (const b of system.bodies) {
+      b.vx += b.ax * STEP / 2;
+      b.vy += b.ay * STEP / 2;
+      b.vz += b.az * STEP / 2;
+    }
+  }
+
+  function replaceDepartingBodies(system) {
+    const bodies = system.bodies;
+    let changed = false;
+    for (const [index, body] of bodies.entries()) {
+      body.fade = Math.min(1, body.fade + STEP / 1.25);
+      if (!body.departure && (body.x * body.vx + body.y * body.vy + body.z * body.vz <= 0
+          || Math.hypot(body.x, body.y, body.z) <= 5)) continue;
+      body.departure += STEP;
+      if (body.departure < 1) continue;
+
+      const neighbors = bodies.filter(b => b !== body && !b.departure);
+      const [x, y, vx, vy, m, z, vz] = spawnState(neighbors, index, ++body.generation, system.gravity, system.inclination);
+      Object.assign(body, { x, y, z, vx, vy, vz, m, lastCrossing: undefined, samples: 0, fade: 0, departure: 0 });
+      changed = true;
+    }
+    if (changed) accelerations(bodies, system.gravity);
+  }
+
+  function record(system) {
+    for (const b of system.bodies) {
+      b.samples = Math.min(b.samples + 1, HISTORY_SIZE);
+      b.generations[system.cursor] = b.generation;
+      b.history[3 * system.cursor] = b.x;
+      b.history[3 * system.cursor + 1] = b.y;
+      b.history[3 * system.cursor + 2] = b.z;
+    }
+    system.cursor = (system.cursor + 1) % HISTORY_SIZE;
+    system.samples = Math.min(system.samples + 1, HISTORY_SIZE);
+  }
+
+  function advance() {
+    tick++;
+    for (const system of systems) {
+      step(system);
+      replaceDepartingBodies(system);
+      if (tick % SAMPLE_EVERY === 0) record(system);
+    }
+  }
+
+  function restart(settings) {
+    const { orbit, perturbation, bodyCount, gravity, inclination } = settings.simulation;
+    systems = [makeSystem(orbit, bodyCount, gravity, inclination)];
+    if (orbit === "split") systems.push(makeSystem(orbit, bodyCount, gravity, inclination, perturbation));
+    for (const system of systems) record(system);
+    tick = elapsed = accumulator = previousFrame = 0;
+    focusX = focusY = 0;
+    // Start the periodic presets with visible trails.
+    if (!inclination && bodyCount === 3 && (orbit === "eight" || orbit === "triangle")) {
+      for (let i = 0; i < 3 * 240; i++) advance();
+    }
+  }
+
+  function barycenter(bodies) {
+    let x = 0, y = 0, z = 0, mass = 0;
+    for (const body of bodies) {
+      const weight = body.m * body.fade * (1 - body.departure);
+      x += body.x * weight;
+      y += body.y * weight;
+      z += body.z * weight;
+      mass += weight;
+    }
+    return mass ? [x / mass, y / mass, z / mass] : [0, 0, 0];
+  }
+
+  function mixColor(a, b, t) {
+    return a.map((channel, index) => channel + (b[index] - channel) * t);
+  }
+
+  function makeStars() {
+    let seed = 1937;
+    const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 2 ** 32);
+    return Array.from({ length: 360 }, () => ({
+      x: 2 * random() - 1, y: 2 * random() - 1, brightness: 0.15 + 0.7 * random() ** 2
+    }));
+  }
+
+  function createRenderer() {
+    const program = gl.createProgram();
+    function attach(type, source, target = program) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
+      gl.attachShader(target, shader);
+      gl.deleteShader(shader);
+    }
+    attach(gl.VERTEX_SHADER, `
+      attribute vec2 position;
+      attribute vec4 color;
+      uniform float size;
+      varying mediump vec4 tint;
+      void main() {
+        gl_Position = vec4(position, 0., 1.);
+        gl_PointSize = size;
+        tint = color;
+      }`);
+    attach(gl.FRAGMENT_SHADER, `
+      precision mediump float;
+      varying mediump vec4 tint;
+      uniform int mode;
+      uniform vec4 eclipseMask;
+      uniform float eclipseRim;
+      void main() {
+        float alpha = tint.a;
+        if (mode > 0) {
+          float r = length(gl_PointCoord * 2. - 1.);
+          alpha *= mode == 1 ? exp(-5. * r * r) * (1. - smoothstep(.72, 1., r))
+                             : 1. - smoothstep(.65, 1., r);
+        }
+        vec3 rgb = tint.rgb;
+        if (eclipseMask.z > 0.0 && mode > 0) {
+          float distance = length(gl_FragCoord.xy - eclipseMask.xy);
+          float edge = distance - eclipseMask.z;
+          float rim = exp(-abs(edge) * 0.6) * smoothstep(-1.0, 1.0, edge);
+          alpha *= mix(1.0, smoothstep(-1.0, 1.0, edge), eclipseMask.w);
+          alpha = min(1.0, alpha * (1.0 + eclipseRim * rim * 4.0));
+          rgb = mix(rgb, vec3(1.0, 0.89, 0.72), min(1.0, rim * eclipseRim));
+        }
+        gl_FragColor = vec4(rgb, alpha);
+      }`);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+    const sceneBuffer = gl.createBuffer();
+    const sceneAttributes = [["position", 2, 0], ["color", 4, 8]].map(([name, length, offset]) =>
+      [gl.getAttribLocation(program, name), length, offset]);
+    function bindScene() {
+      gl.useProgram(program);
+      gl.bindBuffer(gl.ARRAY_BUFFER, sceneBuffer);
+      for (const [index, length, offset] of sceneAttributes) {
+        gl.enableVertexAttribArray(index);
+        gl.vertexAttribPointer(index, length, gl.FLOAT, false, 24, offset);
+      }
+    }
+    bindScene();
+    const size = gl.getUniformLocation(program, "size");
+    const mode = gl.getUniformLocation(program, "mode");
+    const vertices = new Float32Array(65536 * 6);
+    const stars = makeStars();
+    const grid = new Float32Array(GRID_SIZE ** 2);
+    const maxPointSize = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1];
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+    const eclipseMask = gl.getUniformLocation(program, "eclipseMask");
+    const eclipseRim = gl.getUniformLocation(program, "eclipseRim");
+    let particlePass;
+
+    function createParticlePass() {
+      const particleProgram = gl.createProgram();
+      attach(gl.VERTEX_SHADER, `
+        attribute vec4 seed;
+        uniform vec4 bodies[12];
+        uniform vec4 camera;
+        uniform vec4 projection;
+        uniform vec4 placement;
+        uniform vec4 effect;
+        varying mediump vec4 tint;
+        void main() {
+          float phase = fract(seed.w * 17.97 + effect.x * 0.11);
+          float angle = seed.w * 1719.73;
+          float radius = (effect.y > 0.5 ? 0.14 + phase * 0.35 : 0.30 + phase * 0.76);
+          vec3 radial = vec3(cos(angle), sin(angle), sin(angle * 0.71) * 0.7);
+          vec3 p = seed.xyz + radial * radius;
+          vec3 v = vec3(-radial.y, radial.x, cos(angle * 0.71) * 0.22);
+          v *= effect.y > 0.5 ? 0.8 : 0.28;
+          float dt = (0.7 + phase * 1.35) / 8.0;
+          float pull = 0.0;
+          for (int step = 0; step < 8; step++) {
+            vec3 field = vec3(0.0);
+            for (int j = 0; j < 12; j++) {
+              vec3 d = bodies[j].xyz - p;
+              float r2 = dot(d, d) + 0.055;
+              field += bodies[j].w * d * inversesqrt(r2) / r2;
+            }
+            pull = length(field);
+            if (effect.y < 0.5) {
+              // Rotate the field into a curl around the path and push dust away from the core.
+              field = vec3(-field.y, field.x, field.z * 0.6) * 0.18 - field * 0.11;
+            }
+            v += field * dt * (effect.y > 0.5 ? 0.36 : 0.65);
+            p += v * dt;
+          }
+          p.xy -= placement.xy;
+          float u = dot(p.xy, camera.xy);
+          float vPlane = dot(p.xy, vec2(-camera.y, camera.x));
+          float cameraDepth = 4.0 + vPlane * camera.w - p.z * camera.z;
+          float depth = projection.z > 0.5 ? 4.0 / max(1.5, cameraDepth) : 1.0;
+          gl_Position = vec4(vec2(u, vPlane * camera.z + p.z * camera.w)
+            * projection.xy * depth + placement.zw, 0.0, 1.0);
+          float fade = sin(phase * 3.14159);
+          float lit = clamp(pull * 0.18, 0.15, 1.0);
+          vec3 dust = mix(vec3(0.19, 0.28, 0.55), vec3(0.45, 0.78, 1.0), lit);
+          vec3 stream = mix(vec3(0.39, 0.72, 1.0), vec3(1.0, 0.56, 0.31), fract(seed.w * 47.251));
+          tint = vec4(effect.y > 0.5 ? stream : dust,
+            fade * effect.z * (effect.y > 0.5 ? 0.66 : 0.23 + lit * 0.23)
+            * clamp(depth * 0.7, 0.35, 1.0));
+          gl_PointSize = clamp(depth, 0.55, 2.0) * effect.w * (effect.y > 0.5 ? 2.8 : 5.5);
+        }`, particleProgram);
+      attach(gl.FRAGMENT_SHADER, `
+        precision mediump float;
+        varying mediump vec4 tint;
+        void main() {
+          float r = length(gl_PointCoord * 2.0 - 1.0);
+          gl_FragColor = vec4(tint.rgb, tint.a * exp(-3.0 * r * r) * (1.0 - smoothstep(0.65, 1.0, r)));
+        }`, particleProgram);
+      gl.linkProgram(particleProgram);
+      if (!gl.getProgramParameter(particleProgram, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(particleProgram));
+      return {
+        program: particleProgram, buffer: gl.createBuffer(), seed: gl.getAttribLocation(particleProgram, "seed"),
+        uniform: Object.fromEntries(["bodies[0]", "camera", "projection", "placement", "effect"]
+          .map(key => [key, gl.getUniformLocation(particleProgram, key)])),
+        positions: new Float32Array(6000 * 4), field: new Float32Array(48)
+      };
+    }
+
+    return function draw(settings) {
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
+      const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      gl.viewport(0, 0, w, h);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      const palette = [settings.colors.first, settings.colors.second, settings.colors.third].map(hex =>
+        [1, 3, 5, 7].map(index => parseInt(hex.slice(index, index + 2) || "FF", 16) / 255));
+      const { view, trails, glow, features } = settings;
+      const main = systems[0];
+      const [centerX, centerY, centerZ] = barycenter(main.bodies);
+      const angle = view.threeD ? yaw + (view.orbit ? elapsed * view.orbitSpeed * DEG : 0) : 0;
+      const tilt = view.threeD ? (view.tilt + pitch) * DEG : 0;
+      const ca = Math.cos(angle), sa = Math.sin(angle);
+      const ct = Math.cos(tilt), st = Math.sin(tilt);
+      const planeHeight = main.inclination ? 0 : -0.38;
+      const scale = Math.min(w, h) * view.zoom / (["encounter", "split", "swarm"].includes(settings.simulation.orbit) ? 3.8 : 1.55);
+      let offset = 0;
+      const waves = [];
+      const liquid = view.threeD && features.liquid.enabled;
+      const caustics = view.threeD && features.caustics.enabled;
+      if ((features.crossings.enabled || liquid || caustics) && main.inclination) {
+        for (const system of systems) {
+          for (const hit of system.crossings) {
+            const age = (tick - hit.tick) * STEP;
+            if (age >= (liquid || caustics ? 3.4 : 1.4)) continue;
+            const strength = Math.min(1, hit.speed / 1.8) * features.crossings.intensity
+              * (system === main ? 1 : 0.33);
+            waves.push({ ...hit, age, strength, radius: 0.04 + age * 1.8,
+              color: palette[hit.index % palette.length] });
+          }
+        }
+      }
+
+      // Sum damped radial waves in world space so they survive camera movement.
+      const surfaceWaves = waves.slice(-10);
+      const surface = { height: 0, slopeX: 0, slopeY: 0, light: 0 };
+      function sampleSurface(x, y) {
+        let height = 0, slopeX = 0, slopeY = 0, energy = 0;
+        for (const wave of surfaceWaves) {
+          const dx = x - wave.x, dy = y - wave.y;
+          const radius = Math.hypot(dx, dy);
+          const delta = radius - wave.radius;
+          if (Math.abs(delta) > 1.3) continue;
+          const envelope = wave.strength * Math.exp(-delta * delta * 4.6) * (1 - wave.age / 3.4) ** 2;
+          const phase = delta * 11 - wave.age * 2;
+          const value = Math.cos(phase) * envelope;
+          const slope = -11 * Math.sin(phase) * envelope - delta * 9.2 * value;
+          height += value;
+          slopeX += dx / Math.max(0.05, radius) * slope;
+          slopeY += dy / Math.max(0.05, radius) * slope;
+          energy += Math.abs(value);
+        }
+        surface.height = height;
+        surface.slopeX = slopeX;
+        surface.slopeY = slopeY;
+        surface.light = Math.min(1, Math.max(0, (Math.abs(height) + energy * 0.4) * 1.65) ** 2);
+        return surface;
+      }
+
+      function depthScale(x, y, z) {
+        if (!view.threeD || !view.perspective) return 1;
+        const v = -(x - focusX) * sa + (y - focusY) * ca;
+        return 4 / Math.max(1.5, 4 + v * st - z * ct);
+      }
+
+      function project(x, y, z = 0) {
+        const depth = depthScale(x, y, z);
+        x -= focusX;
+        y -= focusY;
+        const u = x * ca + y * sa;
+        const v = -x * sa + y * ca;
+        return [
+          u * scale * depth / w + 2 * panX / Math.max(1, canvas.clientWidth),
+          (v * ct + z * st) * scale * depth / h - 2 * panY / Math.max(1, canvas.clientHeight)
+        ];
+      }
+
+      function screenVertex(x, y, color, opacity) {
+        vertices[offset++] = x;
+        vertices[offset++] = y;
+        vertices[offset++] = color[0];
+        vertices[offset++] = color[1];
+        vertices[offset++] = color[2];
+        vertices[offset++] = color[3] * opacity;
+      }
+
+      function vertex(x, y, color, opacity, z = 0) {
+        const [sx, sy] = project(x, y, z);
+        screenVertex(sx, sy, color, opacity);
+      }
+
+      function flush(primitive, shape, diameter = 1) {
+        gl.bufferData(gl.ARRAY_BUFFER, vertices.subarray(0, offset), gl.DYNAMIC_DRAW);
+        gl.uniform1i(mode, shape);
+        gl.uniform1f(size, Math.min(maxPointSize, diameter * dpr));
+        gl.drawArrays(primitive, 0, offset / 6);
+        offset = 0;
+      }
+
+      function renderParticles(effect, tidal) {
+        particlePass ??= createParticlePass();
+        const pass = particlePass;
+        const { positions, field, uniform } = pass;
+        field.fill(0);
+        main.bodies.forEach((body, i) => {
+          field.set([body.x, body.y, body.z, main.gravity * body.m * body.fade], i * 4);
+        });
+        for (let i = 0; i < effect.count; i++) {
+          const body = main.bodies[i % main.bodies.length];
+          const seed = ((Math.imul(i + 1, 2654435761) >>> 0) + 0.5) / 4294967296;
+          const age = tidal ? 0 : Math.floor(seed * Math.min(150, body.samples));
+          if (age > 0) {
+            const slot = (main.cursor - age + HISTORY_SIZE) % HISTORY_SIZE;
+            positions.set([body.history[slot * 3], body.history[slot * 3 + 1], body.history[slot * 3 + 2], seed], i * 4);
+          } else {
+            positions.set([body.x, body.y, body.z, seed], i * 4);
+          }
+        }
+        gl.useProgram(pass.program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, pass.buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, positions.subarray(0, effect.count * 4), gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(pass.seed);
+        gl.vertexAttribPointer(pass.seed, 4, gl.FLOAT, false, 0, 0);
+        gl.uniform4fv(uniform["bodies[0]"], field);
+        gl.uniform4f(uniform.camera, ca, sa, ct, st);
+        gl.uniform4f(uniform.projection, scale / w, scale / h, Number(view.threeD && view.perspective), 0);
+        gl.uniform4f(uniform.placement, focusX, focusY, 2 * panX / Math.max(1, canvas.clientWidth),
+          -2 * panY / Math.max(1, canvas.clientHeight));
+        gl.uniform4f(uniform.effect, tick * STEP, Number(tidal), effect.opacity, dpr);
+        gl.drawArrays(gl.POINTS, 0, effect.count);
+        gl.disableVertexAttribArray(pass.seed);
+        bindScene();
+      }
+
+      function gravityFilaments() {
+        const effect = features.filaments;
+        for (const [index, body] of main.bodies.entries()) {
+          const color = palette[index % palette.length];
+          for (let thread = 0; thread < effect.count; thread++) {
+            const longitude = thread * 2.399963 + tick * STEP * 0.18;
+            const zAxis = (thread + 0.5) * 2 / effect.count - 1;
+            const radial = Math.sqrt(1 - zAxis * zAxis);
+            let x = body.x + Math.cos(longitude) * radial * 0.24;
+            let y = body.y + Math.sin(longitude) * radial * 0.24;
+            let z = body.z + zAxis * 0.24;
+            for (let step = 0; step < 30; step++) {
+              let dx = 0, dy = 0, dz = 0;
+              for (const other of main.bodies) {
+                const ox = x - other.x, oy = y - other.y, oz = z - other.z;
+                const weight = other.m / (ox * ox + oy * oy + oz * oz + 0.045) ** 1.5;
+                dx += ox * weight; dy += oy * weight; dz += oz * weight;
+              }
+              const length = Math.hypot(dx, dy, dz);
+              if (length < 0.01) break;
+              vertex(x, y, color, effect.opacity * body.fade * (1 - step / 30) ** 2 * 0.42, z);
+              x += dx / length * 0.07;
+              y += dy / length * 0.07;
+              z += dz / length * 0.07;
+            }
+            if (offset) flush(gl.LINE_STRIP, 0);
+          }
+        }
+      }
+
+      function longExposure() {
+        const { intensity, duration } = features.exposure;
+        const interval = STEP * SAMPLE_EVERY;
+        const samples = Math.round(duration / interval);
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        for (const [index, body] of main.bodies.entries()) {
+          const color = palette[index % palette.length];
+          const count = Math.min(samples, main.samples);
+          for (let age = count - 1; age >= 2; age -= 2) {
+            const a = (main.cursor - 1 - age + HISTORY_SIZE) % HISTORY_SIZE;
+            const b = (a + 2) % HISTORY_SIZE;
+            if (body.generations[a] !== body.generations[b]) continue;
+            const alpha = intensity * 0.055 * Math.exp(-3 * age / samples);
+            for (const slot of [a, b]) vertex(body.history[3 * slot], body.history[3 * slot + 1],
+              color, alpha, body.history[3 * slot + 2]);
+          }
+        }
+        if (offset) flush(gl.LINES, 0);
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      }
+
+      function lensStars() {
+        const lenses = main.bodies.map(body => {
+          const [x, y] = project(body.x, body.y, body.z);
+          return { x, y, mass: body.m * body.fade * (1 - body.departure) };
+        });
+        const aspect = w / h;
+        const ripples = liquid && features.liquid.refraction > 0 ? surfaceWaves.map(wave => {
+          const [x, y] = project(wave.x, wave.y, planeHeight);
+          const stretch = depthScale(wave.x, wave.y, planeHeight) * scale / h;
+          return { ...wave, x, y, stretch };
+        }) : [];
+        for (const star of stars) {
+          let x = star.x, y = star.y, bendX = 0, bendY = 0, shear = 0;
+          for (const lens of lenses) {
+            const dx = (star.x - lens.x) * aspect, dy = star.y - lens.y;
+            const r2 = dx * dx + dy * dy;
+            const lift = (features.lensing.enabled ? features.lensing.strength : 0) * lens.mass * 0.007 / (r2 + 0.025);
+            bendX += dx * lift;
+            bendY += dy * lift;
+            shear += lift;
+          }
+          for (const ripple of ripples) {
+            const dx = (star.x - ripple.x) * aspect, dy = star.y - ripple.y;
+            const vertical = Math.max(0.18, Math.abs(ct));
+            const r = Math.hypot(dx, dy / vertical);
+            const delta = r - ripple.radius * ripple.stretch;
+            const wave = Math.sin(delta * 24) * Math.exp(-delta * delta * 50) * ripple.strength
+              * (1 - ripple.age / 3.4) ** 2 * features.liquid.refraction * 0.05;
+            bendX += dx / Math.max(0.02, r) * wave;
+            bendY += dy / Math.max(0.02, r) * wave;
+          }
+          x += bendX / aspect;
+          y += bendY;
+          screenVertex(x, y, FIELD_COLORS.star, star.brightness);
+          if (shear > 0.08) {
+            const length = Math.min(0.6, shear) * 0.42;
+            screenVertex(x - bendY * length / aspect, y + bendX * length, FIELD_COLORS.star, 0);
+            screenVertex(x + bendY * length / aspect, y - bendX * length, FIELD_COLORS.star, 0);
+            screenVertex(x, y, FIELD_COLORS.star, star.brightness);
+          } else {
+            screenVertex(x + 2 * dpr / w, y, FIELD_COLORS.star, 0);
+          }
+        }
+        flush(gl.LINES, 0);
+      }
+
+      const span = Math.max(3, Math.min(12, 1.18 * Math.max(w, h) / scale));
+      const gridStep = 2 * span / (GRID_SIZE - 1);
+      const gridX = focusX - span, gridY = focusY - span;
+
+      function gravityContours() {
+        for (let y = 0; y < GRID_SIZE; y++) {
+          for (let x = 0; x < GRID_SIZE; x++) {
+            const px = gridX + x * gridStep, py = gridY + y * gridStep;
+            grid[y * GRID_SIZE + x] = main.gravity * main.bodies.reduce((sum, body) =>
+              sum + body.m / Math.sqrt((px - body.x) ** 2 + (py - body.y) ** 2 + body.z ** 2 + 0.06), 0);
+          }
+        }
+        const levels = [0.5, 0.75, 1, 1.35, 1.8, 2.5, 3.5, 5].map(level =>
+          level * main.gravity * main.bodies.length / 3);
+        for (const level of levels) {
+          for (let y = 0; y < GRID_SIZE - 1; y++) {
+            for (let x = 0; x < GRID_SIZE - 1; x++) {
+              const cell = y * GRID_SIZE + x;
+              const values = [grid[cell], grid[cell + 1], grid[cell + GRID_SIZE + 1], grid[cell + GRID_SIZE]];
+              if (level <= Math.min(...values) || level > Math.max(...values)) continue;
+              const corners = [[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]];
+              for (const triangle of [[0, 1, 2], [0, 2, 3]]) {
+                for (let edge = 0; edge < 3; edge++) {
+                  const a = triangle[edge], b = triangle[(edge + 1) % 3];
+                  if ((values[a] >= level) === (values[b] >= level)) continue;
+                  const fraction = (level - values[a]) / (values[b] - values[a]);
+                  const [ax, ay] = corners[a], [bx, by] = corners[b];
+                  vertex(gridX + (ax + fraction * (bx - ax)) * gridStep,
+                    gridY + (ay + fraction * (by - ay)) * gridStep,
+                    FIELD_COLORS.contour, features.contours.opacity * 0.6);
+                }
+              }
+            }
+          }
+          flush(gl.LINES, 0);
+        }
+      }
+
+      function densityMap() {
+        grid.fill(0);
+        for (const body of main.bodies) {
+          for (let age = 0; age < main.samples; age += 3) {
+            const slot = (main.cursor - 1 - age + HISTORY_SIZE) % HISTORY_SIZE;
+            const x = (body.history[slot * 3] - gridX) / gridStep;
+            const y = (body.history[slot * 3 + 1] - gridY) / gridStep;
+            const col = Math.floor(x), row = Math.floor(y);
+            if (col < 0 || row < 0 || col >= GRID_SIZE - 1 || row >= GRID_SIZE - 1) continue;
+            const dx = x - col, dy = y - row, cell = row * GRID_SIZE + col;
+            grid[cell] += (1 - dx) * (1 - dy);
+            grid[cell + 1] += dx * (1 - dy);
+            grid[cell + GRID_SIZE] += (1 - dx) * dy;
+            grid[cell + GRID_SIZE + 1] += dx * dy;
+          }
+        }
+        const peak = Math.max(1, ...grid);
+        for (let y = 0; y < GRID_SIZE - 1; y++) {
+          for (let x = 0; x < GRID_SIZE - 1; x++) {
+            const cell = y * GRID_SIZE + x;
+            if (!(grid[cell] || grid[cell + 1] || grid[cell + GRID_SIZE] || grid[cell + GRID_SIZE + 1])) continue;
+            for (const [dx, dy] of [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]]) {
+              const heat = Math.sqrt(grid[cell + dx + dy * GRID_SIZE] / peak);
+              vertex(gridX + (x + dx) * gridStep, gridY + (y + dy) * gridStep,
+                mixColor(FIELD_COLORS.densityLow, FIELD_COLORS.densityHigh, heat), heat * features.density.opacity);
+            }
+          }
+        }
+        flush(gl.TRIANGLES, 0);
+      }
+
+      function drawOrbitalGrid(plane, settings) {
+        const { infinite, density, planeWidth, planeOpacity, lineColor, fillOpacity, fillColor } = settings;
+        if (!planeOpacity && !fillOpacity) return;
+        const spacing = 1 / density;
+        const radius = infinite ? Math.ceil(Math.max(18, 2 * Math.max(w, h) / scale) / spacing) : Math.round(4 * density);
+        const extent = radius * spacing;
+        const animated = (liquid || caustics) && surfaceWaves.length > 0;
+        const at = (x, y, sample) => {
+          let z = plane;
+          if (liquid && animated) {
+            const edge = infinite ? 1 : Math.max(0, Math.min(1, (extent - Math.max(Math.abs(x), Math.abs(y))) * 2));
+            const near = Math.max(0, Math.min(1, nearDistance([x, y]) * 1.6));
+            const height = (sample || sampleSurface(focusX + x, focusY + y)).height;
+            z += Math.max(-0.6, Math.min(0.6, height * features.liquid.amplitude)) * near * edge;
+          }
+          return project(focusX + x, focusY + y, z);
+        };
+        const fade = (x, y) => {
+          if (!infinite) return 1;
+          const t = Math.max(0, Math.min(1, (Math.hypot(x, y) / extent - 0.24) / 0.76));
+          return 1 - t * t * (3 - 2 * t);
+        };
+        // Clip in plane coordinates before projecting. Clamping projected depths
+        // folds geometry that extends behind the near plane.
+        const nearDistance = ([x, y]) => view.perspective
+          ? 4 + (-x * sa + y * ca) * st - plane * ct - 1.5 : 1;
+        const nearIntersection = (a, b, da, db) => {
+          const t = da / (da - db);
+          return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+        };
+        function clipNear(polygon) {
+          const clipped = [];
+          let before = polygon[polygon.length - 1];
+          let previous = nearDistance(before);
+          for (const after of polygon) {
+            const distance = nearDistance(after);
+            if ((previous < 0) !== (distance < 0)) {
+              clipped.push(nearIntersection(before, after, previous, distance));
+            }
+            if (distance >= 0) clipped.push(after);
+            before = after;
+            previous = distance;
+          }
+          return clipped;
+        }
+        const square = [[-extent, -extent], [extent, -extent], [extent, extent], [-extent, extent]];
+        const finitePlane = infinite ? [] : clipNear(square);
+        const border = finitePlane.map(point => at(...point));
+        const decodeColor = hex => [1, 3, 5, 7].map(index => parseInt(hex.slice(index, index + 2) || "FF", 16) / 255);
+
+        const surfaceOpacity = liquid ? Math.max(0.13, fillOpacity) : fillOpacity;
+        if (surfaceOpacity > 0 || caustics) {
+          const tint = decodeColor(fillColor);
+          const light = [0.49, 0.88, 1, 1];
+          function fillPolygon(polygon) {
+            for (let i = 1; i + 1 < polygon.length; i++) {
+              for (const [x, y] of [polygon[0], polygon[i], polygon[i + 1]]) {
+                const sample = animated ? sampleSurface(focusX + x, focusY + y) : null;
+                const diffuse = liquid && sample ? Math.min(0.48, Math.abs(sample.slopeX * 0.14 + sample.slopeY * 0.19)) : 0;
+                const focus = caustics && sample ? Math.min(1, sample.light * features.caustics.intensity) : 0;
+                const position = at(x, y, sample);
+                screenVertex(...position, mixColor(tint, light, Math.min(1, diffuse + focus)),
+                  Math.min(1, surfaceOpacity + diffuse * 0.30 + focus * 0.52) * fade(x, y));
+              }
+            }
+          }
+          if (infinite || animated) {
+            const tiles = animated ? 40 : 20, size = 2 * extent / tiles;
+            for (let row = 0; row < tiles; row++) {
+              for (let col = 0; col < tiles; col++) {
+                const x = col * size - extent, y = row * size - extent;
+                fillPolygon(clipNear([[x, y], [x + size, y], [x + size, y + size], [x, y + size]]));
+              }
+            }
+          } else {
+            fillPolygon(finitePlane);
+          }
+          flush(gl.TRIANGLES, 0);
+        }
+
+        if (!planeOpacity) return;
+        const tint = decodeColor(lineColor);
+        const halfWidth = planeWidth * dpr / 2;
+        const cross = (a, b, p) => (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+        const area = border.reduce((sum, a, i) => {
+          const b = border[(i + 1) % border.length];
+          return sum + a[0] * b[1] - a[1] * b[0];
+        }, 0);
+        const winding = Math.abs(area) > 1e-12 ? Math.sign(area) : 0;
+        function clipToBorder(polygon) {
+          for (let i = 0; i < border.length && polygon.length; i++) {
+            const a = border[i], b = border[(i + 1) % border.length];
+            const inside = point => winding * cross(a, b, point);
+            const clipped = [];
+            let before = polygon[polygon.length - 1];
+            let beforeDistance = inside(before);
+            for (const after of polygon) {
+              const afterDistance = inside(after);
+              if ((beforeDistance >= 0) !== (afterDistance >= 0)) {
+                const t = beforeDistance / (beforeDistance - afterDistance);
+                clipped.push(before.map((value, axis) => value + t * (after[axis] - value)));
+              }
+              if (afterDistance >= 0) clipped.push(after);
+              before = after;
+              beforeDistance = afterDistance;
+            }
+            polygon = clipped;
+          }
+          return polygon;
+        }
+
+        function segment(x1, y1, x2, y2) {
+          const start = [x1, y1], end = [x2, y2];
+          const da = nearDistance(start), db = nearDistance(end);
+          if (da < 0 && db < 0) return;
+          if (da < 0) [x1, y1] = nearIntersection(start, end, da, db);
+          if (db < 0) [x2, y2] = nearIntersection(start, end, da, db);
+          const a = fade(x1, y1), b = fade(x2, y2);
+          if (!a && !b) return;
+          const [ax, ay] = at(x1, y1), [bx, by] = at(x2, y2);
+          const dx = (bx - ax) * w / 2, dy = (by - ay) * h / 2;
+          const length = Math.hypot(dx, dy);
+          if (length < 0.01) return;
+          const nx = -dy / length * halfWidth * 2 / w;
+          const ny = dx / length * halfWidth * 2 / h;
+          const quad = [[ax + nx, ay + ny, a], [ax - nx, ay - ny, a],
+            [bx - nx, by - ny, b], [bx + nx, by + ny, b]];
+          const polygon = infinite ? quad : clipToBorder(quad);
+          let highlight = 0;
+          if (features.crossings.ripple) {
+            const mx = (x1 + x2) / 2 + focusX, my = (y1 + y2) / 2 + focusY;
+            for (const wave of waves) {
+              if (!features.crossings.enabled || wave.age >= 1.4) continue;
+              const distance = Math.abs(Math.hypot(mx - wave.x, my - wave.y) - wave.radius);
+              highlight = Math.max(highlight, Math.max(0, 1 - distance / 0.35)
+                * wave.strength * (1 - wave.age / 1.4) ** 2);
+            }
+          }
+          for (let i = 1; i + 1 < polygon.length; i++) {
+            for (const [x, y, opacity] of [polygon[0], polygon[i], polygon[i + 1]]) {
+              screenVertex(x, y, tint, opacity * planeOpacity * Math.min(1, 0.45 + highlight));
+            }
+          }
+        }
+
+        if (!infinite && !winding) return;
+        const pulse = features.crossings.ripple && waves.length > 0;
+        const pieces = animated ? 52 : infinite ? 24 : pulse ? 12 : 1;
+        // Bound the number of lines at extreme aspect ratios or low zoom.
+        const stride = Math.max(1, Math.ceil(radius / 110));
+        for (let line = -radius; line <= radius; line += stride) {
+          const position = line * spacing;
+          for (let i = 0; i < pieces; i++) {
+            const from = extent * (2 * i / pieces - 1);
+            const to = extent * (2 * (i + 1) / pieces - 1);
+            segment(position, from, position, to);
+            segment(from, position, to, position);
+          }
+          if (offset > vertices.length - 6500) flush(gl.TRIANGLES, 0);
+        }
+        flush(gl.TRIANGLES, 0);
+      }
+
+      function crossingEffects() {
+        const finite = features.shadows.enabled && !features.shadows.infinite;
+        const limit = (x, y) => {
+          const depth = view.threeD && view.perspective
+            ? 4 + (-(x - focusX) * sa + (y - focusY) * ca) * st - planeHeight * ct - 1.5 : 1;
+          return finite ? Math.min(depth, 4 - Math.abs(x - focusX), 4 - Math.abs(y - focusY)) : depth;
+        };
+        for (const wave of waves) {
+          if (wave.age >= 1.4) continue;
+          if (features.crossings.ripple) {
+            const rings = wave.speed > 1.2 ? 2 : 1;
+            for (let ring = 0; ring < rings; ring++) {
+              const radius = wave.radius - ring * 0.24;
+              if (radius <= 0) continue;
+              const alpha = 0.8 * wave.strength * (1 - wave.age / 1.4) ** 2 / (ring + 1);
+              for (let i = 0; i < 64; i++) {
+                const a = i * Math.PI / 32, b = (i + 1) * Math.PI / 32;
+                const ax = wave.x + radius * Math.cos(a), ay = wave.y + radius * Math.sin(a);
+                const bx = wave.x + radius * Math.cos(b), by = wave.y + radius * Math.sin(b);
+                const da = limit(ax, ay), db = limit(bx, by);
+                if (da < 0 && db < 0) continue;
+                // Find the boundary on an arc segment when it straddles a clipping edge.
+                let lo = 0, hi = 1;
+                if ((da < 0) !== (db < 0)) {
+                  for (let j = 0; j < 10; j++) {
+                    const t = (lo + hi) / 2;
+                    const valid = limit(ax + (bx - ax) * t, ay + (by - ay) * t) >= 0;
+                    if (valid === (da >= 0)) lo = t;
+                    else hi = t;
+                  }
+                }
+                const from = da < 0 ? hi : 0, to = db < 0 ? lo : 1;
+                vertex(ax + (bx - ax) * from, ay + (by - ay) * from, wave.color, alpha, planeHeight);
+                vertex(ax + (bx - ax) * to, ay + (by - ay) * to, wave.color, alpha, planeHeight);
+              }
+            }
+          }
+        }
+        if (offset) flush(gl.LINES, 0);
+        if (features.crossings.flash) {
+          for (const wave of waves) {
+            if (wave.age >= 0.28 || limit(wave.x, wave.y) < 0) continue;
+            vertex(wave.x, wave.y, wave.color, wave.strength * (1 - wave.age / 0.28) ** 2, planeHeight);
+          }
+          if (offset) flush(gl.POINTS, 1, 36);
+        }
+      }
+
+      function planeShadows() {
+        const shade = features.shadows.opacity;
+        const plane = planeHeight;
+        const settings = features.shadows;
+        drawOrbitalGrid(plane, settings.enabled ? settings : { ...settings, infinite: true, planeOpacity: 0.14, fillOpacity: 0 });
+        if (!settings.enabled) return;
+        for (const body of main.bodies) {
+          vertex(body.x, body.y, FIELD_COLORS.shadow, main.inclination ? shade * 0.12 : 0, body.z);
+          vertex(body.x, body.y, FIELD_COLORS.shadow, shade * 0.5 * body.fade, plane);
+        }
+        flush(gl.LINES, 0);
+        if (trails.enabled) {
+          for (const body of main.bodies) {
+            const count = Math.min(body.samples, Math.round(trails.length / (STEP * SAMPLE_EVERY)));
+            for (let i = 0; i < count; i += 3) {
+              const slot = (main.cursor - count + i + HISTORY_SIZE) % HISTORY_SIZE;
+              vertex(body.history[3 * slot], body.history[3 * slot + 1],
+                FIELD_COLORS.shadow, shade * body.fade * (1 - body.departure) * i / count, plane);
+            }
+            flush(gl.LINE_STRIP, 0);
+          }
+        }
+        for (const body of main.bodies) {
+          vertex(body.x, body.y, FIELD_COLORS.shadow, shade * body.fade * (1 - body.departure), plane);
+        }
+        flush(gl.POINTS, 1, 34);
+      }
+
+      function encounterStrength(body, bodies) {
+        if (!features.flashes.enabled) return 0;
+        let distance = Infinity;
+        for (const other of bodies) {
+          if (other !== body) distance = Math.min(distance, Math.hypot(body.x - other.x, body.y - other.y, body.z - other.z));
+        }
+        return Math.max(0, 1 - distance / features.flashes.distance) ** 1.6 * features.flashes.intensity;
+      }
+
+      function drawTrail(system, body, color, opacity, dashed, flare) {
+        const latest = Math.round(trails.length / (STEP * SAMPLE_EVERY));
+        const deep = features.deepTime.enabled;
+        const archive = Math.round(features.deepTime.duration / (STEP * SAMPLE_EVERY));
+        const count = deep ? Math.min(system.samples, archive) : Math.min(body.samples, latest);
+        if (count < 1) return;
+        const ribbon = features.ribbons.enabled;
+        if (!system.inclination && !ribbon && !dashed && !deep && !flare && !features.spectral.enabled) {
+          const alpha = opacity * trails.opacity * body.fade * (1 - body.departure);
+          for (let i = 0; i < count; i++) {
+            const slot = (system.cursor - count + i + HISTORY_SIZE) % HISTORY_SIZE;
+            vertex(body.history[slot * 3], body.history[slot * 3 + 1], color, alpha * (i / count) ** 0.8);
+          }
+          vertex(body.x, body.y, color, alpha, body.z);
+          flush(gl.LINE_STRIP, 0);
+          return;
+        }
+        const archiveTint = mixColor(FIELD_COLORS.archive, color, 0.12);
+        let prior;
+        const spectrum = [[1, 0.15, 0.24, 1], [0.15, 0.88, 1, 1]];
+        const shear = [];
+        for (let i = 0; i <= count; i++) {
+          const slot = (system.cursor - count + i + HISTORY_SIZE) % HISTORY_SIZE;
+          const age = count - i;
+          const current = i === count;
+          const generation = current ? body.generation : body.generations[slot];
+          const x = current ? body.x : body.history[3 * slot];
+          const y = current ? body.y : body.history[3 * slot + 1];
+          const z = current ? body.z : body.history[3 * slot + 2];
+          const [sx, sy] = project(x, y, z);
+          const old = age > latest || generation !== body.generation;
+          const freshness = Math.max(0, 1 - age / latest);
+          const tintCrossings = features.crossings.enabled && features.crossings.tint;
+          const depth = system.inclination ? depthScale(x, y, z) : 1;
+          const cool = Math.min(0.45, Math.max(0, 1 - depth)) * 0.65;
+          const cooled = mixColor(color, FIELD_COLORS.archive, tintCrossings && z < planeHeight ? 0.55 : cool);
+          const crossing = tintCrossings && generation === body.generation && body.lastCrossing !== undefined
+            && (tick - body.lastCrossing) * STEP < 1
+            && Math.abs(tick - age * SAMPLE_EVERY - body.lastCrossing) < 22;
+          const point = {
+            x, y, z, sx, sy, generation,
+            tint: old ? archiveTint : crossing || flare ? mixColor(cooled, FIELD_COLORS.flash, crossing ? 0.7 : Math.min(1, flare * freshness)) : cooled,
+            alpha: opacity * (old
+              ? features.deepTime.opacity * Math.max(0, 1 - age / archive)
+              : trails.enabled ? trails.opacity * Math.max(deep ? 0.08 : 0, freshness ** 0.8) * body.fade * (1 - body.departure) : 0)
+          };
+          if (prior && prior.generation === generation && (!dashed || Math.floor((age + 1) / 5) % 2 === 0)) {
+            const dx = (sx - prior.sx) * w, dy = (sy - prior.sy) * h;
+            const length = Math.hypot(dx, dy);
+            if (features.spectral.enabled && length > 0.0001 && prior.direction) {
+              const vx = dx / length, vy = dy / length;
+              const turn = Math.min(1, Math.abs(vx * prior.direction[1] - vy * prior.direction[0]) * 16);
+              const velocity = Math.hypot(x - prior.x, y - prior.y, z - prior.z) / (STEP * SAMPLE_EVERY);
+              const strength = Math.min(1, velocity * 0.6) * turn * freshness;
+              const distance = features.spectral.strength * dpr * strength;
+              if (distance > 0.2) {
+                shear.push([prior.sx, prior.sy, sx, sy, -vy * distance * 2 / w, vx * distance * 2 / h,
+                  Math.min(prior.alpha, point.alpha) * strength * 0.72]);
+              }
+            }
+            if (length > 0.0001) point.direction = [dx / length, dy / length];
+            if (ribbon && length > 0.0001) {
+              const speed = Math.hypot(x - prior.x, y - prior.y, z - prior.z) / (STEP * SAMPLE_EVERY);
+              const depth = system.inclination ? Math.min(1.6, depthScale(x, y, z)) : 1;
+              const width = dpr * depth * (0.6 + (features.ribbons.width - 0.6) * Math.min(1, speed / 3));
+              const nx = -dy / length * width / w, ny = dx / length * width / h;
+              const a = prior, b = point;
+              for (const [end, side] of [[a, 1], [a, -1], [b, 1], [b, 1], [a, -1], [b, -1]]) {
+                screenVertex(end.sx + nx * side, end.sy + ny * side, end.tint, end.alpha);
+              }
+            } else if (!ribbon) {
+              screenVertex(prior.sx, prior.sy, prior.tint, prior.alpha);
+              screenVertex(sx, sy, point.tint, point.alpha);
+            }
+          }
+          prior = point;
+        }
+        flush(ribbon ? gl.TRIANGLES : gl.LINES, 0);
+        for (const [ax, ay, bx, by, nx, ny, alpha] of shear) {
+          screenVertex(ax + nx, ay + ny, spectrum[0], alpha);
+          screenVertex(bx + nx, by + ny, spectrum[0], alpha);
+          screenVertex(ax - nx, ay - ny, spectrum[1], alpha);
+          screenVertex(bx - nx, by - ny, spectrum[1], alpha);
+        }
+        if (offset) flush(gl.LINES, 0);
+      }
+
+      function lifecycleEffects(body, color, opacity) {
+        const strength = features.lifecycle.intensity * opacity;
+        if (!body.departure && body.generation && body.fade < 1) {
+          for (let spark = 0; spark < 9; spark++) {
+            const phase = spark * 2.399963 + body.generation;
+            const radius = (1 - body.fade) * (0.16 + (spark % 3) * 0.11);
+            const x = body.x + Math.cos(phase) * radius;
+            const y = body.y + Math.sin(phase) * radius;
+            vertex(x, y, color, strength * (1 - body.fade), body.z);
+          }
+          flush(gl.POINTS, 1, 9);
+        }
+        if (body.departure) {
+          const length = Math.hypot(body.vx, body.vy, body.vz) || 1;
+          for (let spark = 1; spark <= 14; spark++) {
+            const distance = spark * 0.055;
+            vertex(body.x - body.vx / length * distance, body.y - body.vy / length * distance,
+              color, strength * (1 - body.departure) * (1 - spark / 15), body.z - body.vz / length * distance);
+          }
+          flush(gl.POINTS, 1, 13);
+        }
+      }
+
+      if (features.lensing.enabled || liquid) lensStars();
+      if (features.density.enabled) densityMap();
+      if (features.contours.enabled) gravityContours();
+      if ((features.shadows.enabled && view.threeD) || liquid || caustics) planeShadows();
+      if (features.crossings.enabled && waves.length) crossingEffects();
+
+      if (features.exposure.enabled) longExposure();
+      if (features.dust.enabled) renderParticles(features.dust, false);
+      if (features.streamers.enabled) renderParticles(features.streamers, true);
+      if (features.filaments.enabled) gravityFilaments();
+
+      const dashed = features.divergence.enabled && systems.length === 2;
+      if (dashed && features.divergence.connectors) {
+        main.bodies.forEach((body, index) => {
+          const other = systems[1].bodies[index];
+          const color = palette[index % palette.length];
+          const alpha = 0.25 * Math.min(body.fade, other.fade) * (1 - Math.max(body.departure, other.departure));
+          vertex(body.x, body.y, color, alpha, body.z);
+          vertex(other.x, other.y, color, alpha, other.z);
+        });
+        flush(gl.LINES, 0);
+      }
+
+      for (const system of [...systems].reverse()) {
+        const ghost = system !== main;
+        const opacity = ghost ? 0.33 : 1;
+        const flares = system.bodies.map(body => encounterStrength(body, system.bodies));
+        for (const [index, body] of system.bodies.entries()) {
+          const color = palette[index % palette.length];
+          if (trails.enabled || features.deepTime.enabled) {
+            drawTrail(system, body, color, opacity, dashed && ghost, flares[index]);
+          }
+          if (features.lifecycle.enabled) lifecycleEffects(body, color, opacity);
+        }
+        if (features.flashes.enabled && flares.some(value => value > 0)) {
+          system.bodies.forEach((body, index) =>
+            vertex(body.x, body.y, FIELD_COLORS.flash, Math.min(1, flares[index]) * opacity * body.fade * (1 - body.departure), body.z));
+          flush(gl.POINTS, 1, settings.simulation.bodySize * 12);
+        }
+        if (view.threeD && (system.inclination || features.eclipse.enabled)) {
+          const ordered = system.bodies.map((body, index) => ({
+            body, index, depth: depthScale(body.x, body.y, body.z),
+            order: 4 + (-(body.x - focusX) * sa + (body.y - focusY) * ca) * st - body.z * ct,
+            screen: project(body.x, body.y, body.z)
+          })).sort((a, b) => b.order - a.order);
+          for (const { body, index, depth, order, screen } of ordered) {
+            const color = palette[index % palette.length];
+            const alpha = opacity * body.fade * (1 - body.departure) * Math.min(1, 0.6 + depth * 0.4);
+            const size = settings.simulation.bodySize * Math.max(0.55, Math.min(1.6, depth));
+            if (features.eclipse.enabled) {
+              let mask = null, closest = Infinity;
+              for (const front of ordered) {
+                if (front.order >= order - 0.001 || front.body.fade < 0.05) continue;
+                const radius = settings.simulation.bodySize * Math.max(0.55, Math.min(1.6, front.depth)) * dpr
+                  * (ghost ? 0.27 : 0.49);
+                const separation = Math.hypot((front.screen[0] - screen[0]) * w / 2, (front.screen[1] - screen[1]) * h / 2);
+                if (separation >= radius + size * dpr * 1.75 || separation >= closest) continue;
+                closest = separation;
+                mask = [(front.screen[0] + 1) * w / 2, (front.screen[1] + 1) * h / 2, radius,
+                  front.body.fade * (1 - front.body.departure)];
+              }
+              gl.uniform4f(eclipseMask, ...(mask || [0, 0, 0, 0]));
+              gl.uniform1f(eclipseRim, features.eclipse.intensity * (mask ? mask[3] : 0));
+            }
+            if (glow.enabled && glow.strength > 0) {
+              vertex(body.x, body.y, color, alpha * glow.strength * 0.55, body.z);
+              flush(gl.POINTS, 1, size * (ghost ? 2.8 : 5.3));
+            }
+            vertex(body.x, body.y, color, alpha, body.z);
+            flush(gl.POINTS, 2, size * (ghost ? 0.55 : 1));
+          }
+          if (features.eclipse.enabled) gl.uniform4f(eclipseMask, 0, 0, 0, 0);
+          continue;
+        }
+        if (glow.enabled && glow.strength > 0) {
+          system.bodies.forEach((b, i) => vertex(b.x, b.y, palette[i % palette.length], glow.strength * opacity * 0.55 * b.fade * (1 - b.departure), b.z));
+          flush(gl.POINTS, 1, settings.simulation.bodySize * (ghost ? 2.8 : 5.3));
+        }
+        system.bodies.forEach((b, i) => vertex(b.x, b.y, palette[i % palette.length], opacity * b.fade * (1 - b.departure), b.z));
+        flush(gl.POINTS, 2, settings.simulation.bodySize * (ghost ? 0.55 : 1));
+      }
+      if (features.barycenter.enabled && features.barycenter.crosshair) {
+        const [x, y] = project(centerX, centerY, centerZ);
+        const dx = 6 * dpr / w, dy = 6 * dpr / h;
+        for (const [sx, sy] of [[x - dx, y], [x + dx, y], [x, y - dy], [x, y + dy]]) {
+          screenVertex(sx, sy, FIELD_COLORS.marker, 0.88);
+        }
+        flush(gl.LINES, 0);
+      }
+    };
+  }
+
+  let draw;
+  function showNotice(message) {
+    notice.hidden = false;
+    notice.textContent = message;
+  }
+  function initRenderer() {
+    if (!gl) {
+      showNotice("WebGL is unavailable in this browser.");
+      return;
+    }
+    try {
+      draw = createRenderer();
+      notice.hidden = true;
+    } catch (error) {
+      showNotice("The WebGL renderer could not start.");
+      console.error(error);
+    }
+  }
+
+  function applySettings(settings, path) {
+    document.body.style.backgroundColor = settings.colors.background;
+    if (!path || ["simulation.orbit", "simulation.perturbation", "simulation.bodyCount", "simulation.inclination"].includes(path)) {
+      restart(settings);
+    }
+    if (path === "simulation.gravity") {
+      for (const system of systems) {
+        const ratio = Math.sqrt(settings.simulation.gravity / system.gravity);
+        system.gravity = settings.simulation.gravity;
+        for (const body of system.bodies) {
+          body.vx *= ratio;
+          body.vy *= ratio;
+          body.vz *= ratio;
+        }
+        accelerations(system.bodies, system.gravity);
+      }
+    }
+    if (!path || path === "view.threeD") yaw = pitch = 0;
+    if (path === "view.tilt") pitch = 0;
+  }
+
+  const editor = createSettingsEditor({
+    root: document.querySelector("#settings"), title: document.title,
+    sectionHelp: {
+      "Simulation": "Adjust gravity, speed, body size, and the number of orbiting bodies.",
+      "View": "Set the camera angle and zoom, or enable automatic 3D rotation.",
+      "Trails and glow": "Adjust the length and brightness of recent paths and the glow around each body.",
+      "Features": "Turn on individual effects to reveal their controls.",
+      "Orbital plane": "Grid, crossing ripples, moving water, and interference light.",
+      "Trails and exposure": "Shape, split, and accumulate the paths bodies leave behind.",
+      "Particles and gravity": "Dust, tidal tracers, and visualizations of the gravitational field.",
+      "Bodies and encounters": "Close passes, eclipses, births, and escapes.",
+      "Tracking and comparison": "Center-of-mass tracking and comparisons between simulations.",
+      "Liquid orbital plane": "In 3D view, displace the grid and refract stars when inclined orbits cross the plane.",
+      "Interference light": "In 3D view, add concentrated bands of light where crossing waves meet.",
+      "Volumetric dust wakes": "See layered dust pushed aside and curled around body paths.",
+      "Tidal streamers": "Follow tracer particles as neighboring bodies pull on orbiting halos.",
+      "Gravity filaments": "Trace streamlines through the combined gravitational field.",
+      "Spectral trail shearing": "Split fast-turning trails into red and cyan edges.",
+      "Eclipse glints": "In 3D view, mask the rear glow and show a rim of light during a projected overlap.",
+      "Long-exposure trails": "Accumulate recent paths so repeated passes grow brighter.",
+      "Plane crossings": "Show ripples, flashes, and trail highlights when bodies pass through the orbital plane.",
+      "Velocity ribbons": "Widen trails during fast passes and narrow them as bodies slow down.",
+      "Gravitational lensing": "Bend and stretch stars around the moving bodies.",
+      "Close-encounter flashes": "Brighten bodies and recent trails as they pass close together.",
+      "Gravity contours": "Trace lines of equal gravitational potential around the bodies.",
+      "Deep-time trails": "Leave older paths visible as faint blue-violet trails.",
+      "Orbital plane shadows": "Project bodies and trails onto a reference grid in 3D view.",
+      "Barycenter tracking": "Mark the center of mass or smoothly pan the camera to follow it.",
+      "Spawn and escape effects": "Show converging sparks at spawn and a fading streak during escape.",
+      "Split Orbit divergence": "Distinguish the two simulations with dashed comparison trails and optional connecting lines.",
+      "Orbit density map": "Highlight areas where bodies have spent the most time.",
+      "Colors": "Choose the background and body colors.",
+      "Import or export settings": "Load settings from JSON or copy the current configuration."
+    },
+    defaults: config, presets, sections, storageKey: "three-body-settings-v1",
+    onChange: applySettings,
+    onRestart: () => restart(editor.config),
+    onPause: value => { paused = value; },
+    initiallyPaused: paused
+  });
+  applySettings(editor.config, null);
+  initRenderer();
+
+  function animate(now) {
+    const dt = previousFrame ? Math.min(0.05, (now - previousFrame) / 1000) : 0;
+    previousFrame = now;
+    const settings = editor.config;
+    if (!paused) {
+      elapsed += dt;
+      accumulator += dt * settings.simulation.speed;
+      while (accumulator >= STEP) {
+        accumulator -= STEP;
+        advance();
+      }
+
+    }
+    const follow = settings.features.barycenter.enabled && settings.features.barycenter.track;
+    const [targetX, targetY] = follow ? barycenter(systems[0].bodies) : [0, 0];
+    const lag = follow ? settings.features.barycenter.lag : 1 / 3;
+    const smoothing = -Math.expm1(-dt / lag);
+    focusX += (targetX - focusX) * smoothing;
+    focusY += (targetY - focusY) * smoothing;
+    draw(settings);
+    frameRequest = requestAnimationFrame(animate);
+  }
+
+  if (draw) frameRequest = requestAnimationFrame(animate);
+  canvas.addEventListener("webglcontextlost", event => {
+    event.preventDefault();
+    cancelAnimationFrame(frameRequest);
+    showNotice("WebGL paused. Waiting for the graphics context to return.");
+  });
+  canvas.addEventListener("webglcontextrestored", () => {
+    draw = null;
+    initRenderer();
+    previousFrame = 0;
+    if (draw) frameRequest = requestAnimationFrame(animate);
+  });
+  function panBy(x, y) {
+    panX += x;
+    panY += y;
+    recenter.hidden = Math.abs(panX) + Math.abs(panY) < 0.5;
+  }
+
+  function zoomAt(factor, from, to) {
+    const { view } = editor.config;
+    const zoom = Math.max(0.4, Math.min(3, view.zoom * factor));
+    const ratio = zoom / view.zoom;
+    const bounds = canvas.getBoundingClientRect();
+    const centerX = bounds.left + bounds.width / 2;
+    const centerY = bounds.top + bounds.height / 2;
+    panBy(to.x - from.x + (1 - ratio) * (from.x - centerX - panX),
+      to.y - from.y + (1 - ratio) * (from.y - centerY - panY));
+    zoomChanged ||= zoom !== view.zoom;
+    view.zoom = zoom;
+  }
+
+  function commitZoom() {
+    if (!zoomChanged) return;
+    const view = editor.config.view;
+    view.zoom = Math.round(view.zoom * 20) / 20;
+    zoomChanged = false;
+    editor.commitChanges();
+  }
+
+  recenter.addEventListener("click", () => {
+    panX = panY = 0;
+    recenter.hidden = true;
+  });
+  canvas.addEventListener("wheel", event => {
+    if (!draw) return;
+    event.preventDefault();
+    const anchor = { x: event.clientX, y: event.clientY };
+    zoomAt(Math.exp(-Math.sign(event.deltaY) * 0.12), anchor, anchor);
+    commitZoom();
+  }, { passive: false });
+
+  function gesture() {
+    const [first, second] = pointers.values();
+    if (!second) return { x: first.x, y: first.y, span: 0 };
+    return {
+      x: (first.x + second.x) / 2, y: (first.y + second.y) / 2,
+      span: Math.hypot(first.x - second.x, first.y - second.y)
+    };
+  }
+
+  canvas.addEventListener("pointerdown", event => {
+    if (!draw || event.button !== 0 || pointers.size === 2
+        || (pointers.size && event.pointerType !== "touch")) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    canvas.setPointerCapture(event.pointerId);
+  });
+  canvas.addEventListener("pointermove", event => {
+    if (!pointers.has(event.pointerId)) return;
+    const before = gesture();
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const after = gesture();
+    const dx = after.x - before.x;
+    const dy = after.y - before.y;
+    const view = editor.config.view;
+    if (pointers.size === 2) {
+      zoomAt(before.span > 1 && after.span > 1 ? after.span / before.span : 1, before, after);
+    } else if (event.pointerType === "touch" || !view.threeD || event.shiftKey) {
+      panBy(dx, dy);
+    } else {
+      yaw += dx * 0.008;
+      const tilt = view.tilt;
+      pitch = Math.max(-85 - tilt, Math.min(85 - tilt, pitch + dy * 0.3));
+    }
+  });
+  function endPointer(event) {
+    if (pointers.delete(event.pointerId) && pointers.size < 2) commitZoom();
+  }
+  for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
+    canvas.addEventListener(type, endPointer);
+  }
+})().catch(error => {
+  const notice = document.querySelector("#notice");
+  notice.textContent = "The Three-Body background could not start. Check the browser console.";
+  notice.hidden = false;
+  console.error(error);
+});
+</script>
+</body>
+</html>
