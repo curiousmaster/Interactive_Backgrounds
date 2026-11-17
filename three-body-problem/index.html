@@ -89,139 +89,76 @@
     document.head.appendChild(script);
   });
 
+  const presetBase = {
+    simulation: { orbit: "eight", gravity: 1, bodyCount: 3, bodySize: 9, speed: 0.85, perturbation: 0.001, inclination: 0 },
+    view: { threeD: false, perspective: true, tilt: 24, zoom: 1, orbit: false, orbitSpeed: 12 },
+    trails: { enabled: true, length: 6, opacity: 0.75 },
+    glow: { enabled: true, strength: 0.8 },
+    features: {
+      liquid: { enabled: false, amplitude: 0.32, refraction: 0.6 },
+      caustics: { enabled: false, intensity: 0.7 },
+      dust: { enabled: false, count: 1800, opacity: 0.55 },
+      streamers: { enabled: false, count: 2400, opacity: 0.7 },
+      filaments: { enabled: false, count: 18, opacity: 0.6 },
+      spectral: { enabled: false, strength: 4 },
+      eclipse: { enabled: false, intensity: 0.8 },
+      exposure: { enabled: false, duration: 24, intensity: 0.55 },
+      crossings: { enabled: false, ripple: true, flash: true, tint: true, intensity: 0.8 },
+      ribbons: { enabled: false, width: 4 },
+      lensing: { enabled: false, strength: 0.8 },
+      flashes: { enabled: false, intensity: 1, distance: 0.5 },
+      contours: { enabled: false, opacity: 0.35 },
+      deepTime: { enabled: false, duration: 28, opacity: 0.35 },
+      shadows: {
+        enabled: false, planeOpacity: 0.4, planeWidth: 2, lineColor: "#4A7AAD", opacity: 0.4,
+        infinite: false, density: 1, fillColor: "#162840", fillOpacity: 0
+      },
+      barycenter: { enabled: false, track: false, lag: 2.5, crosshair: true },
+      lifecycle: { enabled: false, intensity: 0.8 },
+      divergence: { enabled: false, connectors: true },
+      density: { enabled: false, opacity: 0.5 }
+    },
+    colors: { background: "#000000", first: "#77DFFF", second: "#FFAD79", third: "#C0A4FF" }
+  };
   const config = {
-  "simulation": {
-    "orbit": "encounter",
-    "gravity": 1,
-    "bodyCount": 3,
-    "bodySize": 9,
-    "speed": 0.85,
-    "perturbation": 0.001,
-    "inclination": 0
-  },
-  "view": {
-    "threeD": true,
-    "perspective": true,
-    "tilt": 32,
-    "zoom": 1,
-    "orbit": false,
-    "orbitSpeed": 12
-  },
-  "trails": {
-    "enabled": true,
-    "length": 4,
-    "opacity": 0.8
-  },
-  "glow": {
-    "enabled": true,
-    "strength": 1.2
-  },
-  "features": {
-    "liquid": {
-      "enabled": false,
-      "amplitude": 0.32,
-      "refraction": 0.6
-    },
-    "caustics": {
-      "enabled": false,
-      "intensity": 0.7
-    },
-    "dust": {
-      "enabled": false,
-      "count": 1300,
-      "opacity": 0.55
-    },
-    "streamers": {
-      "enabled": true,
-      "count": 3800,
-      "opacity": 0.5
-    },
-    "filaments": {
-      "enabled": true,
-      "count": 23,
-      "opacity": 0.25
-    },
-    "spectral": {
-      "enabled": false,
-      "strength": 4
-    },
-    "eclipse": {
-      "enabled": false,
-      "intensity": 0.8
-    },
-    "exposure": {
-      "enabled": true,
-      "duration": 24,
-      "intensity": 0.55
-    },
-    "crossings": {
-      "enabled": false,
-      "ripple": true,
-      "flash": true,
-      "tint": true,
-      "intensity": 0.8
-    },
-    "ribbons": {
-      "enabled": true,
-      "width": 5
-    },
-    "lensing": {
-      "enabled": false,
-      "strength": 0.8
-    },
-    "flashes": {
-      "enabled": true,
-      "intensity": 0.6,
-      "distance": 0.85
-    },
-    "contours": {
-      "enabled": false,
-      "opacity": 0.35
-    },
-    "deepTime": {
-      "enabled": false,
-      "duration": 28,
-      "opacity": 0.35
-    },
-    "shadows": {
-      "enabled": true,
-      "planeOpacity": 0.4,
-      "planeWidth": 1.5,
-      "lineColor": "#4A7AAD",
-      "opacity": 0.15,
-      "infinite": true,
-      "density": 1.25,
-      "fillColor": "#162840",
-      "fillOpacity": 0.35
-    },
-    "barycenter": {
-      "enabled": true,
-      "track": true,
-      "lag": 2,
-      "crosshair": false
-    },
-    "lifecycle": {
-      "enabled": true,
-      "intensity": 0.8
-    },
-    "divergence": {
-      "enabled": true,
-      "connectors": true
-    },
-    "density": {
-      "enabled": false,
-      "opacity": 0.25
+    ...presetBase,
+    simulation: { ...presetBase.simulation, orbit: "encounter" },
+    view: { ...presetBase.view, threeD: true, tilt: 32 },
+    trails: { enabled: true, length: 4, opacity: 0.8 },
+    glow: { enabled: true, strength: 1.2 },
+    features: {
+      ...presetBase.features,
+      dust: { enabled: false, count: 1300, opacity: 0.55 },
+      streamers: { enabled: true, count: 3800, opacity: 0.5 },
+      filaments: { enabled: true, count: 23, opacity: 0.25 },
+      exposure: { enabled: true, duration: 24, intensity: 0.55 },
+      ribbons: { enabled: true, width: 5 },
+      flashes: { enabled: true, intensity: 0.6, distance: 0.85 },
+      shadows: {
+        enabled: true, planeOpacity: 0.4, planeWidth: 1.5, lineColor: "#4A7AAD", opacity: 0.15,
+        infinite: true, density: 1.25, fillColor: "#162840", fillOpacity: 0.35
+      },
+      barycenter: { enabled: true, track: true, lag: 2, crosshair: false },
+      lifecycle: { enabled: true, intensity: 0.8 },
+      divergence: { enabled: true, connectors: true },
+      density: { enabled: false, opacity: 0.25 }
     }
-  },
-  "colors": {
-    "background": "#000000",
-    "first": "#77DFFF",
-    "second": "#FFAD79",
-    "third": "#C0A4FF"
-  }
-};
+  };
 
-  const presets = {
+  function spatialPreset(simulation, view, colors, effects = {}, crossing = {}) {
+    return {
+      simulation: { orbit: "encounter", inclination: 55, ...simulation },
+      view: { threeD: true, tilt: 52, ...view },
+      colors,
+      features: {
+        shadows: { enabled: true, infinite: true, planeOpacity: 0.30, fillOpacity: 0.15 },
+        crossings: { enabled: true, ...crossing },
+        ...effects
+      }
+    };
+  }
+
+  const presetOverrides = {
     "Figure Eight": {},
     "Lagrange Triangle": {
       simulation: { orbit: "triangle", speed: 0.70 },
@@ -281,6 +218,19 @@
         liquid: { enabled: true, amplitude: 0.15, refraction: 0.2 },
         exposure: { enabled: true, duration: 20, intensity: 0.3 } }, { flash: false, intensity: 0.4 })
   };
+  const presets = { "Preferred Defaults": config };
+  for (const [name, overrides] of Object.entries(presetOverrides)) {
+    presets[name] = {
+      simulation: { ...presetBase.simulation, ...overrides.simulation },
+      view: { ...presetBase.view, ...overrides.view },
+      trails: { ...presetBase.trails, ...overrides.trails },
+      glow: { ...presetBase.glow, ...overrides.glow },
+      colors: { ...presetBase.colors, ...overrides.colors },
+      features: Object.fromEntries(Object.entries(presetBase.features).map(([key, values]) =>
+        [key, { ...values, ...overrides.features?.[key] }]))
+    };
+  }
+
   const range = (path, label, min, max, step, help, when, unit) =>
     ({ path, label, type: "range", min, max, step, help, when, unit });
   const toggle = (path, label, help, when) => ({ path, label, type: "boolean", help, when });
