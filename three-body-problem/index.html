@@ -90,7 +90,7 @@
   });
 
   const presetBase = {
-    simulation: { orbit: "eight", gravity: 1, bodyCount: 3, bodySize: 9, speed: 0.85, perturbation: 0.001, inclination: 0 },
+    simulation: { orbit: "eight", gravity: 1, bodyCount: 3, bodySize: 9, speed: 0.85, perturbation: 0.001, inclination: 0, clusters: 1, clusterSpacing: 4 },
     view: { threeD: false, perspective: true, tilt: 24, zoom: 1, orbit: false, orbitSpeed: 12 },
     trails: { enabled: true, length: 6, opacity: 0.75 },
     glow: { enabled: true, strength: 0.8 },
@@ -251,7 +251,9 @@
         options: { eight: "Figure Eight", triangle: "Lagrange Triangle", encounter: "Close Encounter", split: "Split Orbit", swarm: "Inclined swarm" } },
       range("simulation.gravity", "Gravity", 0.1, 3, 0.05, "Strength of the attraction between bodies.", undefined, "×"),
       range("simulation.bodySize", "Body size", 3, 24, 1, "Diameter of the glowing body core.", undefined, " px"),
-      range("simulation.bodyCount", "Number of bodies", 2, 12, 1, "Active bodies per simulation. Classical orbits use three bodies."),
+      range("simulation.clusters", "Spawn clusters", 1, 5, 1, "Separate spawn regions sharing the same gravitational field."),
+      range("simulation.clusterSpacing", "Cluster spacing", 2, 8, 0.25, "Distance between neighboring spawn regions.", s => s.simulation.clusters > 1),
+      range("simulation.bodyCount", "Bodies per cluster", 2, 12, 1, "Active bodies in each cluster. Three gives a three-body starting configuration."),
       range("simulation.speed", "Speed", 0.1, 3, 0.05, "Simulation time advanced per second.", undefined, "×"),
       range("simulation.inclination", "Orbital inclination", 0, 85, 1,
         "Incline the initial trajectories out of the plane. Zero keeps motion planar.", undefined, "°"),
@@ -259,7 +261,7 @@
         "Displaces one body in the faint comparison simulation.", s => s.simulation.orbit === "split")
     ], true),
     section("View", [
-      toggle("view.threeD", "3D camera", "Drag the canvas to rotate the view."),
+      toggle("view.threeD", "3D camera", "Drag with a mouse or swipe with three fingers to rotate the view."),
       toggle("view.perspective", "Perspective", "Makes nearer trail segments appear larger.", is3D),
       range("view.tilt", "Tilt", -80, 80, 1, "Initial camera angle above the orbital plane.", is3D, "°"),
       range("view.zoom", "Zoom", 0.4, 3, 0.05, "Scale the scene. Pinch on touch screens or scroll with a mouse."),
@@ -511,14 +513,16 @@
     let changed = false;
     for (const [index, body] of bodies.entries()) {
       body.fade = Math.min(1, body.fade + STEP / 1.25);
-      if (!body.departure && (body.x * body.vx + body.y * body.vy + body.z * body.vz <= 0
-          || Math.hypot(body.x, body.y, body.z) <= 5)) continue;
+      if (!body.departure && ((body.x - body.originX) * body.vx + (body.y - body.originY) * body.vy + body.z * body.vz <= 0
+          || bodies.some(other => Math.hypot(body.x - other.originX, body.y - other.originY, body.z) <= 5))) continue;
       body.departure += STEP;
       if (body.departure < 1) continue;
 
-      const neighbors = bodies.filter(b => b !== body && !b.departure);
+      const neighbors = bodies.filter(b => b !== body && b.cluster === body.cluster && !b.departure)
+        .map(b => ({ ...b, x: b.x - body.originX, y: b.y - body.originY }));
+      if (!neighbors.length) neighbors.push({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, m: 1 });
       const [x, y, vx, vy, m, z, vz] = spawnState(neighbors, index, ++body.generation, system.gravity, system.inclination);
-      Object.assign(body, { x, y, z, vx, vy, vz, m, lastCrossing: undefined, samples: 0, fade: 0, departure: 0 });
+      Object.assign(body, { x: x + body.originX, y: y + body.originY, z, vx, vy, vz, m, lastCrossing: undefined, samples: 0, fade: 0, departure: 0 });
       changed = true;
     }
     if (changed) accelerations(bodies, system.gravity);
@@ -545,15 +549,41 @@
     }
   }
 
+  function makeClusteredSystem(settings, offset = 0) {
+    const { orbit, bodyCount, gravity, inclination, clusters, clusterSpacing } = settings.simulation;
+    const world = makeSystem(orbit, bodyCount, gravity, inclination, offset);
+    const members = [];
+    for (let cluster = 0; cluster < clusters; cluster++) {
+      const local = cluster ? makeSystem(orbit, bodyCount, gravity, inclination, offset) : world;
+      const angle = cluster * 2 * Math.PI / clusters;
+      const radius = clusters === 1 ? 0 : clusterSpacing / (2 * Math.sin(Math.PI / clusters));
+      const originX = radius * Math.cos(angle), originY = radius * Math.sin(angle);
+      const rotation = cluster * 2.399963;
+      for (const body of local.bodies) {
+        const x = body.x, y = body.y, vx = body.vx, vy = body.vy;
+        body.x = originX + x * Math.cos(rotation) - y * Math.sin(rotation);
+        body.y = originY + x * Math.sin(rotation) + y * Math.cos(rotation);
+        body.vx = vx * Math.cos(rotation) - vy * Math.sin(rotation);
+        body.vy = vx * Math.sin(rotation) + vy * Math.cos(rotation);
+        Object.assign(body, { cluster, originX, originY });
+        members.push(body);
+      }
+    }
+    world.bodies = members;
+    world.clusterCount = clusters;
+    accelerations(members, gravity);
+    return world;
+  }
+
   function restart(settings) {
     const { orbit, perturbation, bodyCount, gravity, inclination } = settings.simulation;
-    systems = [makeSystem(orbit, bodyCount, gravity, inclination)];
-    if (orbit === "split") systems.push(makeSystem(orbit, bodyCount, gravity, inclination, perturbation));
+    systems = [makeClusteredSystem(settings)];
+    if (orbit === "split") systems.push(makeClusteredSystem(settings, perturbation));
     for (const system of systems) record(system);
     tick = elapsed = accumulator = previousFrame = 0;
     focusX = focusY = 0;
     // Start the periodic presets with visible trails.
-    if (!inclination && bodyCount === 3 && (orbit === "eight" || orbit === "triangle")) {
+    if (settings.simulation.clusters === 1 && !inclination && bodyCount === 3 && (orbit === "eight" || orbit === "triangle")) {
       for (let i = 0; i < 3 * 240; i++) advance();
     }
   }
@@ -642,7 +672,7 @@
     bindScene();
     const size = gl.getUniformLocation(program, "size");
     const mode = gl.getUniformLocation(program, "mode");
-    const vertices = new Float32Array(65536 * 6);
+    const vertices = new Float32Array(262144 * 6);
     const stars = makeStars();
     const grid = new Float32Array(GRID_SIZE ** 2);
     const maxPointSize = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1];
@@ -657,7 +687,7 @@
       const particleProgram = gl.createProgram();
       attach(gl.VERTEX_SHADER, `
         attribute vec4 seed;
-        uniform vec4 bodies[12];
+        uniform vec4 bodies[60];
         uniform vec4 camera;
         uniform vec4 projection;
         uniform vec4 placement;
@@ -675,7 +705,7 @@
           float pull = 0.0;
           for (int step = 0; step < 8; step++) {
             vec3 field = vec3(0.0);
-            for (int j = 0; j < 12; j++) {
+            for (int j = 0; j < 60; j++) {
               vec3 d = bodies[j].xyz - p;
               float r2 = dot(d, d) + 0.055;
               field += bodies[j].w * d * inversesqrt(r2) / r2;
@@ -717,7 +747,7 @@
         program: particleProgram, buffer: gl.createBuffer(), seed: gl.getAttribLocation(particleProgram, "seed"),
         uniform: Object.fromEntries(["bodies[0]", "camera", "projection", "placement", "effect"]
           .map(key => [key, gl.getUniformLocation(particleProgram, key)])),
-        positions: new Float32Array(6000 * 4), field: new Float32Array(48)
+        positions: new Float32Array(6000 * 4), field: new Float32Array(240)
       };
     }
 
@@ -743,7 +773,10 @@
       const ca = Math.cos(angle), sa = Math.sin(angle);
       const ct = Math.cos(tilt), st = Math.sin(tilt);
       const planeHeight = main.inclination ? 0 : -0.38;
-      const scale = Math.min(w, h) * view.zoom / (["encounter", "split", "swarm"].includes(settings.simulation.orbit) ? 3.8 : 1.55);
+      const clusterRadius = main.clusterCount > 1
+        ? settings.simulation.clusterSpacing / (2 * Math.sin(Math.PI / main.clusterCount)) : 0;
+      const scale = Math.min(w, h) * view.zoom /
+        ((["encounter", "split", "swarm"].includes(settings.simulation.orbit) ? 3.8 : 1.55) + clusterRadius * 1.3);
       let offset = 0;
       const waves = [];
       const liquid = view.threeD && features.liquid.enabled;
@@ -1499,7 +1532,7 @@
 
   function applySettings(settings, path) {
     document.body.style.backgroundColor = settings.colors.background;
-    if (!path || ["simulation.orbit", "simulation.perturbation", "simulation.bodyCount", "simulation.inclination"].includes(path)) {
+    if (!path || ["simulation.orbit", "simulation.perturbation", "simulation.bodyCount", "simulation.inclination", "simulation.clusters", "simulation.clusterSpacing"].includes(path)) {
       restart(settings);
     }
     if (path === "simulation.gravity") {
@@ -1636,7 +1669,12 @@
   }, { passive: false });
 
   function gesture() {
-    const [first, second] = pointers.values();
+    const [first, second, third] = pointers.values();
+    if (third) return {
+      x: (first.x + second.x + third.x) / 3,
+      y: (first.y + second.y + third.y) / 3,
+      span: 0
+    };
     if (!second) return { x: first.x, y: first.y, span: 0 };
     return {
       x: (first.x + second.x) / 2, y: (first.y + second.y) / 2,
@@ -1645,7 +1683,7 @@
   }
 
   canvas.addEventListener("pointerdown", event => {
-    if (!draw || event.button !== 0 || pointers.size === 2
+    if (!draw || event.button !== 0 || pointers.size >= 3
         || (pointers.size && event.pointerType !== "touch")) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     canvas.setPointerCapture(event.pointerId);
@@ -1658,7 +1696,12 @@
     const dx = after.x - before.x;
     const dy = after.y - before.y;
     const view = editor.config.view;
-    if (pointers.size === 2) {
+    if (pointers.size === 3) {
+      if (!view.threeD) return;
+      yaw += dx * 0.008;
+      const tilt = view.tilt;
+      pitch = Math.max(-85 - tilt, Math.min(85 - tilt, pitch + dy * 0.3));
+    } else if (pointers.size === 2) {
       zoomAt(before.span > 1 && after.span > 1 ? after.span / before.span : 1, before, after);
     } else if (event.pointerType === "touch" || !view.threeD || event.shiftKey) {
       panBy(dx, dy);
