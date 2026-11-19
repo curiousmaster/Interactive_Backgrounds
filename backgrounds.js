@@ -52,6 +52,14 @@ export const backgrounds = [
             "Move your pointer to reveal their depth.",
     },
     {
+        name: "Chaos Game: Fractal Universe",
+        folder: "chaos-game",
+        tags: ["fractal", "mathematics", "3d", "interactive"],
+        description:
+            "Explore an evolving universe of mathematical fractals generated through chaos theory. " +
+            "Switch between fractal algorithms, customize visual effects, and navigate luminous structures in interactive 2D or 3D.",
+    },
+    {
         name: "Capillary Light",
         folder: "capillary-light",
         tags: ["colorful", "fluids", "interactive"],
