@@ -99,14 +99,7 @@
     }
     @media(prefers-reduced-motion:reduce) { *,*:before,*:after { transition-duration:.01ms!important; animation-duration:.01ms!important; } }
   </style>
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
-    }
-  }
-  </script>
+  <!-- The import map is installed after checking local files and CDN availability. -->
 </head>
 <body>
   <div id="canvas-host"></div><div id="vignette"></div>
@@ -127,31 +120,28 @@
   <div id="help"><b>Keyboard:</b> Space pause · . one step · R restart · F focus · H settings · A add ant · C add colony · 1–9 presets · Esc close help.
     <br><b>Pointer:</b> Drag orbit · Scroll/pinch zoom · Tap/click paint cell · Shift-click add ant · Double-click focus colony.
     <br><b>Touch:</b> One finger orbit · Two fingers zoom/pan · Three fingers rotate view.</div>
-  <div id="error-overlay"><div class="error-card"><h2>Unable to start WebGL background</h2><p>Serve this folder over HTTP and ensure the Three.js module CDN is reachable.</p><pre id="error-text"></pre></div></div>
+  <div id="error-overlay"><div class="error-card"><h2>Unable to start WebGL background</h2><p id="error-hint">The module loader could not initialize the background.</p><pre id="error-text"></pre></div></div>
   <script>
-    // If the module CDN is unavailable, its import failure happens before the
-    // module's own try/catch can execute. Display a useful error rather than
-    // leaving a blank screen.
     window.__ANT_BOOTED = false;
-    window.addEventListener('load', () => setTimeout(() => {
-      if (!window.__ANT_BOOTED) {
-        const box = document.getElementById('error-overlay');
-        if (box) {
-          box.classList.add('visible');
-          document.getElementById('error-text').textContent =
-            'Three.js ES modules did not load. Check CDN access or browser network restrictions.';
-        }
-      }
-    }, 4000));
+    window.__ANT_LOAD_ERRORS = [];
+    window.addEventListener('error', e => {
+      const detail = e.message || (e.target && (e.target.src || e.target.href));
+      if (detail) window.__ANT_LOAD_ERRORS.push(String(detail));
+    }, true);
+    window.addEventListener('unhandledrejection', e => {
+      if (e.reason) window.__ANT_LOAD_ERRORS.push(String(e.reason));
+    });
   </script>
-  <script type="module">
+  <!-- Retain the complete simulation inline, but let the bootloader load it
+       *after* it has selected a working, version-matched import map. -->
+  <script id="ant-app-source" type="text/plain">
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
     import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
     import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
     import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-    import { mountSettingsEditor } from './settings-editor.js?v=20261120a';
+    import { mountSettingsEditor } from './settings-editor.js?v=20261120b';
 
     // All defaults can be exported, imported and edited using settings-editor.js.
     const defaults = {
@@ -1339,6 +1329,135 @@
       document.getElementById('settings-panel').classList.toggle('closed',touchscreen||!config.editor.enabled);
       attachInputs();updatePlayButton();updateStats();animate();
     } catch(error) {showError(error);}
+  </script>
+  <script>
+    // Quantum Ant Colony dependency bootloader.
+    // Try a locally installed copy first, then alternative public CDNs.
+    // Everything in this function runs *before* the application module starts.
+    (async function loadAnt() {
+      const version = '0.168.0';
+      const local = {
+        name: 'local npm package',
+        module: './node_modules/three/build/three.module.js',
+        addons: './node_modules/three/examples/jsm/'
+      };
+      const cdns = [
+        {
+          name: 'jsDelivr',
+          module: `https://cdn.jsdelivr.net/npm/three@${version}/build/three.module.js`,
+          addons: `https://cdn.jsdelivr.net/npm/three@${version}/examples/jsm/`
+        },
+        {
+          name: 'unpkg',
+          module: `https://unpkg.com/three@${version}/build/three.module.js`,
+          addons: `https://unpkg.com/three@${version}/examples/jsm/`
+        }
+      ];
+      const hint = document.getElementById('error-hint');
+      const overlay = document.getElementById('error-overlay');
+      const detail = document.getElementById('error-text');
+      const errors = [];
+      function fail(message, explanation) {
+        hint.textContent = message;
+        detail.textContent = explanation + (window.__ANT_LOAD_ERRORS.length ?
+          '\n\nBrowser messages:\n' + window.__ANT_LOAD_ERRORS.slice(-7).join('\n') : '');
+        overlay.classList.add('visible');
+        console.error('[Quantum Ant Colony] ' + message, explanation);
+      }
+      if (location.protocol === 'file:') {
+        fail('Open the project over HTTP rather than file://.',
+          'From the project folder run: python3 -m http.server 8000\n' +
+          'Then open http://localhost:8000/ in your browser.');
+        return;
+      }
+      if (!window.WebGL2RenderingContext || !document.createElement('canvas').getContext('webgl2')) {
+        fail('WebGL2 is not available in this browser.',
+          'Enable hardware acceleration / WebGL, or try another browser.');
+        return;
+      }
+      const params = new URLSearchParams(location.search);
+      const requested = params.get('threeSource'); // local | jsdelivr | unpkg
+      const forced = ({local, jsdelivr: cdns[0], unpkg: cdns[1]})[requested];
+      const paths = ['controls/OrbitControls.js', 'postprocessing/EffectComposer.js',
+        'postprocessing/RenderPass.js', 'postprocessing/UnrealBloomPass.js',
+        'postprocessing/OutputPass.js'];
+      async function probeFile(url, maxMs=5500) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), maxMs);
+        try {
+          const response = await fetch(url, {mode:'cors', cache:'force-cache', signal:controller.signal});
+          if (!response.ok) throw Error(url + ': HTTP ' + response.status);
+          const type = response.headers.get('content-type') || '';
+          if (/text\/html/i.test(type)) throw Error(url + ': received HTML instead of JavaScript');
+          await response.arrayBuffer(); // Finish download so module imports can reuse the cache.
+        } finally {clearTimeout(timer);}
+      }
+      async function probeSource(source) {
+        // Requiring all directly imported addons avoids a misleading success
+        // when a CDN serves three.module.js but blocks examples/jsm/ files.
+        await probeFile(source.module);
+        await Promise.all(paths.map(p => probeFile(source.addons + p)));
+        return source;
+      }
+      let source = null;
+      try {
+        await probeFile('./settings-editor.js?v=20261120b', 3000);
+      } catch (e) {
+        fail('Cannot load settings-editor.js.',
+          'Keep settings-editor.js alongside index.html and serve the folder over HTTP.\n' + String(e));
+        return;
+      }
+      if (forced) {
+        try {source = await probeSource(forced);}
+        catch (e) {errors.push(forced.name + ': ' + String(e));}
+      } else {
+        try {source = await probeSource(local);}
+        catch (e) {errors.push(local.name + ': ' + String(e));}
+        if (!source) {
+          try {
+            // Run both CDN probes concurrently; use whichever responds first.
+            source = await Promise.any(cdns.map(probeSource));
+          } catch (e) {
+            errors.push('Both CDNs failed: ' +
+              (e.errors || [e]).map(x => String(x)).join(' / '));
+          }
+        }
+      }
+      if (!source) {
+        fail('Three.js dependencies could not be reached.',
+          errors.join('\n') +
+          '\n\nFor a permanent, CDN-free setup run `npm install` in this folder and refresh. ' +
+          'This installs exactly three@' + version + ' locally.');
+        return;
+      }
+      window.__ANT_THREE_SOURCE = source.name;
+      const map = document.createElement('script');
+      map.type = 'importmap';
+      map.textContent = JSON.stringify({imports:{
+        'three': source.module,
+        'three/addons/': source.addons
+      }});
+      document.head.appendChild(map);
+      const app = document.createElement('script');
+      app.type = 'module';
+      app.textContent = document.getElementById('ant-app-source').textContent;
+      app.onerror = () => fail('The Three.js module graph failed to initialize.',
+        'Selected source: ' + source.name + '\n' +
+        'Check the browser developer console for the exact blocked request.\n' +
+        'To avoid CDNs, run `npm install` and reload.');
+      document.body.appendChild(app);
+      setTimeout(() => {
+        if (!window.__ANT_BOOTED && !overlay.classList.contains('visible')) {
+          fail('The simulation did not start.',
+            'Selected source: ' + source.name + '.\n' +
+            'A module import or browser policy prevented startup. Open the developer console for details.');
+        }
+      }, 9000);
+    })().catch(error => {
+      document.getElementById('error-overlay').classList.add('visible');
+      document.getElementById('error-text').textContent = 'Unexpected bootloader error: ' + String(error);
+      console.error(error);
+    });
   </script>
 </body>
 </html>
