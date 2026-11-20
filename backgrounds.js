@@ -181,6 +181,14 @@ export const backgrounds = [
             "layering different rhythms within one scene.",
     },
     {
+    	name: "Langton's Ants",
+    	folder: "langtons-ant",
+    	tags: ["simulation", "cellular-automata", "math", "3d", "interactive"],
+    	description:
+        	"Langton's ants rewrite glowing cells across planes, cubes, cylinders, and tori. " +
+            "Explore emergent highways, interacting colonies, and richly illuminated 3D geometry.",
+    },
+    {
         name: "Life of Math",
         folder: "life-of-math",
         tags: ["math", "3d", "generative", "interactive", "infinite"],
