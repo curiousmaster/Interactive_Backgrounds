@@ -108,7 +108,10 @@
     transform: translateX(-50%);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+    min-width: min(540px, 96vw);
+    max-width: 96vw;
+    box-sizing: border-box;
     background: #0b1629dd;
     border: 1px solid #3b5875;
     border-radius: 16px;
@@ -131,8 +134,13 @@
     cursor: wait;
   }
   #transport small {
-    white-space: nowrap;
+    flex: 1 1 190px;
+    min-width: 0;
     color: #9cb9d4;
+    font-size: 12px;
+    line-height: 1.4;
+    text-align: center;
+    overflow-wrap: anywhere;
   }
   #status {
     bottom: 85px !important;
@@ -145,14 +153,17 @@
   }
   @media (max-width:600px) {
     #transport {
-      width: max-content;
+      width: calc(100vw - 16px);
       max-width: 96vw;
+      flex-wrap: wrap;
+      justify-content: center;
     }
     #transport button {
       padding: 9px;
     }
     #transport small {
-      display: none;
+      display: block;
+      flex: 1 0 100%;
     }
   }
 </style>
@@ -304,64 +315,139 @@
         : text.slice(0, -precision) + '.' + text.slice(-precision, -precision + count);
     }
 
+    // Compute progressively larger exact prefixes. Each prefix replaces the
+    // previous one; only the newly available suffix is transferred to the UI.
+    let activeJob = 0;
+
     onmessage = ({ data }) => {
       const { count, id, constant } = data;
-      try {
-        postMessage({ id, phase: 'calculating' });
-        const digits = decimalDigits(constant, count);
-        // Strip integer part: only digits after the decimal point drive the walk.
-        const decimal = digits.includes('.') ? digits.split('.')[1] : digits;
-        postMessage({ id, digits: decimal });
-      } catch (error) {
-        postMessage({ id, error: String(error) });
+      activeJob = id;
+      let delivered = 0;
+      let target = Math.min(count, 512);
+
+      function calculateNext() {
+        if (activeJob !== id) {
+          return;
+        }
+
+        try {
+          const result = decimalDigits(constant, target);
+          const decimal = result.includes('.') ? result.split('.')[1] : result;
+          const chunk = decimal.slice(delivered);
+          delivered = decimal.length;
+
+          postMessage({
+            id,
+            chunk,
+            calculated: delivered,
+            total: count,
+            complete: delivered >= count
+          });
+
+          if (delivered < count) {
+            target = Math.min(count, Math.max(target + 1, target * 2));
+            setTimeout(calculateNext, 0);
+          }
+        } catch (error) {
+          postMessage({ id, error: String(error) });
+        }
       }
+
+      calculateNext();
     };
   `;
-  let worker = null, jobId = 0, availableDigits = '', ready = false, computing = false;
+  let worker = null;
+  let jobId = 0;
+  let availableDigits = '';
+  let ready = false;
+  let computing = false;
+  let calculationComplete = false;
+
+  function updateCalculationLabel() {
+    const label = document.getElementById('run-progress');
+    const target = config.simulation.digitCount;
+    const consumed = Math.min(totalSteps * digitGroupWidth(), target);
+    const calculated = Math.max(0, availableDigits.length - config.simulation.startDigit);
+
+    if (computing) {
+      label.textContent =
+        'Visualized ' + consumed.toLocaleString() + ' / ' + target.toLocaleString() +
+        ' · Calculated ' + Math.min(target, calculated).toLocaleString();
+    } else {
+      label.textContent = consumed.toLocaleString() + ' / ' + target.toLocaleString();
+    }
+  }
+
   function prepareDigits() {
     const count = clamp(Math.round(config.simulation.digitCount), 100, 1000000);
     config.simulation.digitCount = count;
-    jobId++;
-    const id = jobId;
+    const offset = Math.max(0, Math.round(config.simulation.startDigit));
+    const requested = count + offset;
+    const id = ++jobId;
+
     ready = false;
     computing = true;
+    calculationComplete = false;
     availableDigits = '';
-    if (worker)
+
+    if (worker) {
       worker.terminate();
-    worker = new Worker(URL.createObjectURL(new Blob([PI_WORKER_SOURCE], { type: 'text/javascript' })));
-    const label = document.getElementById('run-progress');
-    label.textContent = 'Calculating ' + count.toLocaleString() + ' digits…';
-    document.getElementById('run-toggle').disabled = true;
+      worker = null;
+    }
+
+    const url = URL.createObjectURL(new Blob([PI_WORKER_SOURCE], {
+      type: 'text/javascript'
+    }));
+    worker = new Worker(url);
+    URL.revokeObjectURL(url);
+
+    document.getElementById('status').textContent = '';
+    document.getElementById('run-toggle').disabled = false;
+    updateCalculationLabel();
+
     worker.onmessage = ({ data }) => {
-      if (data.id !== jobId)
+      if (data.id !== jobId) {
         return;
-        if (data.error) {
-          computing = false;
-          label.textContent = 'Calculation failed';
-          document.getElementById('status').textContent = data.error;
-          return;
-        } if (data.digits !== undefined) {
-          availableDigits = data.digits;
-          ready = true;
-          computing = false;
+      }
+
+      if (data.error) {
+        computing = false;
+        document.getElementById('status').textContent = data.error;
+        document.getElementById('run-progress').textContent = 'Calculation failed';
+        worker.terminate();
+        worker = null;
+        return;
+      }
+
+      if (typeof data.chunk === 'string') {
+        availableDigits += data.chunk;
+        ready = availableDigits.length >= offset + digitGroupWidth();
+        calculationComplete = Boolean(data.complete);
+        computing = !calculationComplete;
+        updateCalculationLabel();
+
+        if (calculationComplete) {
           worker.terminate();
           worker = null;
-          label.textContent = '0 / ' + count.toLocaleString();
-          document.getElementById('run-toggle').disabled = false;
-          document.getElementById('status').textContent = '';
         }
-      else {
-        label.textContent = data.phase === 'extracting' ? 'Extracting decimal digits…' : 'Calculating ' + config.simulation.constant + '…';
       }
     };
-    worker.onerror = e => {
-      if (id !== jobId)
+
+    worker.onerror = event => {
+      if (id !== jobId) {
         return;
-        computing = false;
-        label.textContent = 'Worker error';
-        document.getElementById('status').textContent = e.message;
+      }
+
+      computing = false;
+      document.getElementById('run-progress').textContent = 'Worker error';
+      document.getElementById('status').textContent = event.message;
     };
-    worker.postMessage({ count: count + Math.max(0, config.simulation.startDigit), id, constant: config.simulation.constant });
+
+    worker.postMessage({
+      count: requested,
+      id,
+      constant: config.simulation.constant
+    });
   }
   const gl = document.getElementById('gl').getContext('webgl2', { antialias: true, alpha: false, preserveDrawingBuffer: false });
   if (!gl) {
@@ -587,9 +673,15 @@
     const width = digitGroupWidth();
     const start = config.simulation.startDigit + totalSteps * width;
     const end = start + width;
-    if (end > availableDigits.length || end > config.simulation.digitCount + config.simulation.startDigit) {
+    if (end > config.simulation.digitCount + config.simulation.startDigit) {
       config.simulation.paused = true;
-      document.getElementById('status').textContent = 'Completed ' + totalSteps.toLocaleString() + ' movements.';
+      document.getElementById('status').textContent =
+        'Completed ' + totalSteps.toLocaleString() + ' movements.';
+      return false;
+    }
+
+    // A temporary buffer underrun is not the end of the simulation.
+    if (end > availableDigits.length) {
       return false;
     }
 
@@ -939,13 +1031,17 @@
     last = now;
     elapsed += dt;
 
-    if (ready && !config.simulation.paused) {
+    if (ready && !config.simulation.paused &&
+        (!config.simulation.reverse || calculationComplete)) {
       carry += config.simulation.digitsPerSecond * dt;
       let steps = Math.min(Math.floor(carry), 5000);
       carry -= steps;
 
       while (steps-- > 0 && !config.simulation.paused) {
-        addStep();
+        if (!addStep()) {
+          carry = 0;
+          break;
+        }
       }
     }
 
@@ -956,10 +1052,7 @@
     document.getElementById('run-toggle').textContent =
       config.simulation.paused ? 'Start' : 'Stop';
 
-    if (!computing) {
-      document.getElementById('run-progress').textContent =
-        (totalSteps * digitGroupWidth()).toLocaleString() + ' / ' + config.simulation.digitCount.toLocaleString();
-    }
+    updateCalculationLabel();
 
     if (config.ui.showStats) {
       const walker = walkers[0] || { x: 0, y: 0 };
@@ -980,6 +1073,8 @@
     const previousFourth = config.simulation.fourth;
     const previousAngleResolution = config.simulation.angleResolution;
     const previousZero = config.simulation.zeroLength;
+    const previousStart = config.simulation.startDigit;
+    const previousReverse = config.simulation.reverse;
 
     merge(config, next);
     try {
@@ -1001,11 +1096,15 @@
       previousInterpretation !== config.simulation.interpretation ||
       previousFourth !== config.simulation.fourth ||
       previousAngleResolution !== config.simulation.angleResolution ||
-      previousZero !== config.simulation.zeroLength
+      previousZero !== config.simulation.zeroLength ||
+      previousStart !== config.simulation.startDigit ||
+      previousReverse !== config.simulation.reverse
     ) {
       reset();
 
-      if (previousCount !== config.simulation.digitCount || previousConstant !== config.simulation.constant || !ready) {
+      if (previousCount !== config.simulation.digitCount ||
+          previousConstant !== config.simulation.constant ||
+          previousStart !== config.simulation.startDigit || !ready) {
         prepareDigits();
       }
     }
