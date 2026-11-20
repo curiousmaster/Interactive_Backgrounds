@@ -1,1 +1,1344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#050a14">
+  <title>Quantum Ant Colony — Emergent WebGL Universe</title>
+  <style>
+    :root { color-scheme:dark; --ink:#e8f7ff; --muted:#91a6ba; --line:#254055;
+      --pane:rgba(7,17,29,.89); --blue:#56d9cf; --gold:#f5c964; --shadow:rgba(0,0,0,.38); }
+    * { box-sizing:border-box; }
+    html,body { padding:0; margin:0; width:100%; height:100%; overflow:hidden; background:#050a14;
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif; color:var(--ink); }
+    canvas { display:block; width:100%; height:100%; touch-action:none; }
+    #canvas-host { position:fixed; inset:0; overflow:hidden; }
+    #vignette { pointer-events:none; position:fixed; inset:0; background:radial-gradient(ellipse at 52% 52%,transparent 31%,rgba(0,0,0,.32) 100%); }
+    #topbar { position:fixed; z-index:20; left:max(18px,env(safe-area-inset-left)); right:max(18px,env(safe-area-inset-right)); top:max(14px,env(safe-area-inset-top));
+      display:flex; align-items:flex-start; justify-content:space-between; gap:12px; pointer-events:none; }
+    #brand { pointer-events:none; text-shadow:0 2px 16px #000; }
+    #brand strong { font-size:clamp(17px,2vw,24px); letter-spacing:.035em; font-weight:760; }
+    #brand .eyebrow { color:var(--blue); font-size:10px; letter-spacing:.25em; font-weight:700; margin-bottom:4px; }
+    #brand p { color:var(--muted); font-size:12px; margin:4px 0 0; }
+    #toolbar { display:flex; gap:5px; flex-wrap:wrap; justify-content:flex-end; pointer-events:auto; max-width:min(540px,70vw); }
+    button,select,input,textarea { font:inherit; }
+    button { cursor:pointer; }
+    .tool-button,.small-button { border:1px solid rgba(105,163,178,.29); border-radius:9px;
+      background:rgba(12,29,41,.83); color:#d3ecf4; backdrop-filter:blur(14px); padding:8px 11px; font-weight:600; font-size:12px; }
+    .tool-button:hover,.small-button:hover { border-color:#68d9d0; background:rgba(20,52,64,.9); }
+    .tool-button:focus-visible,.small-button:focus-visible,select:focus-visible,input:focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
+    .small-button.primary,.tool-button.primary { background:#176a71; border-color:#2ca9a9; color:white; }
+    #status { position:fixed; z-index:12; bottom:max(16px,env(safe-area-inset-bottom)); left:max(18px,env(safe-area-inset-left));
+      border:1px solid rgba(100,164,179,.16); border-radius:11px; background:rgba(7,16,27,.68); backdrop-filter:blur(12px);
+      padding:11px 14px; min-width:220px; pointer-events:none; }
+    #status .primary-stat { font-size:13px; font-weight:690; }
+    #status .secondary-stat { color:var(--muted); font:11px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace; margin-top:4px; }
+    #status #pattern { color:var(--gold); font-size:11px; margin-top:5px; }
+    #help { display:none; position:fixed; z-index:21; bottom:20px; left:50%; transform:translateX(-50%);
+      max-width:min(540px,calc(100vw - 24px)); border-radius:12px; padding:15px 18px; background:rgba(6,18,30,.93);
+      border:1px solid #35727c; box-shadow:0 12px 55px rgba(0,0,0,.5); font-size:12px; line-height:1.8; }
+    #help.visible { display:block; }
+    #help b { color:#a2f2e6; }
+    #settings-panel { position:fixed; z-index:18; top:65px; right:max(15px,env(safe-area-inset-right)); bottom:max(15px,env(safe-area-inset-bottom));
+      width:min(356px,calc(100vw - 28px)); border:1px solid rgba(103,162,179,.29); border-radius:15px;
+      background:var(--pane); backdrop-filter:blur(24px); box-shadow:0 14px 52px var(--shadow); overflow:hidden;
+      transition:transform .2s ease,opacity .2s ease; }
+    #settings-panel.closed { transform:translateX(calc(100% + 30px)); opacity:0; pointer-events:none; }
+    .editor-content { height:100%; overflow:auto; padding:15px; scrollbar-color:#315767 transparent; scrollbar-width:thin; }
+    .editor-top { position:sticky; top:-15px; z-index:2; padding:2px 0 10px; background:linear-gradient(#0a1824 84%,transparent); }
+    .editor-intro { font-size:10px; font-weight:750; letter-spacing:.19em; color:var(--blue); padding-bottom:10px; }
+    .search,.preset-select,.setting-input select,.setting-input input[type=text],.setting-input input[type=number] {
+      border:1px solid #2b5062; background:#071623; color:#e0f3fa; border-radius:7px; padding:7px 9px;
+      font-size:12px; min-width:0; width:100%; }
+    .search { padding:10px; }
+    .preset-row { display:flex; gap:7px; align-items:center; }
+    .preset-select { flex:1; }
+    .editor-actions { display:flex; gap:6px; margin:10px 0 17px; }
+    .editor-actions button { flex:1; }
+    .setting-section { border:1px solid #213c4d; border-radius:9px; margin-bottom:9px; overflow:hidden; background:rgba(11,28,41,.46); }
+    .section-button { display:flex; justify-content:space-between; width:100%; padding:11px 12px; color:#d5eff7; border:0;
+      background:rgba(32,63,78,.43); font-size:12px; font-weight:710; text-align:left; }
+    .section-button:hover { background:rgba(48,86,100,.65); }
+    .chevron { color:var(--blue); }
+    .section-body { padding:7px 11px 9px; }
+    .setting-row { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:38px; padding:5px 0; border-bottom:1px solid rgba(73,112,132,.12); }
+    .setting-row:last-child { border-bottom:0; }
+    .setting-label { color:#bbd2dc; font-size:11px; line-height:1.35; flex:1; min-width:0; cursor:help; }
+    .setting-hint { display:inline-grid; place-items:center; color:#84bec3; font-size:9px; border:1px solid #426c74;
+      width:13px; height:13px; border-radius:50%; margin-left:6px; }
+    .setting-input { flex:0 0 53%; display:flex; align-items:center; justify-content:flex-end; gap:7px; min-width:0; }
+    .setting-input input[type=range] { flex:1; accent-color:#5fdad0; min-width:45px; }
+    .setting-input input[type=checkbox] { accent-color:#55d2c6; width:17px; height:17px; }
+    .setting-input input[type=color] { width:45px; height:27px; border:0; background:transparent; cursor:pointer; }
+    .range-value { font:10px ui-monospace,Consolas,monospace; min-width:29px; color:#a3dcd8; text-align:right; }
+    .editor-footer { color:#728e9f; font-size:10px; line-height:1.6; margin:16px 3px 7px; }
+    [hidden] { display:none!important; }
+    .json-mask { position:fixed; inset:0; z-index:90; background:rgba(0,0,0,.78); display:grid; place-items:center; padding:15px; }
+    .json-dialog { width:min(600px,95vw); max-height:90dvh; display:flex; flex-direction:column; padding:20px;
+      background:#0b1c2b; border:1px solid #347079; border-radius:12px; box-shadow:0 20px 80px #000; }
+    .json-dialog h3 { margin:0; font-size:18px; }
+    .muted { color:#93aebd; font-size:12px; }
+    .json-area { flex:1; min-height:240px; max-height:55vh; resize:vertical; background:#07111a; color:#a5f1de;
+      border:1px solid #27495b; border-radius:7px; padding:12px; font:11px/1.5 ui-monospace,Consolas,monospace; }
+    .error-line { color:#ffb1a4; font-size:11px; min-height:19px; }
+    .dialog-buttons { display:flex; justify-content:flex-end; gap:7px; flex-wrap:wrap; }
+    #error-overlay { display:none; position:fixed; z-index:95; inset:0; place-items:center; padding:22px; background:#050c13; }
+    #error-overlay.visible { display:grid; }
+    .error-card { width:min(600px,100%); border:1px solid #7d5c43; border-radius:14px; padding:25px; background:#18212b; }
+    .error-card pre { white-space:pre-wrap; word-break:break-word; color:#f9b7a2; font-size:12px; }
+    @media(max-width:720px) {
+      #topbar { top:max(8px,env(safe-area-inset-top)); left:12px; right:12px; }
+      #brand .eyebrow,#brand p { display:none; }
+      #brand strong { font-size:15px; }
+      #toolbar { max-width:72vw; gap:4px; }
+      .tool-button { padding:7px 8px; font-size:11px; }
+      .desktop-action { display:none; }
+      #status { bottom:max(10px,env(safe-area-inset-bottom)); left:10px; padding:8px 10px; min-width:0; }
+      #status .secondary-stat { font-size:10px; }
+      #settings-panel { top:51px; bottom:max(8px,env(safe-area-inset-bottom)); right:7px; width:min(345px,calc(100vw - 14px)); }
+    }
+    @media(prefers-reduced-motion:reduce) { *,*:before,*:after { transition-duration:.01ms!important; animation-duration:.01ms!important; } }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="canvas-host"></div><div id="vignette"></div>
+  <header id="topbar">
+    <div id="brand"><div class="eyebrow">EMERGENT UNIVERSE</div><strong>QUANTUM ANT COLONY</strong><p>Simple rules. Infinite complexity.</p></div>
+    <nav id="toolbar" aria-label="Simulation controls">
+      <button id="play" class="tool-button primary" title="Pause or play (Space)">Pause</button>
+      <button id="step" class="tool-button" title="Advance by one ant step (.)">Step</button>
+      <button id="reset" class="tool-button desktop-action" title="Restart simulation (R)">Restart</button>
+      <button id="focus" class="tool-button desktop-action" title="Focus selected colony (F)">Focus</button>
+      <button id="screenshot" class="tool-button desktop-action" title="Save PNG screenshot">Capture</button>
+      <button id="help-button" class="tool-button" title="Keyboard and mouse help">?</button>
+      <button id="toggle-editor" class="tool-button" title="Show/hide editor (H)">Settings</button>
+    </nav>
+  </header>
+  <aside id="settings-panel" aria-label="Quantum Ant Colony settings"></aside>
+  <div id="status" role="status" aria-live="off"><div class="primary-stat" id="status-primary">Initializing simulation…</div><div class="secondary-stat" id="status-secondary"></div><div id="pattern"></div></div>
+  <div id="help"><b>Keyboard:</b> Space pause · . one step · R restart · F focus · H settings · A add ant · C add colony · 1–9 presets · Esc close help.
+    <br><b>Pointer:</b> Drag orbit · Scroll/pinch zoom · Tap/click paint cell · Shift-click add ant · Double-click focus colony.
+    <br><b>Touch:</b> One finger orbit · Two fingers zoom/pan · Three fingers rotate view.</div>
+  <div id="error-overlay"><div class="error-card"><h2>Unable to start WebGL background</h2><p>Serve this folder over HTTP and ensure the Three.js module CDN is reachable.</p><pre id="error-text"></pre></div></div>
+  <script>
+    // If the module CDN is unavailable, its import failure happens before the
+    // module's own try/catch can execute. Display a useful error rather than
+    // leaving a blank screen.
+    window.__ANT_BOOTED = false;
+    window.addEventListener('load', () => setTimeout(() => {
+      if (!window.__ANT_BOOTED) {
+        const box = document.getElementById('error-overlay');
+        if (box) {
+          box.classList.add('visible');
+          document.getElementById('error-text').textContent =
+            'Three.js ES modules did not load. Check CDN access or browser network restrictions.';
+        }
+      }
+    }, 4000));
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+    import { mountSettingsEditor } from './settings-editor.js?v=20261120a';
 
+    // All defaults can be exported, imported and edited using settings-editor.js.
+    const defaults = {
+      editor: { enabled: true },
+      simulation: {
+        geometry: 'cube', grid: 50, surfaceSize: 13.2, ants: 3, speed: 2200, rule: 'RL',
+        boundary: 'wrap', seed: 217, spawn: 'center',
+        mutation: false, mutationRate: 0.001, collisionEffects: true,
+        maxMemoryCells: 180000, patternDetection: true
+      },
+      colonies: { count: 3, layout: 'orbit', separation: 1.35, diverseRules: false,
+        float: true, floatAmount: 0.7, rotate: true, rotationSpeed: 0.09 },
+      lifecycle: { enabled: false, steps: 110000, transition: 2.0, randomSeed: true },
+      view: { threeD: true, perspective: true, tilt: 24, yaw: 23, zoom: 1,
+        orbit: false, orbitSpeed: 2.6, autoFocus: false, followAnt: false,
+        cameraDirector: false, directorInterval: 14 },
+      visual: { background: '#050a14', palette: 'aurora', cellColor: '#52e4c0',
+        secondaryColor: '#8f69ff', grid: true, gridOpacity: 0.24, surfaceOpacity: 0.07,
+        glass: true, iridescence: true, iridescenceStrength: 0.62,
+        metalness: 0.48, roughness: 0.29, extrusion: 0.10, heightByVisits: true,
+        maxTiles: 24000, maxDpr: 1.8, glow: true, bloomStrength: 0.84,
+        bloomRadius: 0.34, bloomThreshold: 0.54, movingLights: true,
+        cellFlash: true, flashDuration: 1.2, heatmap: 'state',
+        ghosts: true, ghostOpacity: 0.13, vignette: true },
+      ants: { show: true, size: 0.72, trails: true, trailLength: 28,
+        trailOpacity: 0.67, rainbow: false },
+      ripples: { enabled: true, intensity: 0.76, radius: 2.5, lifetime: 1.1,
+        paintFrequency: 350, collisionRipples: true },
+      performance: { renderHz: 12, adaptive: true, antLimit: 100, maxStepsFrame: 4300 }
+    };
+    const clone = o => structuredClone(o);
+    const config = clone(defaults);
+    const field = (path,label,type,opts={}) => ({path,label,type,...opts});
+    const sel = (pairs) => pairs.map(([a,b]) => [a,b]);
+    const schema = [
+      {title:'Simulation',tip:'Rules and discrete step processing.',fields:[
+        field('simulation.geometry','Surface','select',{options:sel([['Cube · 6 faces','cube'],['Infinite/finite plane','plane'],['Torus','torus'],['Cylinder','cylinder']]),tip:'Ant topology: cube transitions preserve heading across all six faces.'}),
+        field('simulation.grid','Grid resolution','range',{min:16,max:128,step:2,tip:'Cells per face or principal surface axis. Higher values make smaller cells.'}),
+        field('simulation.surfaceSize','Surface size','range',{min:6,max:30,step:0.2,tip:'World-space size of a cube face or planar grid, including the scale of curved surfaces.'}),
+        field('simulation.ants','Ants per colony','range',{min:1,max:100,step:1,tip:'Ants share the same cellular grid, changing one another’s paths.'}),
+        field('simulation.speed','Steps per second','range',{min:1,max:40000,step:1,tip:'Total ant updates per simulated second, shared among the colonies.'}),
+        field('simulation.rule','Turn rule','text',{tip:'R right, L left, S straight, U U-turn. Each letter is a cell state. Classic Langton = RL.'}),
+        field('simulation.boundary','Plane edge','select',{options:sel([['Wrap to opposite','wrap'],['Reflect','reflect'],['Unbounded sparse grid','infinite']]),tip:'Applies to the flat plane. Torus wraps in both directions; cylinder reflects at caps.'}),
+        field('simulation.spawn','Spawn distribution','select',{options:sel([['Center','center'],['Random','random'],['Cluster','cluster'],['Edge','edge']])}),
+        field('simulation.seed','Random seed','number',{min:1,max:999999999,step:1,tip:'Reproducible starting configuration.'}),
+        field('simulation.patternDetection','Detect highways','toggle',{tip:'Heuristic search for repeated local configurations with displacement; not an exact proof.'})
+      ]},
+      {title:'Colonies & universe',fields:[
+        field('colonies.count','Colony count','range',{min:1,max:24,step:1,tip:'Multiple independent automata; shared total simulation step budget.'}),
+        field('colonies.layout','Spatial layout','select',{options:sel([['Orbital rings','orbit'],['3D constellation','constellation'],['Horizontal gallery','gallery'],['Vertical tower','tower']])}),
+        field('colonies.separation','Spacing','range',{min:1.05,max:4,step:0.05}),
+        field('colonies.diverseRules','Different rules','toggle',{tip:'Distribute distinct rule strings across the colonies.'}),
+        field('colonies.float','Floating motion','toggle'),
+        field('colonies.floatAmount','Float amplitude','range',{min:0,max:3,step:0.05,requires:'colonies.float'}),
+        field('colonies.rotate','Rotate surfaces','toggle'),
+        field('colonies.rotationSpeed','Rotation speed','range',{min:0,max:0.7,step:0.01,requires:'colonies.rotate'})
+      ]},
+      {title:'Emergence & mutations',fields:[
+        field('simulation.mutation','Enable mutations','toggle',{tip:'Rarely alter an ant’s rule, or change a random cell state.'}),
+        field('simulation.mutationRate','Mutation likelihood','range',{min:0,max:0.02,step:0.0005,requires:'simulation.mutation',tip:'Probability per ant step.'}),
+        field('simulation.collisionEffects','Collision effects','toggle',{tip:'Visual flashes and statistics when ants share the same location.'}),
+        field('simulation.maxMemoryCells','Memory limit / colony','range',{min:10000,max:400000,step:10000,tip:'Pauses a colony rather than silently forgetting cell states.'}),
+        field('lifecycle.enabled','Regenerate periodically','toggle'),
+        field('lifecycle.steps','Steps per lifecycle','range',{min:1000,max:500000,step:1000,requires:'lifecycle.enabled'}),
+        field('lifecycle.transition','Transition duration','range',{min:0.2,max:6,step:0.1,requires:'lifecycle.enabled'}),
+        field('lifecycle.randomSeed','Randomize next seed','toggle',{requires:'lifecycle.enabled'})
+      ]},
+      {title:'Camera & 2D / 3D',fields:[
+        field('view.threeD','Three-dimensional','toggle',{tip:'2D flattens cube surfaces into a six-face net, and unwraps curved surfaces.'}),
+        field('view.perspective','Perspective camera','toggle',{requires:'view.threeD'}),
+        field('view.tilt','Initial camera tilt','range',{min:0,max:85,step:1,requires:'view.threeD'}),
+        field('view.yaw','Camera yaw','range',{min:-180,max:180,step:1,requires:'view.threeD'}),
+        field('view.zoom','Zoom','range',{min:0.25,max:5,step:0.01}),
+        field('view.orbit','Auto-orbit camera','toggle',{requires:'view.threeD'}),
+        field('view.orbitSpeed','Camera orbit speed','range',{min:0.2,max:20,step:0.2,requires:'view.orbit'}),
+        field('view.autoFocus','Follow active colony','toggle'),
+        field('view.followAnt','Follow selected ant','toggle'),
+        field('view.cameraDirector','Camera choreography','toggle',{tip:'Periodically switch focus to another colony.'}),
+        field('view.directorInterval','Scene duration (s)','range',{min:3,max:90,step:1,requires:'view.cameraDirector'})
+      ]},
+      {title:'Cells, surfaces & shaders',fields:[
+        field('visual.background','Background','color'),
+        field('visual.palette','Palette','select',{options:sel([['Aurora','aurora'],['Neon spectrum','neon'],['Fire & gold','ember'],['Ocean','ocean'],['Monochrome','mono'],['Custom dual color','custom']])}),
+        field('visual.cellColor','Primary color','color',{requires:[['visual.palette','custom']]}),
+        field('visual.secondaryColor','Secondary color','color',{requires:[['visual.palette','custom']]}),
+        field('visual.grid','Grid overlay','toggle'),
+        field('visual.gridOpacity','Grid brightness','range',{min:0,max:1,step:0.01,requires:'visual.grid'}),
+        field('visual.surfaceOpacity','Surface opacity','range',{min:0,max:0.7,step:0.01}),
+        field('visual.glass','Glass material','toggle'),
+        field('visual.iridescence','Iridescence','toggle',{requires:'visual.glass'}),
+        field('visual.iridescenceStrength','Iridescence strength','range',{min:0,max:1,step:0.01,requires:'visual.iridescence'}),
+        field('visual.metalness','Metalness','range',{min:0,max:1,step:0.01}),
+        field('visual.roughness','Roughness','range',{min:0,max:1,step:0.01}),
+        field('visual.extrusion','Extruded height','range',{min:0,max:2,step:0.02}),
+        field('visual.heightByVisits','Height by visits','toggle'),
+        field('visual.maxTiles','Total tile draw budget','range',{min:2000,max:80000,step:1000}),
+        field('visual.heatmap','Cell coloring','select',{options:sel([['Rule state','state'],['Visit heatmap','visits'],['Age heatmap','age']])}),
+        field('visual.ghosts','Ghosts of erased cells','toggle'),
+        field('visual.ghostOpacity','Ghost opacity','range',{min:0,max:0.7,step:0.01,requires:'visual.ghosts'})
+      ]},
+      {title:'Ants & trails',fields:[
+        field('ants.show','Draw ants','toggle'),
+        field('ants.size','Ant size','range',{min:0.1,max:2,step:0.05,requires:'ants.show'}),
+        field('ants.rainbow','Individual ant colors','toggle'),
+        field('ants.trails','Motion trails','toggle'),
+        field('ants.trailLength','Trail length (steps)','range',{min:3,max:150,step:1,requires:'ants.trails'}),
+        field('ants.trailOpacity','Trail intensity','range',{min:0.05,max:1,step:0.05,requires:'ants.trails'})
+      ]},
+      {title:'Bloom & illumination',fields:[
+        field('visual.glow','Enable bloom','toggle'),
+        field('visual.bloomStrength','Bloom intensity','range',{min:0,max:3,step:0.05,requires:'visual.glow'}),
+        field('visual.bloomRadius','Bloom radius','range',{min:0,max:1,step:0.02,requires:'visual.glow'}),
+        field('visual.bloomThreshold','Bloom threshold','range',{min:0,max:1,step:0.02,requires:'visual.glow'}),
+        field('visual.movingLights','Ant point lights','toggle'),
+        field('visual.cellFlash','Cell transition flashes','toggle'),
+        field('visual.flashDuration','Flash persistence','range',{min:0.1,max:5,step:0.1,requires:'visual.cellFlash'}),
+        field('visual.vignette','Cinematic vignette','toggle')
+      ]},
+      {title:'Energy ripples',fields:[
+        field('ripples.enabled','Enable ripples','toggle',{tip:'GPU shader rings with animated wave displacement.'}),
+        field('ripples.intensity','Ripple brightness','range',{min:0,max:2,step:0.05,requires:'ripples.enabled'}),
+        field('ripples.radius','Ripple spread','range',{min:0.3,max:6,step:0.1,requires:'ripples.enabled'}),
+        field('ripples.lifetime','Ripple life (s)','range',{min:0.2,max:5,step:0.1,requires:'ripples.enabled'}),
+        field('ripples.paintFrequency','Every N paintings','range',{min:20,max:3000,step:10,requires:'ripples.enabled'}),
+        field('ripples.collisionRipples','Collision shockwaves','toggle',{requires:'ripples.enabled'})
+      ]},
+      {title:'Performance & display',fields:[
+        field('performance.renderHz','Geometry refresh (Hz)','range',{min:3,max:30,step:1}),
+        field('performance.adaptive','Adaptive frame budget','toggle'),
+        field('performance.maxStepsFrame','Max steps / frame','range',{min:100,max:12000,step:100}),
+        field('visual.maxDpr','Max device pixel ratio','range',{min:1,max:3,step:0.1}),
+        field('editor.enabled','Settings enabled','toggle',{tip:'Disable the editor; press H to re-enable it.'})
+      ]}
+    ];
+
+    const presets = [
+      {name:'Classic Langton',values:{simulation:{geometry:'plane',rule:'RL',ants:1,speed:2000,mutation:false,boundary:'infinite'},colonies:{count:1},view:{threeD:false,orbit:false},visual:{palette:'mono',extrusion:0.02}}},
+      {name:'Cube Walker',values:{simulation:{geometry:'cube',rule:'RL',ants:1,speed:1500,mutation:false},colonies:{count:1},view:{threeD:true,orbit:true},visual:{palette:'aurora'}}},
+      {name:'Neon Highway',values:{simulation:{geometry:'plane',rule:'RL',ants:1,speed:14000,boundary:'infinite'},colonies:{count:1},visual:{palette:'neon',glow:true},view:{threeD:true,autoFocus:true}}},
+      {name:'Multi-Ant Chaos',values:{simulation:{geometry:'cube',rule:'RL',ants:28,speed:11000},colonies:{count:2},visual:{palette:'ember'},ants:{rainbow:true}}},
+      {name:'Rainbow Turmites',values:{simulation:{geometry:'torus',rule:'RLLR',ants:6,speed:6800},colonies:{count:2},ants:{rainbow:true},visual:{palette:'neon'}}},
+      {name:'Infinite Grid',values:{simulation:{geometry:'plane',rule:'RL',ants:4,boundary:'infinite',speed:7000},colonies:{count:1},visual:{palette:'ocean',grid:true},view:{autoFocus:true}}},
+      {name:'Crystal Growth',values:{simulation:{geometry:'cube',rule:'RRLLLRLLLRRR',ants:8,speed:4700},colonies:{count:3},visual:{extrusion:0.8,palette:'aurora',iridescence:true}}},
+      {name:'Quantum Colony',values:{simulation:{geometry:'torus',rule:'RLLR',ants:15,speed:8000,mutation:true,mutationRate:0.001},colonies:{count:6,diverseRules:true},visual:{palette:'neon'}}},
+      {name:'Glowing Megastructure',values:{simulation:{geometry:'cube',rule:'RLRRLL',ants:10,speed:6500},colonies:{count:3},visual:{extrusion:1.15,heightByVisits:true,palette:'ocean',glow:true}}},
+      {name:'Emergent Universe',values:{simulation:{geometry:'cube',rule:'RL',ants:4,speed:17000},colonies:{count:16,layout:'constellation',diverseRules:true},visual:{maxTiles:32000,palette:'aurora'},view:{cameraDirector:true}}}
+    ];
+
+    // -------------------------------- Geometry and mathematics --------------------------------
+    let side = 13.2;
+    const PI2 = Math.PI * 2;
+    const faceBasis = [
+      { n:[0,0,1],  u:[1,0,0],  v:[0,1,0] },
+      { n:[0,0,-1], u:[-1,0,0], v:[0,1,0] },
+      { n:[1,0,0],  u:[0,0,-1], v:[0,1,0] },
+      { n:[-1,0,0], u:[0,0,1],  v:[0,1,0] },
+      { n:[0,1,0],  u:[1,0,0],  v:[0,0,-1] },
+      { n:[0,-1,0], u:[1,0,0],  v:[0,0,1] }
+    ].map(b => ({ n:new THREE.Vector3(...b.n), u:new THREE.Vector3(...b.u), v:new THREE.Vector3(...b.v) }));
+    const netOffset = [[0,0],[2,0],[1,0],[-1,0],[0,1],[0,-1]];
+    const deltaU = [0,1,0,-1];
+    const deltaV = [1,0,-1,0];
+    const turn = { R:1, L:-1, S:0, U:2 };
+    const alternateRules = ['RL','RLLR','RRLLLRLLLRRR','RLRRLL','RLLLR','LRRRRRLLR','RLR','LRRL','RRLL','RLLRRLLR'];
+    const clamp = (x,lo,hi) => Math.max(lo,Math.min(hi,x));
+    const mod = (x,n) => ((x%n)+n)%n;
+    const lerp = (a,b,t) => a + (b-a)*t;
+    const vec = (x=0,y=0,z=0) => new THREE.Vector3(x,y,z);
+    const colorCache = new Map();
+    function colored(hex) {
+      if (!colorCache.has(hex)) colorCache.set(hex,new THREE.Color(hex));
+      return colorCache.get(hex);
+    }
+    class RNG {
+      constructor(seed) { this.state = (seed >>> 0) || 1; }
+      next() {
+        let x = this.state;
+        x ^= x<<13; x ^= x>>>17; x ^= x<<5;
+        this.state = x >>> 0;
+        return this.state / 4294967296;
+      }
+      integer(n) { return Math.floor(this.next()*n); }
+    }
+    function copyKnown(target, source, template = defaults) {
+      for (const [k,v] of Object.entries(source || {})) {
+        if (!(k in template)) continue;
+        if (v && typeof v === 'object' && !Array.isArray(v) && template[k] && typeof template[k] === 'object') {
+          copyKnown(target[k], v, template[k]);
+        } else if (typeof v === typeof template[k] && (
+          typeof v !== 'number' || Number.isFinite(v)
+        )) target[k] = v;
+      }
+    }
+    function normalizeSettings() {
+      config.simulation.rule = (config.simulation.rule || 'RL').toUpperCase().replace(/[^RLSU]/g,'').slice(0,32) || 'RL';
+      for (const [path,lo,hi] of [
+        ['simulation.grid',16,128],['simulation.ants',1,100],['simulation.speed',1,40000],
+        ['colonies.count',1,24],['simulation.maxMemoryCells',10000,400000],
+        ['visual.maxTiles',2000,80000],['performance.renderHz',3,30],
+        ['performance.maxStepsFrame',100,12000],['visual.maxDpr',1,3]
+      ]) {
+        const [group,key] = path.split('.');
+        config[group][key] = clamp(Math.floor(Number(config[group][key]) || lo),lo,hi);
+      }
+      if (!['cube','plane','torus','cylinder'].includes(config.simulation.geometry)) config.simulation.geometry='cube';
+      if (!['wrap','reflect','infinite'].includes(config.simulation.boundary)) config.simulation.boundary='wrap';
+    }
+    function surfaceAt(face,x,y) {
+      const n = config.simulation.grid;
+      const cell = side/n;
+      const geometry = config.simulation.geometry;
+      if (!config.view.threeD && geometry === 'cube') {
+        const [ox,oy] = netOffset[face] || [0,0];
+        return {p:vec((x+.5-n/2)*cell+ox*side,(y+.5-n/2)*cell+oy*side,0),
+          u:vec(1,0,0), v:vec(0,1,0), n:vec(0,0,1)};
+      }
+      if (!config.view.threeD || geometry === 'plane') {
+        return {p:vec((x+.5-n/2)*cell,(y+.5-n/2)*cell,0),
+          u:vec(1,0,0), v:vec(0,1,0), n:vec(0,0,1)};
+      }
+      if (geometry === 'cube') {
+        const b = faceBasis[face];
+        const p = b.n.clone().multiplyScalar(side/2)
+          .addScaledVector(b.u,(x+.5-n/2)*cell)
+          .addScaledVector(b.v,(y+.5-n/2)*cell);
+        return {p, u:b.u, v:b.v, n:b.n};
+      }
+      const theta = PI2*(x+.5)/n;
+      if (geometry === 'cylinder') {
+        const r = side/PI2;
+        return {p:vec(r*Math.cos(theta),r*Math.sin(theta),(y+.5-n/2)*cell),
+          u:vec(-Math.sin(theta),Math.cos(theta),0), v:vec(0,0,1),
+          n:vec(Math.cos(theta),Math.sin(theta),0)};
+      }
+      const phi = PI2*(y+.5)/n;
+      const R=side*.33, r=side*.13, q=R+r*Math.cos(phi);
+      return {p:vec(q*Math.cos(theta),q*Math.sin(theta),r*Math.sin(phi)),
+        u:vec(-Math.sin(theta),Math.cos(theta),0),
+        v:vec(-Math.sin(phi)*Math.cos(theta),-Math.sin(phi)*Math.sin(theta),Math.cos(phi)),
+        n:vec(Math.cos(phi)*Math.cos(theta),Math.cos(phi)*Math.sin(theta),Math.sin(phi))};
+    }
+    function moveAnt(ant) {
+      const n = config.simulation.grid;
+      const shape = config.simulation.geometry;
+      let x = ant.x+deltaU[ant.dir], y=ant.y+deltaV[ant.dir], face=ant.face, dir=ant.dir;
+      if (shape === 'cube' && (x<0 || x>=n || y<0 || y>=n)) {
+        const previous = faceBasis[face];
+        const outward = ant.dir===0 ? previous.v : ant.dir===1 ? previous.u
+          : ant.dir===2 ? previous.v.clone().negate() : previous.u.clone().negate();
+        const nextFace = faceBasis.findIndex(b => b.n.equals(outward));
+        if (nextFace >= 0) {
+          const b = faceBasis[nextFace];
+          const sx = (ant.x+.5-n/2)*side/n;
+          const sy = (ant.y+.5-n/2)*side/n;
+          const edgePoint = previous.n.clone().multiplyScalar(side/2)
+            .addScaledVector(previous.u, x<0?-side/2:x>=n?side/2:sx)
+            .addScaledVector(previous.v, y<0?-side/2:y>=n?side/2:sy);
+          x = clamp(Math.floor((edgePoint.dot(b.u)/side+.5)*n),0,n-1);
+          y = clamp(Math.floor((edgePoint.dot(b.v)/side+.5)*n),0,n-1);
+          const heading = previous.n.clone().negate();
+          const dotU = heading.dot(b.u), dotV = heading.dot(b.v);
+          dir = Math.abs(dotU)>Math.abs(dotV) ? (dotU>0?1:3) : (dotV>0?0:2);
+          face = nextFace;
+        }
+      } else if (shape === 'torus') {
+        x = mod(x,n); y = mod(y,n);
+      } else if (shape === 'cylinder') {
+        x = mod(x,n);
+        if (y<0 || y>=n) { y=clamp(y,0,n-1); dir=(dir+2)%4; }
+      } else if (shape === 'plane' && config.simulation.boundary !== 'infinite') {
+        if (config.simulation.boundary === 'wrap') { x=mod(x,n); y=mod(y,n); }
+        else if (x<0 || y<0 || x>=n || y>=n) {
+          x=clamp(x,0,n-1); y=clamp(y,0,n-1); dir=(dir+2)%4;
+        }
+      }
+      ant.x=x; ant.y=y; ant.face=face; ant.dir=dir;
+    }
+    function backgroundPalette(index, state, totalStates) {
+      const palette = config.visual.palette;
+      const t = mod(state-1,Math.max(1,totalStates-1))/Math.max(1,totalStates-2);
+      const c = new THREE.Color();
+      if (palette==='mono') return c.set(state%2 ? '#e3f8ff' : '#a6c7da');
+      if (palette==='ember') return c.setHSL(lerp(.025,.145,t),.96,lerp(.55,.70,t));
+      if (palette==='ocean') return c.setHSL(lerp(.57,.43,t),.87,lerp(.57,.70,t));
+      if (palette==='neon') return c.setHSL(mod((index*.127+.76-t*.66),1),.97,.66);
+      if (palette==='custom') return c.copy(colored(config.visual.cellColor)).lerp(colored(config.visual.secondaryColor),t);
+      return c.setHSL(mod(.47 + index*.053 + t*.29,1),.86,.66);
+    }
+    function heatColor(rec, colony) {
+      const mode=config.visual.heatmap;
+      if (mode==='visits') {
+        const amount=clamp(Math.log2(rec.visits+1)/12,0,1);
+        return new THREE.Color().setHSL(lerp(.59,.065,amount),.95,.57+amount*.12);
+      }
+      if (mode==='age') {
+        const age=clamp((colony.tick-rec.last)/(Math.max(10,config.simulation.speed)*12),0,1);
+        return new THREE.Color().setHSL(lerp(.47,.78,age),.86,.63-age*.19);
+      }
+      return backgroundPalette(colony.id,rec.state,colony.rule.length);
+    }
+    function keyOf(face,x,y) { return face+':'+x+':'+y; }
+    function positionsForColonies(count) {
+      const result=[];
+      const spacing = side*config.colonies.separation;
+      for (let i=0;i<count;i++) {
+        if(count===1){result.push(vec());continue;}
+        const style=config.colonies.layout;
+        if(style==='gallery') result.push(vec((i-(count-1)/2)*spacing,0,0));
+        else if(style==='tower') result.push(vec(Math.sin(i*.9)*spacing*.3,(i-(count-1)/2)*spacing,Math.cos(i*.7)*spacing*.25));
+        else if(style==='constellation') {
+          const theta=i*2.39996323, radius=Math.sqrt(i+.7)*spacing*.73;
+          result.push(vec(Math.cos(theta)*radius,Math.sin(theta)*radius,Math.sin(i*1.83)*spacing*.7));
+        } else {
+          // Rings avoid overcrowding as the number of cubes increases.
+          const ring=Math.floor(Math.sqrt(i/6))+1;
+          const radius=spacing*ring*(count<=6?1:1.35);
+          const a=i*PI2/count+Math.sin(i)*.36;
+          result.push(vec(Math.cos(a)*radius,Math.sin(a)*radius,Math.sin(i*1.85)*spacing*.26));
+        }
+      }
+      return result;
+    }
+
+    const canvasHost=document.getElementById('canvas-host');
+    let renderer,composer,bloom,camera,orthographic,controls,scene,world;
+    let colonies=[],raycastTargets=[],editor;
+    let paused=false,selectedIndex=0,logicalClock=0,lastDraw=0,lastStats=0,lastDirector=0;
+    let accumulatedSteps=0,frames=0,measuredFps=0,frameWindow=0;
+    let sceneRadius=side*2,viewDistance=42,systemResetting=false;
+    const antShape=new THREE.BufferGeometry();
+    antShape.setAttribute('position',new THREE.Float32BufferAttribute([
+       0,.72,0, -.40,-.46,0, .40,-.46,0
+    ],3));
+    antShape.computeVertexNormals();
+    const cubeTileGeometry=new THREE.BoxGeometry(1,1,1);
+    const ringGeometry=new THREE.PlaneGeometry(2,2,28,28);
+    const tmpColor=new THREE.Color();
+    const scratchMatrix=new THREE.Matrix4(),scratchRotation=new THREE.Matrix4();
+    const scratchQuaternion=new THREE.Quaternion(),scratchObject=new THREE.Object3D();
+    const raycaster=new THREE.Raycaster(),mouse=new THREE.Vector2();
+
+    const rippleVertex=`
+      varying vec2 vUv;
+      uniform float uAge;
+      uniform float uLife;
+      void main(){
+        vUv=uv;
+        vec3 pos=position;
+        float r=length(pos.xy);
+        float fade=max(0.0,1.0-uAge/max(0.001,uLife));
+        pos.z += sin(r*13.0-uAge*22.0)*0.095*fade;
+        gl_Position=projectionMatrix*modelViewMatrix*vec4(pos,1.0);
+      }
+    `;
+    const rippleFragment=`
+      varying vec2 vUv;
+      uniform float uAge;
+      uniform float uLife;
+      uniform vec3 uColor;
+      uniform float uIntensity;
+      void main(){
+        float t=clamp(uAge/max(.001,uLife),0.0,1.0);
+        float r=length(vUv-.5)*2.0;
+        float ring=1.0-smoothstep(.02,.12,abs(r-(.10+t*.83)));
+        float wav=sin(r*42.0-t*28.0)*.12+.88;
+        float alpha=ring*wav*(1.0-t)*uIntensity;
+        if(alpha<.015) discard;
+        gl_FragColor=vec4(uColor,alpha);
+      }
+    `;
+
+    function makeBase(colony) {
+      colony.baseRoot=new THREE.Group(); colony.group.add(colony.baseRoot);
+      const material=new THREE.MeshPhysicalMaterial({ color:'#1b3541',metalness:.3,roughness:.15,
+        transparent:true,opacity:config.visual.surfaceOpacity,side:THREE.DoubleSide,depthWrite:false,
+        iridescence:config.visual.glass?config.visual.iridescenceStrength:0 });
+      const n=config.simulation.grid;
+      const shape=config.simulation.geometry;
+      const flat=!config.view.threeD;
+      const addSurface=(geometry,face=0)=>{
+        const obj=new THREE.Mesh(geometry,material);
+        obj.userData.colony=colony;obj.userData.surfaceFace=face;
+        colony.baseRoot.add(obj);colony.surfaces.push(obj);raycastTargets.push(obj);
+        return obj;
+      };
+      if(shape==='cube' && flat) {
+        for(let f=0;f<6;f++) {
+          const plane=addSurface(new THREE.PlaneGeometry(side,side),f);
+          plane.position.set(netOffset[f][0]*side,netOffset[f][1]*side,0);
+        }
+      } else if(shape==='cube') addSurface(new THREE.BoxGeometry(side,side,side));
+      else if(flat || shape==='plane') addSurface(new THREE.PlaneGeometry(
+        shape==='plane'&&config.simulation.boundary==='infinite'?side*9:side,
+        shape==='plane'&&config.simulation.boundary==='infinite'?side*9:side));
+      else if(shape==='cylinder') {
+        const geom=new THREE.CylinderGeometry(side/PI2,side/PI2,side,Math.max(32,n),1,true);
+        geom.rotateX(Math.PI/2); addSurface(geom);
+      } else addSurface(new THREE.TorusGeometry(side*.33,side*.13,Math.max(12,Math.round(n/2)),Math.max(32,n)));
+
+      // Thin wire lines are generated using the exact surface parameterization.
+      const lines=[];
+      const fCount=shape==='cube'?6:1;
+      const subdivisions=Math.min(n,config.colonies.count>8?20:config.colonies.count>3?38:72);
+      const skip=Math.max(1,Math.round(n/subdivisions));
+      const add=(a,b)=>{lines.push(a.x,a.y,a.z,b.x,b.y,b.z);};
+      if (config.visual.grid) {
+        for(let face=0;face<fCount;face++) {
+          for(let i=0;i<=n;i+=skip) {
+            for(let j=0;j<n;j+=skip) {
+              const aj=Math.min(j,n-1),bj=Math.min(j+skip,n);
+              const p1=surfaceAt(face,i-.5,aj-.5),p2=surfaceAt(face,i-.5,bj-.5);
+              const p3=surfaceAt(face,aj-.5,i-.5),p4=surfaceAt(face,bj-.5,i-.5);
+              const k=shape==='plane'?.015:.018;
+              add(p1.p.addScaledVector(p1.n,k),p2.p.addScaledVector(p2.n,k));
+              add(p3.p.addScaledVector(p3.n,k),p4.p.addScaledVector(p4.n,k));
+            }
+          }
+        }
+      }
+      const geometry=new THREE.BufferGeometry();
+      geometry.setAttribute('position',new THREE.Float32BufferAttribute(lines,3));
+      const wire=new THREE.LineSegments(geometry,new THREE.LineBasicMaterial({
+        color:0x587e89,transparent:true,opacity:config.visual.gridOpacity,depthWrite:false
+      }));
+      wire.renderOrder=1;colony.baseRoot.add(wire);colony.wire=wire;
+    }
+
+    class Colony {
+      constructor(id,position) {
+        this.id=id;this.anchor=position;this.group=new THREE.Group();
+        this.group.position.copy(position);world.add(this.group);
+        this.surfaces=[];this.ripples=[];this.trails=[];
+        this.rule=config.colonies.diverseRules?alternateRules[id%alternateRules.length]:config.simulation.rule;
+        this.rng=new RNG(config.simulation.seed+id*104729);
+        this.tick=0;this.collisions=0;this.mutations=0;this.activeCount=0;
+        this.cells=new Map();this.ants=[];this.occupancy=new Map();
+        this.highwayMemory=new Map();this.highwayCandidate=null;this.lastCandidate='';this.candidateCount=0;
+        this.memoryFull=false;this.transitionState='';this.transitionTime=0;
+        this.dirty=true;this.lastRender=0;this.lastPatternTick=0;
+        this.createVisuals();this.seedAnts();
+      }
+      createVisuals() {
+        makeBase(this);
+        this.maxTiles=Math.max(128,Math.floor(config.visual.maxTiles/config.colonies.count));
+        const tileMaterial=new THREE.MeshPhysicalMaterial({
+          color:0xffffff,metalness:config.visual.metalness,roughness:config.visual.roughness,
+          iridescence:(config.visual.glass&&config.visual.iridescence)?config.visual.iridescenceStrength:0,
+          iridescenceIOR:1.3,clearcoat:config.visual.glass ? .38 : 0,
+          clearcoatRoughness:.16,side:THREE.DoubleSide,emissive:0x0a141d
+        });
+        this.tiles=new THREE.InstancedMesh(cubeTileGeometry,tileMaterial,this.maxTiles);
+        this.tiles.count=0;this.tiles.frustumCulled=false;
+        this.tiles.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.tiles.renderOrder=3;this.group.add(this.tiles);
+        const ghostMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,
+          opacity:config.visual.ghostOpacity,side:THREE.DoubleSide,depthWrite:false});
+        this.ghostTiles=new THREE.InstancedMesh(cubeTileGeometry,ghostMat,Math.max(128,Math.floor(this.maxTiles*.35)));
+        this.ghostTiles.count=0;this.ghostTiles.frustumCulled=false;
+        this.ghostTiles.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.ghostTiles.renderOrder=2;this.group.add(this.ghostTiles);
+        const antMaterial=new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide,
+          transparent:true,opacity:.98,toneMapped:false});
+        this.antMesh=new THREE.InstancedMesh(antShape,antMaterial,config.simulation.ants);
+        this.antMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.antMesh.frustumCulled=false;this.antMesh.renderOrder=8;this.group.add(this.antMesh);
+        this.trailGroup=new THREE.Group();this.group.add(this.trailGroup);
+        this.rippleGroup=new THREE.Group();this.group.add(this.rippleGroup);
+        if(config.visual.movingLights && this.id<Math.min(4,config.colonies.count)) {
+          this.light=new THREE.PointLight(backgroundPalette(this.id,1,3),14,side*2.5,1.9);
+          this.light.position.set(0,0,side/2+2);this.group.add(this.light);
+        }
+      }
+      seedAnts() {
+        this.ants=[];this.occupancy.clear();
+        const N=config.simulation.grid;
+        for(let i=0;i<config.simulation.ants;i++) {
+          const spread=config.simulation.spawn;
+          let x=Math.floor(N/2),y=Math.floor(N/2);
+          if(spread==='random') {x=this.rng.integer(N);y=this.rng.integer(N);}
+          if(spread==='cluster') {x=clamp(x+this.rng.integer(13)-6,0,N-1);y=clamp(y+this.rng.integer(13)-6,0,N-1);}
+          if(spread==='edge') {
+            x=this.rng.integer(N);y=this.rng.integer(N);
+            if(i%2) x=i%4===1?0:N-1;else y=i%4===0?0:N-1;
+          }
+          const ant={x,y,face:0,dir:i===0?0:this.rng.integer(4),rule:this.rule,trail:[],id:i};
+          ant.trail.push({face:ant.face,x,y});this.ants.push(ant);
+          const key=keyOf(ant.face,x,y);
+          this.occupancy.set(key,(this.occupancy.get(key)||0)+1);
+        }
+        this.antMesh.count=this.ants.length;
+        this.dirty=true;
+      }
+      reset(seed) {
+        this.cells.clear();this.occupancy.clear();this.highwayMemory.clear();
+        this.highwayCandidate=null;this.lastCandidate='';this.candidateCount=0;
+        this.tick=0;this.collisions=0;this.mutations=0;this.activeCount=0;
+        this.memoryFull=false;this.transitionState='';this.transitionTime=0;
+        this.rng=new RNG((seed??config.simulation.seed)+this.id*104729);
+        this.rule=config.colonies.diverseRules?alternateRules[this.id%alternateRules.length]:config.simulation.rule;
+        this.tiles.count=0;this.ghostTiles.count=0;
+        this.clearTrails();this.clearRipples();this.seedAnts();
+      }
+      clearTrails() {
+        for(const line of this.trails) {line.geometry.dispose();line.material.dispose();this.trailGroup.remove(line);}
+        this.trails.length=0;
+      }
+      clearRipples() {
+        for(const ring of this.ripples) {ring.mesh.material.dispose();this.rippleGroup.remove(ring.mesh);}
+        this.ripples.length=0;
+      }
+      snapshot() {
+        return {rule:this.rule,rng:this.rng.state,tick:this.tick,cells:this.cells,activeCount:this.activeCount,
+          ants:this.ants,collisions:this.collisions,mutations:this.mutations,
+          candidate:this.highwayCandidate,memoryFull:this.memoryFull};
+      }
+      restore(snapshot) {
+        this.rule=snapshot.rule;this.rng.state=snapshot.rng;this.tick=snapshot.tick;
+        this.cells=snapshot.cells;this.ants=snapshot.ants;
+        this.collisions=snapshot.collisions;this.mutations=snapshot.mutations;this.activeCount=snapshot.activeCount;
+        this.highwayCandidate=snapshot.candidate;this.memoryFull=snapshot.memoryFull;
+        this.occupancy.clear();
+        for(const ant of this.ants) {
+          const k=keyOf(ant.face,ant.x,ant.y);
+          this.occupancy.set(k,(this.occupancy.get(k)||0)+1);
+        }
+        this.ensureAntCapacity();
+        this.antMesh.count=Math.min(this.ants.length,this.antMesh.instanceMatrix.count);
+        this.dirty=true;
+      }
+      ensureAntCapacity() {
+        if(this.ants.length<=this.antMesh.instanceMatrix.count)return;
+        const original=this.antMesh;
+        this.group.remove(original);original.material.dispose();
+        this.antMesh=new THREE.InstancedMesh(antShape,new THREE.MeshBasicMaterial({
+          color:0xffffff,side:THREE.DoubleSide,transparent:true,opacity:.98,toneMapped:false
+        }),Math.max(this.ants.length,config.simulation.ants));
+        this.antMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.antMesh.frustumCulled=false;this.antMesh.renderOrder=8;this.group.add(this.antMesh);
+      }
+      addAnt(at) {
+        if(this.ants.length>=config.performance.antLimit) return;
+        const N=config.simulation.grid;
+        const ant={face:at?.face??0,x:at?.x??this.rng.integer(N),y:at?.y??this.rng.integer(N),
+          dir:this.rng.integer(4),rule:this.rule,trail:[],id:this.ants.length};
+        ant.trail.push({face:ant.face,x:ant.x,y:ant.y});this.ants.push(ant);
+        const key=keyOf(ant.face,ant.x,ant.y);
+        this.occupancy.set(key,(this.occupancy.get(key)||0)+1);
+        this.ensureAntCapacity();
+        this.antMesh.count=this.ants.length;this.dirty=true;
+      }
+      changeCell(face,x,y) {
+        const key=keyOf(face,x,y);
+        let rec=this.cells.get(key);
+        if(!rec) {
+          if(this.cells.size>=config.simulation.maxMemoryCells) {this.memoryFull=true;return;}
+          rec={face,x,y,state:0,visits:0,first:this.tick,last:this.tick};this.cells.set(key,rec);
+        }
+        const old=rec.state;
+        rec.state=(rec.state+1)%this.rule.length;
+        rec.visits++;rec.last=this.tick;
+        if((old===0)!==(rec.state===0)) this.activeCount+=rec.state===0?-1:1;
+        this.dirty=true;
+      }
+      maybeDetectHighway(ant) {
+        if(!config.simulation.patternDetection || ant.id!==0 ||
+          this.tick<160*this.ants.length || (this.tick-1)%(160*this.ants.length)!==0) return;
+        // A repeated relative 5x5 state neighborhood + heading, translated in space,
+        // is evidence of a candidate highway; it is not a proof of periodicity.
+        let signature=ant.dir+'|'+ant.face+'|';
+        for(let y=-2;y<=2;y++) for(let x=-2;x<=2;x++) {
+          const sx=ant.x+x,sy=ant.y+y;
+          const n=config.simulation.grid;
+          const state=this.cells.get(keyOf(ant.face,
+            config.simulation.geometry==='plane'&&config.simulation.boundary==='infinite'?sx:mod(sx,n),
+            config.simulation.geometry==='plane'&&config.simulation.boundary==='infinite'?sy:mod(sy,n)))?.state??0;
+          signature+=state.toString(36);
+        }
+        const old=this.highwayMemory.get(signature);
+        if(old && this.tick-old.tick>200 && (old.x!==ant.x || old.y!==ant.y)) {
+          const dx=ant.x-old.x,dy=ant.y-old.y,dt=this.tick-old.tick;
+          const pattern=dx+','+dy+','+dt;
+          this.candidateCount=pattern===this.lastCandidate?this.candidateCount+1:1;
+          this.lastCandidate=pattern;
+          if(this.candidateCount>=3) this.highwayCandidate={dx,dy,period:dt,at:this.tick};
+        }
+        this.highwayMemory.set(signature,{x:ant.x,y:ant.y,tick:this.tick});
+        if(this.highwayMemory.size>6000) this.highwayMemory.delete(this.highwayMemory.keys().next().value);
+      }
+      emitRipple(face,x,y,collision=false) {
+        if(!config.ripples.enabled || this.ripples.length>=12) return;
+        const frame=surfaceAt(face,x,y);
+        const material=new THREE.ShaderMaterial({
+          uniforms:{uAge:{value:0},uLife:{value:config.ripples.lifetime},
+            uColor:{value:collision?new THREE.Color('#fbd26f'):backgroundPalette(this.id,1,3)},
+            uIntensity:{value:config.ripples.intensity}},
+          vertexShader:rippleVertex,fragmentShader:rippleFragment,
+          transparent:true,depthWrite:false,side:THREE.DoubleSide,
+          blending:THREE.AdditiveBlending,toneMapped:false
+        });
+        const mesh=new THREE.Mesh(ringGeometry,material);
+        const mat=new THREE.Matrix4().makeBasis(frame.u,frame.v,frame.n);
+        mesh.quaternion.setFromRotationMatrix(mat);
+        mesh.position.copy(frame.p).addScaledVector(frame.n,.09);
+        const size=side/config.simulation.grid*config.ripples.radius;
+        mesh.scale.set(size,size,1);
+        mesh.renderOrder=7;
+        this.rippleGroup.add(mesh);
+        this.ripples.push({mesh,age:0});
+      }
+      stepOnce() {
+        if(this.memoryFull || this.transitionState) return;
+        const ant=this.ants[this.tick%this.ants.length];
+        const oldKey=keyOf(ant.face,ant.x,ant.y);
+        let rec=this.cells.get(oldKey);
+        if(!rec) {
+          if(this.cells.size>=config.simulation.maxMemoryCells) {this.memoryFull=true;return;}
+          rec={face:ant.face,x:ant.x,y:ant.y,state:0,visits:0,first:this.tick,last:this.tick};
+          this.cells.set(oldKey,rec);
+        }
+        const character=ant.rule[rec.state%ant.rule.length];
+        ant.dir=mod(ant.dir+turn[character],4);
+        const previous=rec.state;
+        rec.state=(previous+1)%ant.rule.length;
+        rec.visits++;rec.last=this.tick;
+        if((previous===0)!==(rec.state===0)) this.activeCount+=rec.state===0?-1:1;
+        this.occupancy.set(oldKey,(this.occupancy.get(oldKey)||1)-1);
+        if(this.occupancy.get(oldKey)<=0)this.occupancy.delete(oldKey);
+        moveAnt(ant);
+        const newKey=keyOf(ant.face,ant.x,ant.y);
+        const present=this.occupancy.get(newKey)||0;
+        if(present && config.simulation.collisionEffects) {
+          this.collisions++;
+          if(config.ripples.collisionRipples && this.collisions%3===0) this.emitRipple(ant.face,ant.x,ant.y,true);
+        }
+        this.occupancy.set(newKey,present+1);
+        this.tick++;
+        if(config.ants.trails) {
+          ant.trail.push({face:ant.face,x:ant.x,y:ant.y});
+          if(ant.trail.length>config.ants.trailLength)ant.trail.shift();
+        }
+        if(config.ripples.enabled && this.tick%Math.max(1,config.ripples.paintFrequency)===0)
+          this.emitRipple(rec.face,rec.x,rec.y);
+        if(config.simulation.mutation && this.rng.next()<config.simulation.mutationRate) {
+          this.mutations++;
+          if(this.rng.next()<.65) ant.rule=alternateRules[this.rng.integer(alternateRules.length)];
+          else {
+            const a=this.rng.integer(config.simulation.grid),b=this.rng.integer(config.simulation.grid);
+            this.changeCell(ant.face,a,b);
+          }
+        }
+        this.maybeDetectHighway(ant);
+        this.dirty=true;
+      }
+      advance(amount) {
+        if(this.memoryFull||this.transitionState)return;
+        for(let i=0;i<amount;i++) this.stepOnce();
+      }
+      update(dt,now) {
+        this.group.position.copy(this.anchor);
+        if(config.colonies.float) this.group.position.z+=Math.sin(now*.52+this.id*2.2)*config.colonies.floatAmount;
+        if(config.colonies.rotate && config.view.threeD) {
+          this.group.rotation.z+=dt*config.colonies.rotationSpeed;
+          this.group.rotation.x=Math.sin(now*.16+this.id*2.4)*.12;
+        } else {this.group.rotation.set(0,0,0);}
+        if(this.transitionState) {
+          this.transitionTime+=dt;
+          const half=Math.max(.1,config.lifecycle.transition*.5);
+          const p=clamp(this.transitionTime/half,0,1);
+          this.group.scale.setScalar(this.transitionState==='out'?1-p:p);
+          if(p>=1) {
+            if(this.transitionState==='out') {
+              const nextSeed=config.lifecycle.randomSeed
+                ? Math.floor(Math.random()*0x7fffffff):config.simulation.seed;
+              this.reset(nextSeed);
+              this.transitionState='in';this.transitionTime=0;
+            } else {this.transitionState='';this.transitionTime=0;this.group.scale.setScalar(1);}
+          }
+        } else if(config.lifecycle.enabled && this.tick>=config.lifecycle.steps) {
+          this.transitionState='out';this.transitionTime=0;
+        }
+        for(let i=this.ripples.length-1;i>=0;i--) {
+          const ring=this.ripples[i];ring.age+=dt;
+          ring.mesh.material.uniforms.uAge.value=ring.age;
+          if(ring.age>ring.mesh.material.uniforms.uLife.value) {
+            this.rippleGroup.remove(ring.mesh);ring.mesh.material.dispose();this.ripples.splice(i,1);
+          }
+        }
+        if(config.simulation.geometry==='plane' && config.simulation.boundary==='infinite') {
+          // Only the visual reference plane follows the selected ant; the sparse
+          // automaton keeps stable, unbounded integer coordinates.
+          const ant=this.ants[0];
+          const cell=side/config.simulation.grid;
+          this.baseRoot.position.set(Math.round((ant.x-config.simulation.grid/2)*cell/side)*side,
+            Math.round((ant.y-config.simulation.grid/2)*cell/side)*side,0);
+        }
+      }
+      updateMaterials() {
+        for(const surface of this.surfaces) {
+          surface.material.opacity=config.visual.surfaceOpacity;
+          surface.material.iridescence=(config.visual.iridescence&&config.visual.glass)?config.visual.iridescenceStrength:0;
+          surface.material.needsUpdate=true;
+        }
+        this.wire.material.opacity=config.visual.gridOpacity;
+        this.wire.visible=config.visual.grid;
+        this.tiles.material.metalness=config.visual.metalness;
+        this.tiles.material.roughness=config.visual.roughness;
+        this.tiles.material.iridescence=(config.visual.glass&&config.visual.iridescence)?config.visual.iridescenceStrength:0;
+        this.tiles.material.clearcoat=config.visual.glass ? .38 : 0;
+        this.tiles.material.needsUpdate=true;
+        this.ghostTiles.material.opacity=config.visual.ghostOpacity;
+        this.ghostTiles.visible=config.visual.ghosts;
+        this.antMesh.visible=config.ants.show;
+        if(this.light) this.light.visible=config.visual.movingLights;
+        this.dirty=true;
+      }
+      paintTiles(target,records,isGhost) {
+        const cell=side/config.simulation.grid;
+        const capacity=target.instanceMatrix.count;
+        const extraThickness=isGhost ? .012 : config.visual.extrusion;
+        const every=Math.max(1,Math.ceil(records.length/capacity));
+        let drawn=0;
+        for(let i=0;i<records.length && drawn<capacity;i+=every) {
+          const rec=records[i];
+          const frame=surfaceAt(rec.face,rec.x,rec.y);
+          const visitHeight=config.visual.heightByVisits?1+Math.min(3,Math.log2(rec.visits+1)*.33):1;
+          const thickness=isGhost?.012:Math.max(.013,extraThickness*visitHeight);
+          const lift=thickness*.5+.025;
+          const orientation=scratchMatrix.makeBasis(frame.u,frame.v,frame.n);
+          scratchQuaternion.setFromRotationMatrix(orientation);
+          scratchObject.position.copy(frame.p).addScaledVector(frame.n,lift);
+          scratchObject.quaternion.copy(scratchQuaternion);
+          scratchObject.scale.set(cell*.94,cell*.94,thickness);
+          scratchObject.updateMatrix();
+          target.setMatrixAt(drawn,scratchObject.matrix);
+          if(isGhost) tmpColor.copy(backgroundPalette(this.id,1,3)).multiplyScalar(.4);
+          else {
+            tmpColor.copy(heatColor(rec,this));
+            if(config.visual.cellFlash) {
+              const age=this.tick-rec.last;
+              const maxAge=Math.max(5,config.simulation.speed*config.visual.flashDuration*.5);
+              const flash=clamp(1-age/maxAge,0,1);
+              tmpColor.lerp(new THREE.Color('#ffffff'),flash*.52);
+            }
+          }
+          target.setColorAt(drawn,tmpColor);
+          drawn++;
+        }
+        target.count=drawn;
+        target.instanceMatrix.needsUpdate=true;
+        if(target.instanceColor)target.instanceColor.needsUpdate=true;
+      }
+      drawTrails() {
+        this.clearTrails();
+        if(!config.ants.trails)return;
+        const perColonyBudget=Math.max(2,Math.floor(115/config.colonies.count));
+        for(const ant of this.ants.slice(0,perColonyBudget)) {
+          if(ant.trail.length<2)continue;
+          const points=[],colors=[];
+          const antColor=config.ants.rainbow?new THREE.Color().setHSL(ant.id*.618%1,.96,.69)
+            :new THREE.Color('#f6cd6c');
+          for(let j=0;j<ant.trail.length;j++) {
+            const mark=ant.trail[j],f=surfaceAt(mark.face,mark.x,mark.y);
+            const p=f.p.addScaledVector(f.n,.07);
+            points.push(p.x,p.y,p.z);
+            const fade=(j+1)/ant.trail.length;
+            const c=antColor.clone().multiplyScalar(.035+.95*fade*fade);
+            colors.push(c.r,c.g,c.b);
+          }
+          const geometry=new THREE.BufferGeometry();
+          geometry.setAttribute('position',new THREE.Float32BufferAttribute(points,3));
+          geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+          const material=new THREE.LineBasicMaterial({vertexColors:true,transparent:true,
+            opacity:config.ants.trailOpacity,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false});
+          const line=new THREE.Line(geometry,material);
+          line.renderOrder=6;this.trailGroup.add(line);this.trails.push(line);
+        }
+      }
+      drawAnts() {
+        this.antMesh.visible=config.ants.show;
+        const size=side/config.simulation.grid*config.ants.size;
+        for(let i=0;i<this.ants.length && i<this.antMesh.instanceMatrix.count;i++) {
+          const ant=this.ants[i],frame=surfaceAt(ant.face,ant.x,ant.y);
+          const orientation=scratchMatrix.makeBasis(frame.u,frame.v,frame.n);
+          scratchRotation.makeRotationZ(-ant.dir*Math.PI/2);
+          orientation.multiply(scratchRotation);
+          scratchQuaternion.setFromRotationMatrix(orientation);
+          scratchObject.position.copy(frame.p).addScaledVector(frame.n,
+            .10+config.visual.extrusion*Math.min(2,Math.log2((this.cells.get(keyOf(ant.face,ant.x,ant.y))?.visits||0)+2)*.2));
+          scratchObject.quaternion.copy(scratchQuaternion);
+          scratchObject.scale.set(size,size,size);
+          scratchObject.updateMatrix();
+          this.antMesh.setMatrixAt(i,scratchObject.matrix);
+          tmpColor.copy(config.ants.rainbow?new THREE.Color().setHSL(ant.id*.618%1,1,.68):new THREE.Color('#ffd75d'));
+          this.antMesh.setColorAt(i,tmpColor);
+        }
+        this.antMesh.count=Math.min(this.ants.length,this.antMesh.instanceMatrix.count);
+        this.antMesh.instanceMatrix.needsUpdate=true;
+        if(this.antMesh.instanceColor)this.antMesh.instanceColor.needsUpdate=true;
+        if(this.light && this.ants.length) {
+          const ant=this.ants[0],f=surfaceAt(ant.face,ant.x,ant.y);
+          this.light.position.copy(f.p).addScaledVector(f.n,.7);
+        }
+      }
+      redraw() {
+        const active=[],ghost=[];
+        for(const rec of this.cells.values()) {
+          if(rec.state!==0)active.push(rec);
+          else if(config.visual.ghosts && rec.visits>0)ghost.push(rec);
+        }
+        this.paintTiles(this.tiles,active,false);
+        if(config.visual.ghosts)this.paintTiles(this.ghostTiles,ghost,true);
+        else this.ghostTiles.count=0;
+        this.drawAnts();this.drawTrails();this.dirty=false;
+      }
+      dispose() {
+        this.clearTrails();this.clearRipples();
+        const seenG=new Set(),seenM=new Set();
+        this.group.traverse(obj=>{
+          if(obj.geometry && ![antShape,cubeTileGeometry,ringGeometry].includes(obj.geometry) && !seenG.has(obj.geometry)) {
+            seenG.add(obj.geometry);obj.geometry.dispose();
+          }
+          const list=obj.material?Array.isArray(obj.material)?obj.material:[obj.material]:[];
+          for(const mat of list)if(!seenM.has(mat)){seenM.add(mat);mat.dispose();}
+        });
+        world.remove(this.group);
+      }
+    }
+
+    // -------------------------------- World, cameras and UI --------------------------------
+    function initializeGraphics() {
+      renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:true,powerPreference:'high-performance'});
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,config.visual.maxDpr));
+      renderer.setSize(window.innerWidth,window.innerHeight);
+      renderer.outputColorSpace=THREE.SRGBColorSpace;
+      renderer.toneMapping=THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure=1.15;
+      canvasHost.append(renderer.domElement);
+      renderer.setClearColor(config.visual.background,1);
+      scene=new THREE.Scene();scene.background=new THREE.Color(config.visual.background);
+      world=new THREE.Group();scene.add(world);
+      scene.add(new THREE.AmbientLight(0xb9d5fa,2.35));
+      const key=new THREE.DirectionalLight(0xf2ffff,3.7);key.position.set(13,16,27);scene.add(key);
+      const fill=new THREE.DirectionalLight(0x5d89ce,2.2);fill.position.set(-16,-10,-12);scene.add(fill);
+      const w=window.innerWidth,h=window.innerHeight;
+      const persp=new THREE.PerspectiveCamera(48,w/h,.05,3000);
+      orthographic=new THREE.OrthographicCamera(-25*w/h,25*w/h,25,-25,.05,3000);
+      camera=persp;
+      camera.userData.perspectiveCamera=persp;
+      composer=new EffectComposer(renderer);
+      composer.addPass(new RenderPass(scene,camera));
+      bloom=new UnrealBloomPass(new THREE.Vector2(w,h),config.visual.bloomStrength,
+        config.visual.bloomRadius,config.visual.bloomThreshold);
+      composer.addPass(bloom);composer.addPass(new OutputPass());
+      window.addEventListener('resize',resizeView,{passive:true});
+    }
+    function setupCamera() {
+      if(controls)controls.dispose();
+      // Perspective camera is a stable reference, independent of current view mode.
+      camera=(config.view.threeD&&config.view.perspective)?perspectiveCamera:orthographic;
+      controls=new OrbitControls(camera,renderer.domElement);
+      controls.enableDamping=true;controls.dampingFactor=.07;
+      controls.enablePan=true;controls.enableRotate=config.view.threeD;
+      controls.enableZoom=true;controls.zoomToCursor=true;
+      controls.minDistance=1.5;controls.maxDistance=3000;
+      controls.maxPolarAngle=Math.PI-.08;
+      controls.screenSpacePanning=true;
+      const target=config.view.autoFocus&&colonies.length?colonies[selectedIndex]?.anchor.clone()??vec():vec();
+      controls.target.copy(target);
+      const distance=viewDistance;
+      const tilt=(config.view.threeD?config.view.tilt:0)*Math.PI/180;
+      const yaw=config.view.yaw*Math.PI/180;
+      camera.position.copy(target).add(vec(Math.sin(yaw)*Math.sin(tilt)*distance,
+        Math.cos(yaw)*Math.sin(tilt)*distance,Math.cos(tilt)*distance));
+      camera.up.set(0,1,0);
+      camera.lookAt(target);
+      composer.passes[0].camera=camera;
+      resizeView();controls.update();
+    }
+    let perspectiveCamera;
+    function resizeView() {
+      if(!renderer)return;
+      const width=Math.max(2,canvasHost.clientWidth),height=Math.max(2,canvasHost.clientHeight);
+      const aspect=width/height;
+      if(perspectiveCamera){perspectiveCamera.aspect=aspect;perspectiveCamera.updateProjectionMatrix();}
+      if(orthographic) {
+        // The cube net occupies four faces horizontally and three vertically.
+        const netMargin = !config.view.threeD && config.simulation.geometry==='cube'
+          ? Math.max(side*1.8,side*2.7/Math.max(.4,aspect)) : 0;
+        const span=Math.max(viewDistance*.62,netMargin);
+        orthographic.left=-span*aspect;orthographic.right=span*aspect;
+        orthographic.top=span;orthographic.bottom=-span;
+        orthographic.updateProjectionMatrix();
+      }
+      renderer.setSize(width,height,false);
+      composer.setSize(width,height);
+      bloom.setSize(width,height);
+    }
+    function rebuildWorld(preserve=false) {
+      const snapshots=preserve?colonies.map(c=>c.snapshot()):[];
+      side=clamp(Number(config.simulation.surfaceSize)||13.2,6,30);
+      for(const colony of colonies)colony.dispose();
+      colonies=[];raycastTargets=[];
+      const places=positionsForColonies(config.colonies.count);
+      const surfaceExtent = !config.view.threeD && config.simulation.geometry==='cube'
+        ? side*2.6 : side*.85;
+      sceneRadius=Math.max(side,...places.map(p=>p.length()+surfaceExtent));
+      viewDistance=clamp(sceneRadius*(config.colonies.count===1?2.2:2.6)/config.view.zoom,12,1300);
+      for(let i=0;i<places.length;i++) {
+        const colony=new Colony(i,places[i]);
+        if(snapshots[i])colony.restore(snapshots[i]);
+        colonies.push(colony);
+      }
+      selectedIndex=clamp(selectedIndex,0,colonies.length-1);
+      setupCamera();updateAppearance();
+    }
+    function updateAppearance() {
+      renderer.setClearColor(config.visual.background,1);
+      scene.background=new THREE.Color(config.visual.background);
+      document.getElementById('vignette').style.display=config.visual.vignette?'block':'none';
+      bloom.strength=config.visual.bloomStrength;
+      bloom.radius=config.visual.bloomRadius;
+      bloom.threshold=config.visual.bloomThreshold;
+      for(const colony of colonies)colony.updateMaterials();
+    }
+    function resetEverything() {
+      config.simulation.seed=(Math.trunc(config.simulation.seed)||1)>>>0;
+      rebuildWorld(false);updatePlayButton();
+    }
+    function applySetting(path) {
+      normalizeSettings();
+      const needsReset=new Set([
+        'simulation.geometry','simulation.grid','simulation.ants','simulation.rule',
+        'simulation.seed','simulation.spawn','simulation.boundary','colonies.diverseRules'
+      ]);
+      const needsRemesh=new Set([
+        'colonies.count','colonies.layout','colonies.separation',
+        'view.threeD','visual.maxTiles','visual.grid','simulation.surfaceSize'
+      ]);
+      if(needsReset.has(path)) rebuildWorld(false);
+      else if(needsRemesh.has(path)) rebuildWorld(true);
+      else if(path==='view.perspective'||path==='view.tilt'||path==='view.yaw'||path==='view.zoom') {
+        viewDistance=clamp(sceneRadius*(config.colonies.count===1?2.2:2.6)/config.view.zoom,12,1300);
+        setupCamera();
+      } else {
+        if(path==='visual.maxDpr') {
+          const dpr=Math.min(window.devicePixelRatio||1,config.visual.maxDpr);
+          renderer.setPixelRatio(dpr);composer.setPixelRatio(dpr);resizeView();
+        }
+        if(path==='visual.movingLights')rebuildWorld(true);
+        updateAppearance();
+      }
+      if(path==='editor.enabled') {
+        document.getElementById('settings-panel').classList.toggle('closed',!config.editor.enabled);
+      }
+    }
+    function applyAction(action,payload) {
+      if(action==='preset') {
+        const chosen=presets.find(p=>p.name===payload);if(!chosen)return;
+        copyKnown(config,clone(defaults));copyKnown(config,chosen.values);
+        normalizeSettings();resetEverything();
+      } else if(action==='import') {
+        copyKnown(config,payload);normalizeSettings();resetEverything();
+      } else if(action==='defaults') {
+        copyKnown(config,clone(defaults));normalizeSettings();resetEverything();
+      } else if(action==='shuffle') {
+        const random=presets[Math.floor(Math.random()*presets.length)];
+        copyKnown(config,clone(defaults));copyKnown(config,random.values);
+        config.simulation.seed=Math.floor(Math.random()*999999999)+1;
+        normalizeSettings();resetEverything();
+      }
+      document.getElementById('settings-panel').classList.toggle('closed',!config.editor.enabled);
+    }
+    function updatePlayButton() {
+      const b=document.getElementById('play');b.textContent=paused?'Resume':'Pause';
+      b.classList.toggle('primary',!paused);
+    }
+    function togglePanel(force) {
+      const panel=document.getElementById('settings-panel');
+      const open=force??panel.classList.contains('closed');
+      config.editor.enabled=open;panel.classList.toggle('closed',!open);
+      if(editor)editor.refresh();
+    }
+    function selectColony(i) {selectedIndex=mod(i,colonies.length);updateStats();}
+    function focusSelected() {
+      const colony=colonies[selectedIndex];if(!colony)return;
+      const to=colony.group.position.clone();
+      const delta=to.sub(controls.target);
+      controls.target.add(delta);camera.position.add(delta);
+      if(config.view.threeD) {
+        const dir=camera.position.clone().sub(controls.target).normalize();
+        camera.position.copy(controls.target).addScaledVector(dir,side*2.65/config.view.zoom);
+      }
+      controls.update();
+    }
+    function updateStats() {
+      if(!colonies.length)return;
+      const ticks=colonies.reduce((s,c)=>s+c.tick,0);
+      const active=colonies.reduce((s,c)=>s+c.activeCount,0);
+      const visited=colonies.reduce((s,c)=>s+c.cells.size,0);
+      const collisions=colonies.reduce((s,c)=>s+c.collisions,0);
+      const c=colonies[selectedIndex];
+      document.getElementById('status-primary').textContent=`${config.simulation.geometry.toUpperCase()} · ${colonies.length} ${colonies.length===1?'colony':'colonies'} · ${paused?'PAUSED':'RUNNING'}`;
+      document.getElementById('status-secondary').textContent=
+        `${ticks.toLocaleString()} steps · ${visited.toLocaleString()} visited cells\n`+
+        `${active.toLocaleString()} active · ${collisions.toLocaleString()} collisions\n`+
+        `Selected #${selectedIndex+1} · ${c.ants.length} ants · Rule ${c.rule}\n`+
+        `${Math.round(measuredFps)} FPS · ${c.mutations} mutations`;
+      const pattern=c.memoryFull?'Memory limit reached — colony paused':
+        c.highwayCandidate?`Highway candidate: Δ(${c.highwayCandidate.dx},${c.highwayCandidate.dy}) every ~${c.highwayCandidate.period} steps`:
+          (c.tick>3000?'Exploring emergent patterns':'Chaotic exploration');
+      document.getElementById('pattern').textContent=pattern;
+      document.getElementById('status-secondary').style.whiteSpace='pre-line';
+    }
+
+    // Clicking a surface is a deliberate paint / spawn action, not just a camera click.
+    function pickSurface(clientX,clientY) {
+      const bounds=renderer.domElement.getBoundingClientRect();
+      mouse.set((clientX-bounds.left)/bounds.width*2-1,-((clientY-bounds.top)/bounds.height*2-1));
+      raycaster.setFromCamera(mouse,camera);
+      const hit=raycaster.intersectObjects(raycastTargets,false)[0];
+      if(!hit)return null;
+      const obj=hit.object,colony=obj.userData.colony;
+      const p=colony.group.worldToLocal(hit.point.clone());
+      const n=config.simulation.grid,shape=config.simulation.geometry;
+      let face=0,x=0,y=0;
+      if(shape==='cube'&&!config.view.threeD) {
+        face=obj.userData.surfaceFace;
+        x=Math.floor((p.x-netOffset[face][0]*side)/side*n+n/2);
+        y=Math.floor((p.y-netOffset[face][1]*side)/side*n+n/2);
+      } else if(shape==='cube') {
+        face=faceBasis.reduce((best,b,i)=>p.dot(b.n)>p.dot(faceBasis[best].n)?i:best,0);
+        const basis=faceBasis[face];
+        x=Math.floor(p.dot(basis.u)/side*n+n/2);
+        y=Math.floor(p.dot(basis.v)/side*n+n/2);
+      } else if(!config.view.threeD||shape==='plane') {
+        x=Math.floor(p.x/side*n+n/2);y=Math.floor(p.y/side*n+n/2);
+      } else if(shape==='cylinder') {
+        x=Math.floor(mod(Math.atan2(p.y,p.x),PI2)/PI2*n);
+        y=Math.floor(p.z/side*n+n/2);
+      } else {
+        const phi=Math.atan2(p.z,Math.hypot(p.x,p.y)-side*.33);
+        x=Math.floor(mod(Math.atan2(p.y,p.x),PI2)/PI2*n);
+        y=Math.floor(mod(phi,PI2)/PI2*n);
+      }
+      if(shape!=='plane'||config.simulation.boundary!=='infinite') {x=clamp(x,0,n-1);y=clamp(y,0,n-1);}
+      return {colony,face,x,y};
+    }
+    function attachInputs() {
+      const canvas=renderer.domElement;
+      const down=new Map(),fingers=new Map();
+      let touchGesture=false;
+      canvas.addEventListener('pointerdown',e=>{
+        down.set(e.pointerId,{x:e.clientX,y:e.clientY,t:performance.now(),pointerType:e.pointerType});
+        if(e.pointerType==='touch') {
+          fingers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+          if(fingers.size>1)touchGesture=true;
+        }
+      });
+      canvas.addEventListener('pointermove',e=>{
+        if(e.pointerType!=='touch'||!fingers.has(e.pointerId))return;
+        const old=fingers.get(e.pointerId);
+        if(fingers.size>=3&&config.view.threeD) {
+          controls.enabled=false;
+          const dx=e.clientX-old.x,dy=e.clientY-old.y;
+          const offset=camera.position.clone().sub(controls.target);
+          offset.applyAxisAngle(vec(0,0,1),-dx*.007);
+          const right=vec(1,0,0).applyQuaternion(camera.quaternion).normalize();
+          offset.applyAxisAngle(right,dy*.006);
+          camera.position.copy(controls.target).add(offset);camera.lookAt(controls.target);
+        }
+        fingers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      });
+      const end=e=>{
+        const started=down.get(e.pointerId);down.delete(e.pointerId);
+        if(e.pointerType==='touch') {
+          const threeOrMore=fingers.size>=3;
+          fingers.delete(e.pointerId);
+          if(fingers.size<3)controls.enabled=true;
+          if(threeOrMore || touchGesture) {if(!fingers.size)touchGesture=false;return;}
+          if(!fingers.size)touchGesture=false;
+        }
+        if(e.type==='pointercancel'||!started)return;
+        if(Math.hypot(e.clientX-started.x,e.clientY-started.y)>7||performance.now()-started.t>450)return;
+        const found=pickSurface(e.clientX,e.clientY);if(!found)return;
+        selectColony(found.colony.id);
+        if(e.shiftKey) found.colony.addAnt(found);
+        else found.colony.changeCell(found.face,found.x,found.y);
+        if(paused)found.colony.redraw();
+      };
+      canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);
+      canvas.addEventListener('dblclick',e=>{
+        const found=pickSurface(e.clientX,e.clientY);
+        if(found){selectColony(found.colony.id);focusSelected();}
+      });
+      document.getElementById('play').onclick=()=>{paused=!paused;updatePlayButton();};
+      document.getElementById('step').onclick=()=>{
+        paused=true;updatePlayButton();
+        colonies[selectedIndex]?.stepOnce();colonies[selectedIndex]?.redraw();updateStats();
+      };
+      document.getElementById('reset').onclick=()=>resetEverything();
+      document.getElementById('focus').onclick=focusSelected;
+      document.getElementById('toggle-editor').onclick=()=>togglePanel();
+      document.getElementById('help-button').onclick=()=>document.getElementById('help').classList.toggle('visible');
+      document.getElementById('screenshot').onclick=()=>{
+        const a=document.createElement('a');a.href=renderer.domElement.toDataURL('image/png');
+        a.download='quantum-ant-colony.png';document.body.append(a);a.click();a.remove();
+      };
+      document.addEventListener('keydown',e=>{
+        if(e.target.matches('input,textarea,select')||e.metaKey||e.ctrlKey||e.altKey)return;
+        if(e.code==='Space'){e.preventDefault();paused=!paused;updatePlayButton();}
+        else if(e.key==='.')document.getElementById('step').click();
+        else if(e.key.toLowerCase()==='h')togglePanel();
+        else if(e.key.toLowerCase()==='r')resetEverything();
+        else if(e.key.toLowerCase()==='f')focusSelected();
+        else if(e.key.toLowerCase()==='a'){colonies[selectedIndex]?.addAnt();}
+        else if(e.key.toLowerCase()==='c'&&config.colonies.count<24){config.colonies.count++;rebuildWorld(true);editor.refresh();}
+        else if(/^[1-9]$/.test(e.key)){applyAction('preset',presets[Number(e.key)-1].name);editor.setPreset(presets[Number(e.key)-1].name);}
+        else if(e.key==='Escape')document.getElementById('help').classList.remove('visible');
+      });
+    }
+
+    // -------------------------------- Animation loop --------------------------------
+    const clock=new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt=Math.min(.08,clock.getDelta()), now=clock.elapsedTime;
+      logicalClock+=dt;frameWindow+=dt;frames++;
+      if(frameWindow>=1){measuredFps=frames/frameWindow;frames=0;frameWindow=0;}
+      if(!paused&&colonies.length) {
+        accumulatedSteps+=config.simulation.speed*dt;
+        const budget=config.performance.adaptive&&measuredFps>0&&measuredFps<26
+          ?Math.max(100,Math.floor(config.performance.maxStepsFrame*.55))
+          :config.performance.maxStepsFrame;
+        const count=Math.min(Math.floor(accumulatedSteps),budget);
+        accumulatedSteps=Math.min(100000,accumulatedSteps-count);
+        const each=Math.floor(count/colonies.length),extra=count%colonies.length;
+        colonies.forEach((colony,i)=>colony.advance(each+(i<extra?1:0)));
+      }
+      for(const colony of colonies)colony.update(dt,now);
+      if(logicalClock-lastDraw>=1/config.performance.renderHz) {
+        lastDraw=logicalClock;
+        for(const colony of colonies)if(colony.dirty)colony.redraw();
+      }
+      if(config.view.cameraDirector&&now-lastDirector>=config.view.directorInterval) {
+        lastDirector=now;selectColony(selectedIndex+1);
+      }
+      if(controls) {
+        if(config.view.orbit&&config.view.threeD&&!paused)
+          world.rotation.z+=dt*config.view.orbitSpeed*Math.PI/180;
+        if(config.view.autoFocus||config.view.followAnt||config.view.cameraDirector) {
+          const colony=colonies[selectedIndex];
+          if(colony) {
+            const desired=colony.group.position.clone();
+            if((config.view.followAnt || (config.view.autoFocus &&
+              config.simulation.geometry==='plane' && config.simulation.boundary==='infinite')) && colony.ants.length) {
+              const ant=colony.ants[0],f=surfaceAt(ant.face,ant.x,ant.y);
+              desired.copy(colony.group.localToWorld(f.p));
+            }
+            const shift=desired.sub(controls.target).multiplyScalar(1-Math.exp(-dt*1.9));
+            controls.target.add(shift);camera.position.add(shift);
+          }
+        }
+        controls.update();
+      }
+      if(config.visual.glow)composer.render();else renderer.render(scene,camera);
+      if(logicalClock-lastStats>.45){lastStats=logicalClock;updateStats();}
+    }
+
+    function showError(error) {
+      document.getElementById('error-overlay').classList.add('visible');
+      document.getElementById('error-text').textContent=String(error?.stack||error);
+      console.error(error);
+    }
+    try {
+      initializeGraphics();
+      window.__ANT_BOOTED = true;
+      // Retain perspective camera even while orthographic projection is active.
+      perspectiveCamera=camera;
+      rebuildWorld(false);
+      editor=mountSettingsEditor({
+        host:document.getElementById('settings-panel'),config,schema,presets,
+        onChange:applySetting,onAction:applyAction
+      });
+      const touchscreen=matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints>0;
+      document.getElementById('settings-panel').classList.toggle('closed',touchscreen||!config.editor.enabled);
+      attachInputs();updatePlayButton();updateStats();animate();
+    } catch(error) {showError(error);}
+  </script>
+</body>
+</html>
