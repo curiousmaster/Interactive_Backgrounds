@@ -1,4 +1,3 @@
-```javascript
 /* Quantum Ant Colony — dependency-free, schema-driven settings editor.
    This file is a sibling of index.html (not setting-editor.js). */
 
@@ -248,5 +247,3 @@ export function mountSettingsEditor({ host, config, schema, presets, onChange, o
     setPreset(name) { state.activePreset = name; render(); }
   };
 }
-
-```
