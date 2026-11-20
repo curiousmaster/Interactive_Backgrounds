@@ -181,6 +181,14 @@ export const backgrounds = [
             "layering different rhythms within one scene.",
     },
     {
+        name: "Life of Math",
+        folder: "life-of-math",
+        tags: ["math", "3d", "generative", "interactive", "infinite"],
+        description:
+            "Explore the hidden geometry of mathematics through luminous, evolving paths generated from the infinite digits of Pi, Euler's number, the Golden Ratio, and other constants. " +
+            "Transform digits into 2D and 3D movement using pairs, triplets, and quadruplets, with customizable visual effects, dynamic camera tracking, and randomized mathematical worlds.",
+    },
+    {
         name: "Liquid Interference",
         folder: "liquid-interference",
         tags: ["colorful", "fluids"],

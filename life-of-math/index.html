@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en">
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
+  <title>
+   Game of Pi — Infinite Walk
+  </title>
+  <style>
+  :root {
+    color-scheme: dark;
+    font-family: Inter,system-ui,Arial,sans-serif;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  html,body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #030610;
+    color: #e6f0ff;
+  }
+  #gl,#fx {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  #fx {
+    pointer-events: none;
+  }
+  #hud {
+    position: fixed;
+    left: 16px;
+    top: 15px;
+    pointer-events: none;
+    text-shadow: 0 1px 8px #000;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  #hud b {
+    font-size: 15px;
+    letter-spacing: .13em;
+  }
+  #hud small {
+    color: #a9b9d4;
+  }
+  #help {
+    position: fixed;
+    left: 16px;
+    bottom: 14px;
+    color: #93a6c6;
+    font-size: 11px;
+    pointer-events: none;
+  }
+  #status {
+    position: fixed;
+    left: 16px;
+    bottom: 37px;
+    color: #f5bd76;
+    font-size: 11px;
+    pointer-events: none;
+  }
+  #editor-root {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 5;
+  }
+  button {
+    cursor: pointer;
+  }
+  body.editor-hidden #editor-root {
+    display: none;
+  }
+  #open-editor {
+    position: fixed;
+    right: 14px;
+    top: 14px;
+    z-index: 4;
+    border: 1px solid #425573;
+    background: #152138;
+    color: white;
+    border-radius: 10px;
+    padding: 9px 12px;
+  }
+  body:not(.editor-hidden) #open-editor {
+    display: none;
+  }
+  @media (max-width:600px) {
+    #hud {
+      left: 9px;
+      top: 8px;
+    }
+    #help {
+      max-width: 65vw;
+    }
+  }
+  #transport {
+    position: fixed;
+    z-index: 3;
+    left: 50%;
+    bottom: max(18px,env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #0b1629dd;
+    border: 1px solid #3b5875;
+    border-radius: 16px;
+    padding: 9px;
+    backdrop-filter: blur(12px);
+  }
+  #transport button {
+    color: #eafaff;
+    background: #203753;
+    border: 1px solid #4b6b88;
+    border-radius: 9px;
+    padding: 10px 16px;
+    font: 600 12px system-ui;
+  }
+  #transport button:hover {
+    background: #305879;
+  }
+  #transport button:disabled {
+    opacity: .4;
+    cursor: wait;
+  }
+  #transport small {
+    white-space: nowrap;
+    color: #9cb9d4;
+  }
+  #status {
+    bottom: 85px !important;
+  }
+  #help {
+    bottom: 115px !important;
+  }
+  [hidden] {
+    display: none !important;
+  }
+  @media (max-width:600px) {
+    #transport {
+      width: max-content;
+      max-width: 96vw;
+    }
+    #transport button {
+      padding: 9px;
+    }
+    #transport small {
+      display: none;
+    }
+  }
+</style>
+ </head>
+ <body>
+  <canvas id="gl">
+  </canvas>
+  <canvas id="fx">
+  </canvas>
+  <div id="hud">
+   <b>
+    GAME OF π
+   </b>
+   <div id="stats">
+   </div>
+   <small>
+    Deterministic infinite walk
+   </small>
+  </div>
+  <div id="status">
+  </div>
+  <div id="help">
+   Drag: pan · Wheel/pinch: zoom · Space: pause · R: restart · H: hide editor
+  </div>
+  <div id="transport">
+   <button id="run-toggle" type="button">
+    Stop
+   </button>
+   <button id="run-restart" type="button">
+    Reset + Start
+   </button>
+   <small id="run-progress">
+    Preparing π…
+   </small>
+  </div>
+  <div id="editor-root">
+  </div>
+  <script>
+  'use strict';
+  // All simulation and rendering code is local. The optional settings editor is the only separate file.
+  const TAU = Math.PI * 2, DIGIT_ANGLE = TAU / 10, clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const defaults = {
+    editor: { enabled: true }, simulation: { digitCount: 10000, mode: 'absolute', digitsPerSecond: 1400, stepLength: 1, startDigit: 0, paused: false, constant: 'pi', grouping: 'single', interpretation: 'spherical', fourth: 'roll', angleResolution: 'digit', zeroLength: 'zero', walkers: 1, angleOffset: 0, reverse: false },
+    camera: { autoZoom: true, zoomSpeed: .7, follow: true, followStrength: 2.2, mode: 'endpoint', zoom: 4, manualPause: 3, orbit: false, orbitSpeed: .05, threeD: false, tilt: 32, yaw: 35, perspective: true },
+    render: { background: '#030610', lineWidth: 1.35, pointSize: 2.3, opacity: .85, colors: 'digit', palette: ['#63f5ff', '#61a8ff', '#8068ff', '#ca69ff', '#ff62bb', '#ff7768', '#ffc56b', '#e7ff80', '#76ffc0', '#ffffff'], trailFade: 0, bloom: true, bloomStrength: 1.4, showGrid: false },
+    features: {
+      nodeFade: { enabled: true, halfLife: 12, minOpacity: .05 }, luminous: { enabled: true, glow: 1.1 }, nebula: { enabled: true, count: 9000, emission: 2, drift: .45 }, density: { enabled: false, resolution: 7, height: 30, wireframe: true }, chromatic: { enabled: true }, lens: { enabled: false, strength: .25, radius: 80 }, lightning: { enabled: false, distance: 12, frequency: 20 }, liquid: { enabled: false, strength: 1, decay: .9 }, extrusion: { enabled: false, height: 8, thickness: 2 }, echoes: { enabled: false, count: 3, offset: 6, opacity: .28 }, nodes: { enabled: true, every: 100, radius: 3 }, fractal: { enabled: true }, interference: { enabled: false, layers: 3, angle: 2, offset: 4 }, vortices: { enabled: false, strength: 1 }, crystals: { enabled: false, size: 5, threshold: 3 }, spectral: { enabled: false, window: 250 }, multiverse: { enabled: false, walkers: 4, spread: 15 }
+    }, performance: { maxVisibleSegments: 180000, chunkSize: 4096, maxStoredSteps: 1500000, particleCap: 12000 }, ui: { showStats: true, showHelp: true }
+  };
+  const deepClone = object => JSON.parse(JSON.stringify(object));
+  function merge(target, source) {
+    if (!source || typeof source !== 'object')
+      return target;
+      for (const [k, v] of Object.entries(source)) {
+        if (!(k in target))
+          continue;
+        if (Array.isArray(target[k])) {
+          if (Array.isArray(v))
+            target[k] = v.slice();
+        }
+        else if (target[k] && typeof target[k] === 'object' && v && typeof v === 'object')
+          merge(target[k], v);
+        else if (typeof target[k] === typeof v)
+          target[k] = v;
+      } return target;
+  }
+  let config = deepClone(defaults);
+  try {
+    merge(config, JSON.parse(localStorage.getItem('game-of-pi-config') || '{}'));
+  }
+  catch { }
+  // Chudnovsky binary-splitting algorithm in a dedicated, self-contained Worker.
+  // The worker returns exactly N digits AFTER the decimal point; it never fetches digits.
+  // Exact decimal arithmetic; no repeating finite prefixes or external network dependencies.
+  const PI_WORKER_SOURCE = `
+    'use strict';
+    const C = 640320n;
+    const CUBED_OVER_24 = C * C * C / 24n;
+
+    function integerSqrt(value) {
+      if (value < 0n) throw Error('Negative square root');
+      if (value < 2n) return value;
+      let x = 1n << BigInt(Math.ceil(value.toString(2).length / 2));
+      while (true) {
+        const next = (x + value / x) >> 1n;
+        if (next >= x) return x;
+        x = next;
+      }
+    }
+
+    function split(a, b) {
+      if (b - a === 1) {
+        if (a === 0) return [1n, 1n, 13591409n];
+        const k = BigInt(a);
+        const P = (6n * k - 5n) * (2n * k - 1n) * (6n * k - 1n);
+        const Q = k * k * k * CUBED_OVER_24;
+        let T = P * (13591409n + 545140134n * k);
+        if (a & 1) T = -T;
+        return [P, Q, T];
+      }
+      const middle = (a + b) >> 1;
+      const [p1, q1, t1] = split(a, middle);
+      const [p2, q2, t2] = split(middle, b);
+      return [p1 * p2, q1 * q2, t1 * q2 + p1 * t2];
+    }
+
+    function decimalDigits(name, count) {
+      if (name === 'champernowne') {
+        let result = '';
+        for (let i = 1; result.length < count; i++) result += i;
+        return result.slice(0, count);
+      }
+
+      const precision = count + 24;
+      const scale = 10n ** BigInt(precision);
+      let fixed;
+
+      if (name === 'pi') {
+        const terms = Math.ceil(precision / 14.181647462725477) + 1;
+        const [, Q, T] = split(0, terms);
+        fixed = 426880n * integerSqrt(10005n * scale * scale) * Q / T;
+      } else if (name === 'sqrt2') {
+        fixed = integerSqrt(2n * scale * scale);
+      } else if (name === 'phi') {
+        fixed = (scale + integerSqrt(5n * scale * scale)) / 2n;
+      } else if (name === 'e') {
+        let term = scale;
+        fixed = term;
+        for (let k = 1n; term !== 0n; k++) {
+          term /= k;
+          fixed += term;
+        }
+      } else if (name === 'ln2') {
+        // ln(2) = 2 * atanh(1/3) = 2 * sum(1 / ((2k+1) * 3^(2k+1))).
+        let power = scale / 3n;
+        let sum = 0n;
+        for (let k = 0n; power !== 0n; k++) {
+          sum += power / (2n * k + 1n);
+          power /= 9n;
+        }
+        fixed = 2n * sum;
+      } else {
+        throw Error('Unsupported mathematical constant: ' + name);
+      }
+
+      const text = fixed.toString().padStart(precision + 1, '0');
+      return text.slice(0, -precision) === '0'
+        ? text.slice(-precision, -precision + count)
+        : text.slice(0, -precision) + '.' + text.slice(-precision, -precision + count);
+    }
+
+    onmessage = ({ data }) => {
+      const { count, id, constant } = data;
+      try {
+        postMessage({ id, phase: 'calculating' });
+        const digits = decimalDigits(constant, count);
+        // Strip integer part: only digits after the decimal point drive the walk.
+        const decimal = digits.includes('.') ? digits.split('.')[1] : digits;
+        postMessage({ id, digits: decimal });
+      } catch (error) {
+        postMessage({ id, error: String(error) });
+      }
+    };
+  `;
+  let worker = null, jobId = 0, availableDigits = '', ready = false, computing = false;
+  function prepareDigits() {
+    const count = clamp(Math.round(config.simulation.digitCount), 100, 1000000);
+    config.simulation.digitCount = count;
+    jobId++;
+    const id = jobId;
+    ready = false;
+    computing = true;
+    availableDigits = '';
+    if (worker)
+      worker.terminate();
+    worker = new Worker(URL.createObjectURL(new Blob([PI_WORKER_SOURCE], { type: 'text/javascript' })));
+    const label = document.getElementById('run-progress');
+    label.textContent = 'Calculating ' + count.toLocaleString() + ' digits…';
+    document.getElementById('run-toggle').disabled = true;
+    worker.onmessage = ({ data }) => {
+      if (data.id !== jobId)
+        return;
+        if (data.error) {
+          computing = false;
+          label.textContent = 'Calculation failed';
+          document.getElementById('status').textContent = data.error;
+          return;
+        } if (data.digits !== undefined) {
+          availableDigits = data.digits;
+          ready = true;
+          computing = false;
+          worker.terminate();
+          worker = null;
+          label.textContent = '0 / ' + count.toLocaleString();
+          document.getElementById('run-toggle').disabled = false;
+          document.getElementById('status').textContent = '';
+        }
+      else {
+        label.textContent = data.phase === 'extracting' ? 'Extracting decimal digits…' : 'Calculating ' + config.simulation.constant + '…';
+      }
+    };
+    worker.onerror = e => {
+      if (id !== jobId)
+        return;
+        computing = false;
+        label.textContent = 'Worker error';
+        document.getElementById('status').textContent = e.message;
+    };
+    worker.postMessage({ count: count + Math.max(0, config.simulation.startDigit), id, constant: config.simulation.constant });
+  }
+  const gl = document.getElementById('gl').getContext('webgl2', { antialias: true, alpha: false, preserveDrawingBuffer: false });
+  if (!gl) {
+    document.getElementById('status').textContent = 'WebGL2 is required.';
+    throw Error('WebGL2 required');
+  }
+  const fx = document.getElementById('fx'), ctx = fx.getContext('2d');
+  function shader(type, source) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, source);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+      throw Error(gl.getShaderInfoLog(s));
+      return s;
+  }
+  function program(v, f) {
+    const p = gl.createProgram();
+    gl.attachShader(p, shader(gl.VERTEX_SHADER, v));
+    gl.attachShader(p, shader(gl.FRAGMENT_SHADER, f));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS))
+      throw Error(gl.getProgramInfoLog(p));
+      return p;
+  }
+  const vert = `#version 300 es
+    precision highp float;
+    layout(location = 0) in vec3 position;
+    layout(location = 1) in vec4 color;
+    uniform vec3 u_center;
+    uniform vec2 u_viewport;
+    uniform float u_zoom;
+    uniform float u_size;
+    uniform float u_tilt;
+    uniform float u_yaw;
+    uniform float u_threeD;
+    uniform float u_perspective;
+    out vec4 v_color;
+
+    void main() {
+      vec3 p = position - u_center;
+      float cy = cos(u_yaw);
+      float sy = sin(u_yaw);
+      float ct = cos(u_tilt);
+      float st = sin(u_tilt);
+      vec3 rotated = vec3(cy * p.x - sy * p.y, p.z, sy * p.x + cy * p.y);
+      float vertical = rotated.y * ct - rotated.z * st;
+      float depth = rotated.y * st + rotated.z * ct;
+      float perspectiveScale = u_perspective > 0.5 ? 1.0 / max(0.15, 1.0 + depth * 0.0015 * u_zoom) : 1.0;
+      vec2 projected = u_threeD > 0.5
+        ? vec2(rotated.x, vertical) * perspectiveScale
+        : vec2(p.x, p.y);
+      projected *= u_zoom;
+      gl_Position = vec4(2.0 * projected.x / u_viewport.x, -2.0 * projected.y / u_viewport.y, 0.0, 1.0);
+      gl_PointSize = u_size;
+      v_color = color;
+    }
+  `;
+  const frag = `#version 300 es
+    precision highp float;in vec4 v_color;uniform float u_points;out vec4 outColor;void main(){float alpha=v_color.a;if(u_points>0.5){float r=length(gl_PointCoord-.5)*2.;alpha*=smoothstep(1.,.05,r);}outColor=vec4(v_color.rgb*alpha,alpha);}`;
+  const prog = program(vert, frag), loc = { center: gl.getUniformLocation(prog, 'u_center'), yaw: gl.getUniformLocation(prog, 'u_yaw'), threeD: gl.getUniformLocation(prog, 'u_threeD'), perspective: gl.getUniformLocation(prog, 'u_perspective'), viewport: gl.getUniformLocation(prog, 'u_viewport'), zoom: gl.getUniformLocation(prog, 'u_zoom'), size: gl.getUniformLocation(prog, 'u_size'), tilt: gl.getUniformLocation(prog, 'u_tilt'), points: gl.getUniformLocation(prog, 'u_points') };
+  const vao = gl.createVertexArray(), buffer = gl.createBuffer();
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 28, 0);
+  gl.enableVertexAttribArray(1);
+  gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 28, 12);
+  gl.bindVertexArray(null);
+  const walkers = [];
+  let totalSteps = 0, elapsed = 0, carry = 0, last = performance.now(), lastUser = 0, cam = { x: 0, y: 0, z: 0, zoom: config.camera.zoom }, bounds = { minX: 0, maxX: 0, minY: 0, maxY: 0, minZ: 0, maxZ: 0 }, hist = new Uint32Array(10), density = new Map(), events = [], particles = [], geometryDirty = true;
+  const path = [];
+  const DEG = Math.PI / 180;
+  // packed points: {x,y,d,w}; bounded memory; world is unbounded, geometry storage is not.
+  const palettes = { digit: d => config.render.palette[d] || '#fff', time: (d, i) => `hsl(${(i * .05) % 360} 100% 68%)`, distance: (d, i, x, y) => `hsl(${(Math.hypot(x, y) * 2) % 360} 100% 65%)`, mono: () => '#6ae8ff' };
+  function rgb(s) {
+    if (s.startsWith('#')) {
+      let h = s.slice(1);
+      if (h.length === 3)
+        h = h.split('').map(c => c + c).join('');
+      return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+    } const m = s.match(/hsl\(([^ ]+)/); if (m) {
+      let h = Number(m[1]) / 60, c = 1, x = c * (1 - Math.abs(h % 2 - 1));
+      let z = h < 1 ? [c, x, 0] : h < 2 ? [x, c, 0] : h < 3 ? [0, c, x] : h < 4 ? [0, x, c] : h < 5 ? [x, 0, c] : [c, 0, x];
+      return z.map(v => v * .65 + .25);
+    } return [1, 1, 1];
+  }
+  function initWalkers() {
+    walkers.length = 0; const count = config.features.multiverse.enabled ? config.features.multiverse.walkers : config.simulation.walkers; for (let i = 0; i < count; i++)
+      walkers.push({ x: 0, y: 0, z: 0, heading: 0, orientation: [0, 0, 0, 1], roll: 0, thickness: 1, curvature: 0, offset: i * config.features.multiverse.spread, mode: i === 0 ? config.simulation.mode : (i % 2 ? 'relative' : 'absolute') });
+  }
+  function reset() {
+    path.length = 0;
+    particles.length = 0;
+    events.length = 0;
+    density.clear();
+    hist.fill(0);
+    totalSteps = 0;
+    elapsed = 0;
+    carry = 0;
+    bounds = {
+      minX: 0,
+      maxX: 0,
+      minY: 0,
+      maxY: 0,
+      minZ: 0,
+      maxZ: 0
+    };
+    cam = { x: 0, y: 0, z: 0, zoom: config.camera.zoom };
+    initWalkers();
+    geometryDirty = true;
+  }
+  function key(x, y) { const s = config.features.density.resolution; return `${Math.floor(x / s)},${Math.floor(y / s)}`; }
+  // Quaternion operations keep relative yaw/pitch stable without gimbal lock.
+  function multiplyQuaternion(a, b) {
+    const [x, y, z, w] = a;
+    const [u, v, t, q] = b;
+    return [
+      w * u + x * q + y * t - z * v,
+      w * v - x * t + y * q + z * u,
+      w * t + x * v - y * u + z * q,
+      w * q - x * u - y * v - z * t
+    ];
+  }
+
+  function axisRotation(axis, angle) {
+    const half = angle / 2;
+    const sine = Math.sin(half);
+    return [axis[0] * sine, axis[1] * sine, axis[2] * sine, Math.cos(half)];
+  }
+
+  function rotateVector(q, vector) {
+    const conjugate = [-q[0], -q[1], -q[2], q[3]];
+    const result = multiplyQuaternion(multiplyQuaternion(q, [...vector, 0]), conjugate);
+    return result.slice(0, 3);
+  }
+
+  function digitGroupWidth() {
+    const group = config.simulation.grouping;
+    if (group === 'pair') return 2;
+    if (group === 'triplet') return 3;
+    if (group === 'quadruplet') return 4;
+    if (group === 'highResolution') return 6;
+    return 1;
+  }
+
+  function lengthMultiplier(digit) {
+    if (digit !== 0) return digit;
+    if (config.simulation.zeroLength === 'one') return 1;
+    if (config.simulation.zeroLength === 'ten') return 10;
+    return 0;
+  }
+
+  function displacement(walker, digits) {
+    const settings = config.simulation;
+    const group = settings.grouping;
+    const base = settings.stepLength;
+    const relative = walker.mode === 'relative';
+    const angleOffset = settings.angleOffset * DEG;
+    let vector;
+    let distance = base;
+    let heading = digits[0] * DIGIT_ANGLE + angleOffset;
+
+    if (group === 'single' || group === 'pair') {
+      distance *= group === 'pair' ? lengthMultiplier(digits[1]) : 1;
+      walker.heading = relative ? walker.heading + heading : heading;
+      vector = [Math.sin(walker.heading), 0, Math.cos(walker.heading)];
+    } else if (settings.interpretation === 'cartesian') {
+      vector = digits.slice(0, 3).map(digit => (2 * digit - 9) / 9);
+      if (group === 'quadruplet') {
+        applyFourthDigit(walker, digits[3]);
+      }
+      if (relative) {
+        vector = rotateVector(walker.orientation, vector);
+      }
+    } else {
+      const highResolution = group === 'highResolution';
+      const azimuth = highResolution ? (digits[0] * 10 + digits[1]) * TAU / 100 + angleOffset : heading;
+      const elevationDigit = highResolution ? digits[2] * 10 + digits[3] : digits[1];
+      const elevation = highResolution
+        ? (elevationDigit / 99 - 0.5) * Math.PI
+        : (elevationDigit - 4.5) * Math.PI / 9;
+      const lengthDigit = highResolution ? digits[4] * 10 + digits[5] : digits[2];
+      distance *= highResolution ? lengthDigit : lengthMultiplier(lengthDigit);
+
+      if (relative) {
+        const yaw = axisRotation([0, 1, 0], azimuth);
+        const pitch = axisRotation([1, 0, 0], -elevation);
+        walker.orientation = multiplyQuaternion(walker.orientation, multiplyQuaternion(yaw, pitch));
+        vector = rotateVector(walker.orientation, [0, 0, 1]);
+      } else {
+        vector = [
+          Math.cos(elevation) * Math.sin(azimuth),
+          Math.sin(elevation),
+          Math.cos(elevation) * Math.cos(azimuth)
+        ];
+      }
+      if (group === 'quadruplet') applyFourthDigit(walker, digits[3]);
+    }
+
+    return vector.map(value => value * distance);
+  }
+
+  function applyFourthDigit(walker, digit) {
+    const value = digit / 9;
+    switch (config.simulation.fourth) {
+      case 'roll':
+        walker.roll = value * TAU;
+        walker.orientation = multiplyQuaternion(walker.orientation, axisRotation([0, 0, 1], walker.roll));
+        break;
+      case 'thickness':
+        walker.thickness = 0.25 + value * 2.75;
+        break;
+      case 'curvature':
+        walker.curvature = value * 2 - 1;
+        break;
+      case 'color':
+        walker.colorDigit = digit;
+        break;
+    }
+  }
+
+  function addStep() {
+    const width = digitGroupWidth();
+    const start = config.simulation.startDigit + totalSteps * width;
+    const end = start + width;
+    if (end > availableDigits.length || end > config.simulation.digitCount + config.simulation.startDigit) {
+      config.simulation.paused = true;
+      document.getElementById('status').textContent = 'Completed ' + totalSteps.toLocaleString() + ' movements.';
+      return false;
+    }
+
+    const segment = availableDigits.slice(start, end);
+    const source = config.simulation.reverse
+      ? [...Array(width)].map((_, offset) => availableDigits[availableDigits.length - 1 - start - offset]).join('')
+      : segment;
+    const digits = [...source].map(character => Number(character));
+    hist[digits[0]]++;
+
+    walkers.forEach((walker, walkerIndex) => {
+      const previous = { x: walker.x, y: walker.y, z: walker.z };
+      const [dx, dy, dz] = displacement(walker, digits);
+      walker.x += dx;
+      walker.y += dy;
+      walker.z += dz;
+
+      // The original 2D view uses X/Z as its drawing plane.
+      const point = {
+        x: walker.x,
+        y: walker.z,
+        z: walker.y,
+        px: previous.x,
+        py: previous.z,
+        pz: previous.y,
+        d: walker.colorDigit ?? digits[0],
+        w: walkerIndex,
+        i: totalSteps,
+        thickness: walker.thickness,
+        curvature: walker.curvature
+      };
+      path.push(point);
+      bounds.minX = Math.min(bounds.minX, point.x);
+      bounds.maxX = Math.max(bounds.maxX, point.x);
+      bounds.minY = Math.min(bounds.minY, point.y);
+      bounds.maxY = Math.max(bounds.maxY, point.y);
+      bounds.minZ = Math.min(bounds.minZ, point.z);
+      bounds.maxZ = Math.max(bounds.maxZ, point.z);
+
+      const cell = key(point.x, point.y);
+      const visits = (density.get(cell) || 0) + 1;
+      density.set(cell, visits);
+      if (walkerIndex === 0) {
+        if (config.features.nodes.enabled && totalSteps % Math.max(1, config.features.nodes.every) === 0) {
+          events.push({ x: point.x, y: point.y, z: point.z, type: 'node', t: elapsed, i: totalSteps });
+        }
+        if (config.features.lightning.enabled && visits > 1 && totalSteps % Math.max(1, config.features.lightning.frequency) === 0) {
+          events.push({ x: point.x, y: point.y, z: point.z, type: 'lightning', t: elapsed });
+        }
+        if (config.features.crystals.enabled && visits === config.features.crystals.threshold) {
+          events.push({ x: point.x, y: point.y, z: point.z, type: 'crystal', t: elapsed });
+        }
+        if (config.features.nebula.enabled && particles.length < Math.min(config.features.nebula.count, config.performance.particleCap)
+            && totalSteps % Math.max(1, Math.round(6 / config.features.nebula.emission)) === 0) {
+          particles.push({ x: point.x, y: point.y, z: point.z, vx: Math.sin(totalSteps * 12.989) * 0.6,
+            vy: Math.cos(totalSteps * 78.23) * 0.6, t: elapsed, d: point.d });
+        }
+      }
+    });
+
+    totalSteps++;
+    if (path.length > config.performance.maxStoredSteps) {
+      path.splice(0, Math.min(config.performance.chunkSize, path.length - config.performance.maxStoredSteps));
+    }
+    if (events.length > 2000) events.splice(0, events.length - 2000);
+    if (density.size > 250000) density.clear();
+    geometryDirty = true;
+    return true;
+  }
+  function resize() { const dpr = Math.min(devicePixelRatio || 1, 2), w = innerWidth, h = innerHeight; gl.canvas.width = Math.floor(w * dpr); gl.canvas.height = Math.floor(h * dpr); fx.width = gl.canvas.width; fx.height = gl.canvas.height; fx.style.width = w + 'px'; fx.style.height = h + 'px'; gl.viewport(0, 0, gl.canvas.width, gl.canvas.height); }
+  addEventListener('resize', resize);
+  resize();
+  function screen(x, y, z = 0) {
+    const scale = fx.width / innerWidth;
+    let horizontal = x - cam.x;
+    let vertical = y - cam.y;
+
+    if (config.camera.threeD) {
+      const yaw = config.camera.yaw * DEG;
+      const tilt = config.camera.tilt * DEG;
+      const depth = z - cam.z;
+      const rotatedX = Math.cos(yaw) * horizontal - Math.sin(yaw) * vertical;
+      const rotatedZ = Math.sin(yaw) * horizontal + Math.cos(yaw) * vertical;
+      const projectedY = depth * Math.cos(tilt) - rotatedZ * Math.sin(tilt);
+      const projectedDepth = depth * Math.sin(tilt) + rotatedZ * Math.cos(tilt);
+      const perspective = config.camera.perspective
+        ? 1 / Math.max(0.15, 1 + projectedDepth * 0.0015 * cam.zoom * scale)
+        : 1;
+      horizontal = rotatedX * perspective;
+      vertical = projectedY * perspective;
+    }
+
+    return [
+      fx.width / 2 + horizontal * cam.zoom * scale,
+      fx.height / 2 + vertical * cam.zoom * scale
+    ];
+  }
+  function cameraUpdate(dt) {
+    const w = walkers[0]; if (!w)
+      return; const active = performance.now() - lastUser > config.camera.manualPause * 1000; if (!active)
+      return; const c = config.camera; if (c.follow) {
+        const target = c.mode === 'origin' ? { x: 0, y: 0, z: 0 } : c.mode === 'bounds' ? { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2, z: (bounds.minZ + bounds.maxZ) / 2 } : { x: w.x, y: w.z, z: w.y };
+        const k = 1 - Math.exp(-c.followStrength * dt);
+        cam.x += (target.x - cam.x) * k;
+        cam.y += (target.y - cam.y) * k;
+        cam.z += (target.z - cam.z) * k;
+      } if (c.autoZoom) {
+        const radius = Math.max(Math.abs(bounds.minX - cam.x), Math.abs(bounds.maxX - cam.x), Math.abs(bounds.minY - cam.y), Math.abs(bounds.maxY - cam.y), Math.abs(bounds.minZ - cam.z), Math.abs(bounds.maxZ - cam.z), 15);
+        const target = clamp(Math.min(fx.width, fx.height) * .36 / radius, .005, 80);
+        if (target < cam.zoom)
+          cam.zoom += (target - cam.zoom) * (1 - Math.exp(-c.zoomSpeed * dt));
+      }
+  }
+  function drawGL() {
+    const bg = rgb(config.render.background);
+    gl.clearColor(...bg, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.useProgram(prog);
+    gl.bindVertexArray(vao);
+    gl.uniform3f(loc.center, cam.x, cam.y, cam.z);
+    gl.uniform1f(loc.yaw, config.camera.yaw * DEG);
+    gl.uniform1f(loc.threeD, config.camera.threeD ? 1 : 0);
+    gl.uniform1f(loc.perspective, config.camera.perspective ? 1 : 0);
+    gl.uniform2f(loc.viewport, gl.canvas.width, gl.canvas.height);
+    gl.uniform1f(loc.zoom, cam.zoom * (gl.canvas.width / innerWidth));
+    gl.uniform1f(loc.tilt, config.camera.threeD ? config.camera.tilt * Math.PI / 180 : 0);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    const max = config.performance.maxVisibleSegments, skip = Math.max(1, Math.ceil(path.length / max)), vertices = [];
+    const mode = config.render.colors;
+    for (let j = skip; j < path.length; j += skip) {
+      const p = path[j], col = rgb(config.features.chromatic.enabled ? (palettes[mode] || palettes.digit)(p.d, p.i, p.x, p.y) : '#69dcff');
+      const ageSteps = Math.max(0, totalSteps - p.i);
+      const fade = config.features.nodeFade;
+      const fadeFactor = fade.enabled ? Math.max(fade.minOpacity, Math.pow(.5, ageSteps / Math.max(1, fade.halfLife * config.simulation.digitsPerSecond))) : 1;
+      const alpha = config.render.opacity * fadeFactor * (config.render.trailFade ? Math.pow(j / path.length, config.render.trailFade * 3) : 1);
+      const effectiveAlpha = config.simulation.fourth === 'thickness'
+        ? Math.min(1, alpha * (p.thickness || 1))
+        : alpha;
+
+      if (config.simulation.grouping === 'quadruplet'
+          && config.simulation.fourth === 'curvature'
+          && Math.abs(p.curvature || 0) > 0.001) {
+        // Bend the displayed segment while keeping its endpoints unchanged.
+        const dx = p.x - p.px;
+        const dy = p.y - p.py;
+        const dz = p.z - p.pz;
+        const length = Math.hypot(dx, dy, dz) || 1;
+        const offset = (p.curvature || 0) * length * 0.35;
+        const midpoint = [
+          (p.x + p.px) / 2 - dy / length * offset,
+          (p.y + p.py) / 2 + dx / length * offset,
+          (p.z + p.pz) / 2
+        ];
+        vertices.push(
+          p.px, p.py, p.pz, ...col, effectiveAlpha,
+          ...midpoint, ...col, effectiveAlpha,
+          ...midpoint, ...col, effectiveAlpha,
+          p.x, p.y, p.z, ...col, effectiveAlpha
+        );
+      } else {
+        vertices.push(
+          p.px, p.py, p.pz, ...col, effectiveAlpha,
+          p.x, p.y, p.z, ...col, effectiveAlpha
+        );
+      }
+    }
+    // Each segment is a GL_LINES pair. Geometry is rebuilt only once per rendered frame, not once per step.
+    const arr = new Float32Array(vertices);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW);
+    gl.uniform1f(loc.points, 0);
+    gl.uniform1f(loc.size, 1);
+    gl.lineWidth(config.render.lineWidth);
+    gl.drawArrays(gl.LINES, 0, arr.length / 7);
+    if (config.features.luminous.enabled && config.render.bloom) {
+      gl.uniform1f(loc.points, 0);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+      gl.drawArrays(gl.LINES, 0, arr.length / 7);
+    }
+    if (config.features.nebula.enabled && particles.length) {
+      const a = [];
+      for (const p of particles) {
+        const age = elapsed - p.t;
+        if (age > 25)
+          continue;
+        const c = rgb(config.render.palette[p.d]);
+        a.push(p.x + p.vx * age * config.features.nebula.drift, p.y + p.vy * age * config.features.nebula.drift, p.z || 0, ...c, .24 * Math.max(0, 1 - age / 25));
+      }
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(a), gl.DYNAMIC_DRAW);
+      gl.uniform1f(loc.points, 1);
+      gl.uniform1f(loc.size, config.render.pointSize * (gl.canvas.width / innerWidth) * 2);
+      gl.drawArrays(gl.POINTS, 0, a.length / 7);
+    }
+    gl.bindVertexArray(null);
+  }
+  function drawFX() {
+    ctx.clearRect(0, 0, fx.width, fx.height);
+    const dpr = fx.width / innerWidth;
+    ctx.save();
+    ctx.lineWidth = dpr;
+    if (config.render.showGrid) {
+      ctx.strokeStyle = '#56749b22';
+      const g = Math.max(10, Math.pow(10, Math.ceil(Math.log10(70 / cam.zoom))));
+      const x0 = Math.floor((cam.x - fx.width / cam.zoom) / g) * g;
+      for (let x = x0; x < cam.x + fx.width / cam.zoom; x += g) {
+        let sx = screen(x, 0)[0];
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, fx.height);
+        ctx.stroke();
+      }
+      const y0 = Math.floor((cam.y - fx.height / cam.zoom) / g) * g;
+      for (let y = y0; y < cam.y + fx.height / cam.zoom; y += g) {
+        let sy = screen(0, y)[1];
+        ctx.beginPath();
+        ctx.moveTo(0, sy);
+        ctx.lineTo(fx.width, sy);
+        ctx.stroke();
+      }
+    }
+    const f = config.features;
+    const recent = events.slice(-600);
+    for (const e of recent) {
+      const [x, y] = screen(e.x, e.y, e.z || 0), age = elapsed - e.t;
+      if (x < -100 || x > fx.width + 100 || y < -100 || y > fx.height + 100)
+        continue;
+      const r = (f.nodes.radius || 3) * dpr;
+      if (e.type === 'node' && f.nodes.enabled) {
+        const nf = f.nodeFade;
+        const fadeAlpha = nf.enabled ? Math.max(nf.minOpacity, Math.pow(.5, (totalSteps - (e.i || 0)) / Math.max(1, nf.halfLife * config.simulation.digitsPerSecond))) : 1;
+        ctx.globalAlpha = fadeAlpha;
+        ctx.fillStyle = '#b7faff';
+        ctx.shadowColor = '#55eaff';
+        ctx.shadowBlur = 12 * dpr;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, TAU);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      }
+      if (e.type === 'lightning' && f.lightning.enabled && age < 2) {
+        ctx.strokeStyle = `rgba(120,190,255,${1 - age / 2})`;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        for (let k = 0; k < 5; k++)
+          ctx.lineTo(x + Math.sin(k * 7 + e.t) * k * 4 * dpr, y + Math.cos(k * 11 + e.t) * k * 4 * dpr);
+        ctx.stroke();
+      }
+      if (e.type === 'crystal' && f.crystals.enabled) {
+        ctx.strokeStyle = '#a9f5ff99';
+        ctx.beginPath();
+        const r = f.crystals.size * dpr;
+        ctx.moveTo(x, y - r);
+        ctx.lineTo(x + r * .7, y);
+        ctx.lineTo(x, y + r);
+        ctx.lineTo(x - r * .7, y);
+        ctx.closePath();
+        ctx.stroke();
+      }
+    }
+    if (f.echoes.enabled || f.interference.enabled || f.extrusion.enabled) {
+      const n = Math.min(path.length, 7000), skip = Math.max(1, Math.ceil(n / 2000));
+      const base = path.length - n;
+      let layers = f.echoes.enabled ? f.echoes.count : 0;
+      layers += f.interference.enabled ? f.interference.layers : 0;
+      layers = Math.min(12, layers);
+      for (let layer = 1; layer <= layers; layer++) {
+        const off = layer * (f.echoes.enabled ? f.echoes.offset : f.interference.offset) * dpr;
+        ctx.strokeStyle = `rgba(105,190,255,${f.echoes.enabled ? f.echoes.opacity / layer : .09})`;
+        ctx.beginPath();
+        for (let i = base; i < path.length; i += skip) {
+          const p = path[i], s = screen(p.x, p.y);
+          if (i === base)
+            ctx.moveTo(s[0] + off, s[1] - off);
+          else
+            ctx.lineTo(s[0] + off, s[1] - off);
+        }
+        ctx.stroke();
+      }
+    }
+    if (f.density.enabled || f.vortices.enabled || f.lens.enabled) {
+      let drawn = 0;
+      for (const [k, v] of density) {
+        if (v < 2)
+          continue;
+        const [gx, gy] = k.split(',').map(Number), s = f.density.resolution, [x, y] = screen((gx + .5) * s, (gy + .5) * s);
+        if (x < 0 || x > fx.width || y < 0 || y > fx.height)
+          continue;
+        if (f.density.enabled) {
+          const r = Math.max(1, s * cam.zoom * dpr * .45), h = Math.min(v * f.density.height * .12, 120) * dpr;
+          ctx.strokeStyle = `rgba(95,230,255,${Math.min(.75, .13 + v * .03)})`;
+          ctx.beginPath();
+          ctx.moveTo(x - r, y);
+          ctx.lineTo(x - r, y - h);
+          ctx.lineTo(x + r, y - h);
+          ctx.lineTo(x + r, y);
+          ctx.stroke();
+        }
+        if (f.vortices.enabled && v > 4) {
+          ctx.strokeStyle = '#a96aff55';
+          ctx.beginPath();
+          ctx.arc(x, y, Math.min(v, 40) * f.vortices.strength * dpr, 0, TAU * .8);
+          ctx.stroke();
+        }
+        if (f.lens.enabled && v > 4) {
+          ctx.strokeStyle = '#8edfff30';
+          ctx.beginPath();
+          ctx.arc(x, y, f.lens.radius * cam.zoom * f.lens.strength, 0, TAU);
+          ctx.stroke();
+        }
+        if (++drawn > 3500)
+          break;
+      }
+    }
+    if (f.liquid.enabled && walkers[0]) {
+      const [x, y] = screen(walkers[0].x, walkers[0].z, walkers[0].y);
+      for (let i = 0; i < 3; i++) {
+        ctx.strokeStyle = `rgba(75,200,255,${.22 / (i + 1)})`;
+        ctx.beginPath();
+        ctx.arc(x, y, (i + 1) * 15 * f.liquid.strength * dpr, 0, TAU);
+        ctx.stroke();
+      }
+    }
+    if (f.spectral.enabled) {
+      const sum = hist.reduce((a, b) => a + b, 0) || 1;
+      for (let d = 0; d < 10; d++) {
+        const h = hist[d] / sum * 600 * dpr;
+        ctx.fillStyle = config.render.palette[d];
+        ctx.fillRect(10 * dpr + d * 11 * dpr, fx.height - 25 * dpr - h, 7 * dpr, h);
+      }
+    }
+    if (walkers[0]) {
+      const [x, y] = screen(walkers[0].x, walkers[0].z, walkers[0].y);
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = '#66eeff';
+      ctx.shadowBlur = 15 * dpr;
+      ctx.beginPath();
+      ctx.arc(x, y, 2.7 * dpr, 0, TAU);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+  }
+  function tick(now) {
+    const dt = Math.min(0.08, (now - last) / 1000);
+    last = now;
+    elapsed += dt;
+
+    if (ready && !config.simulation.paused) {
+      carry += config.simulation.digitsPerSecond * dt;
+      let steps = Math.min(Math.floor(carry), 5000);
+      carry -= steps;
+
+      while (steps-- > 0 && !config.simulation.paused) {
+        addStep();
+      }
+    }
+
+    cameraUpdate(dt);
+    drawGL();
+    drawFX();
+
+    document.getElementById('run-toggle').textContent =
+      config.simulation.paused ? 'Start' : 'Stop';
+
+    if (!computing) {
+      document.getElementById('run-progress').textContent =
+        (totalSteps * digitGroupWidth()).toLocaleString() + ' / ' + config.simulation.digitCount.toLocaleString();
+    }
+
+    if (config.ui.showStats) {
+      const walker = walkers[0] || { x: 0, y: 0 };
+      document.getElementById('stats').innerHTML =
+        `${(totalSteps * digitGroupWidth()).toLocaleString()} digits · ${config.simulation.grouping} · ${config.simulation.mode} · ${walkers.length} walker(s)<br>` +
+        `Position: ${walker.x.toFixed(1)}, ${walker.y.toFixed(1)}, ${walker.z.toFixed(1)} · Zoom ${cam.zoom.toFixed(3)}×`;
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  function applyConfig(next, restart = false) {
+    const previousMode = config.simulation.mode;
+    const previousCount = config.simulation.digitCount;
+    const previousConstant = config.simulation.constant;
+    const previousGrouping = config.simulation.grouping;
+    const previousInterpretation = config.simulation.interpretation;
+    const previousFourth = config.simulation.fourth;
+    const previousAngleResolution = config.simulation.angleResolution;
+    const previousZero = config.simulation.zeroLength;
+
+    merge(config, next);
+    try {
+      localStorage.setItem('game-of-pi-config', JSON.stringify(config));
+    } catch {
+      // Local storage may be unavailable in embedded browsers.
+    }
+
+    document.getElementById('hud').style.display = config.ui.showStats ? '' : 'none';
+    document.getElementById('help').style.display = config.ui.showHelp ? '' : 'none';
+    document.body.classList.toggle('editor-hidden', !config.editor.enabled);
+
+    if (
+      restart ||
+      previousMode !== config.simulation.mode ||
+      previousCount !== config.simulation.digitCount ||
+      previousConstant !== config.simulation.constant ||
+      previousGrouping !== config.simulation.grouping ||
+      previousInterpretation !== config.simulation.interpretation ||
+      previousFourth !== config.simulation.fourth ||
+      previousAngleResolution !== config.simulation.angleResolution ||
+      previousZero !== config.simulation.zeroLength
+    ) {
+      reset();
+
+      if (previousCount !== config.simulation.digitCount || previousConstant !== config.simulation.constant || !ready) {
+        prepareDigits();
+      }
+    }
+
+    return config;
+  }
+
+  function restart() {
+    document.getElementById('status').textContent = '';
+    reset();
+    config.simulation.paused = false;
+    if (!ready && !computing) {
+      prepareDigits();
+    }
+  }
+  window.GameOfPi = { defaults, config, applyConfig, restart, resetCamera: () => { cam = { x: 0, y: 0, z: 0, zoom: config.camera.zoom }; lastUser = performance.now(); }, getStats: () => ({ totalSteps, position: walkers[0], availableDigits: availableDigits.length }), getConfig: () => deepClone(config) };
+  let dragging = false, px = 0, py = 0;
+  gl.canvas.addEventListener('pointerdown', e => { dragging = true; px = e.clientX; py = e.clientY; gl.canvas.setPointerCapture(e.pointerId); });
+  gl.canvas.addEventListener('pointerup', () => dragging = false);
+  gl.canvas.addEventListener('pointermove', event => {
+    if (!dragging) return;
+    const dx = event.clientX - px;
+    const dy = event.clientY - py;
+    if (config.camera.threeD && (event.shiftKey || event.buttons === 2)) {
+      config.camera.yaw += dx * 0.3;
+      config.camera.tilt = clamp(config.camera.tilt + dy * 0.3, -89, 89);
+    } else {
+      cam.x -= dx / cam.zoom;
+      cam.y -= dy / cam.zoom;
+    }
+    px = event.clientX;
+    py = event.clientY;
+    lastUser = performance.now();
+  });
+  gl.canvas.addEventListener('contextmenu', event => event.preventDefault());
+  gl.canvas.addEventListener('wheel', e => { e.preventDefault(); cam.zoom = clamp(cam.zoom * Math.exp(-e.deltaY * .001), .001, 200); lastUser = performance.now(); }, { passive: false });
+  let pinch = 0;
+  gl.canvas.addEventListener('touchmove', e => {
+    if (e.touches.length === 2) {
+      const a = e.touches[0], b = e.touches[1], dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      if (pinch)
+        cam.zoom = clamp(cam.zoom * dist / pinch, .001, 200);
+      pinch = dist;
+      lastUser = performance.now();
+    }
+  }, { passive: true });
+  gl.canvas.addEventListener('touchend', () => pinch = 0);
+  addEventListener('keydown', e => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName))
+      return; if (e.code === 'Space') {
+        e.preventDefault();
+        config.simulation.paused = !config.simulation.paused;
+      } if (e.key.toLowerCase() === 'r')
+      restart(); if (e.key.toLowerCase() === 'h')
+      document.body.classList.toggle('editor-hidden');
+  });
+  document.getElementById('run-toggle').onclick = () => {
+    if (ready)
+      config.simulation.paused = !config.simulation.paused;
+  };
+  document.getElementById('run-restart').onclick = restart;
+  reset();
+  applyConfig(config);
+  prepareDigits();
+  requestAnimationFrame(tick);
+</script>
+<script src="settings-editor.js?v=game-of-pi-3d-20261120" defer></script>
+ </body>
+</html>
