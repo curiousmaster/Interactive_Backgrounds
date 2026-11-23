@@ -27,42 +27,123 @@
 "use strict";
 
 const config = {
-  editor: { enabled: true },
-  controls: { enabled: true },
-  simulation: {
-    mode: "2D", levels: 5, grow: 1.8, hold: 0.65, shrink: 0.95,
-    repeat: false, finaleHold: 4
+  "editor": {
+    "enabled": true
   },
-  view: { size: 0.79, orbit: true, orbitSpeed: 9, perspective: true },
-  style: {
-    background: "#101128", boundary: "#ecebff", lineWidth: 1.7, glow: 12,
-    palette: ["#ff5e68", "#ffdb60", "#b1f577", "#48f0ff", "#7fbbff", "#bd9aff", "#ff90da"]
+  "controls": {
+    "enabled": true
   },
-  features: {
-    lines: {
-      tracers: { enabled: true, speed: 0.28 },
-      hotEdge: { enabled: true, strength: 0.7 },
-      depth: { enabled: true, opacity: 0.37 }
+  "simulation": {
+    "mode": "3D",
+    "levels": 5,
+    "grow": 1.8,
+    "hold": 0.65,
+    "shrink": 0.95,
+    "repeat": false,
+    "finaleHold": 4
+  },
+  "view": {
+    "size": 0.79,
+    "orbit": true,
+    "orbitSpeed": 9,
+    "perspective": true
+  },
+  "style": {
+    "background": "#101128",
+    "boundary": "#ecebff",
+    "lineWidth": 1.7,
+    "glow": 12,
+    "palette": [
+      "#ff5e68",
+      "#ffdb60",
+      "#b1f577",
+      "#48f0ff",
+      "#7fbbff",
+      "#bd9aff",
+      "#ff90da"
+    ]
+  },
+  "features": {
+    "lines": {
+      "tracers": {
+        "enabled": true,
+        "speed": 0.1
+      },
+      "hotEdge": {
+        "enabled": true,
+        "strength": 0.1
+      },
+      "depth": {
+        "enabled": true,
+        "opacity": 0.05
+      }
     },
-    boundary: {
-      contact: { enabled: true, intensity: 0.75 },
-      waves: { enabled: true, strength: 0.65 },
-      sparks: { enabled: true, strength: 0.6 },
-      atmosphere: { enabled: false, strength: 0.34 }
+    "boundary": {
+      "contact": {
+        "enabled": true,
+        "intensity": 0.75
+      },
+      "waves": {
+        "enabled": false,
+        "strength": 0.65
+      },
+      "sparks": {
+        "enabled": true,
+        "strength": 0.6
+      },
+      "atmosphere": {
+        "enabled": false,
+        "strength": 0.34
+      }
     },
-    materials: {
-      glass: { enabled: true, opacity: 0.085 },
-      crystallize: { enabled: true, strength: 0.85, duration: 0.45 },
-      iridescence: { enabled: true, strength: 0.25 },
-      seams: { enabled: true, strength: 0.4 },
-      refraction: { enabled: false, strength: 0.4 },
-      mirror: { enabled: false, source: "Scene", strength: 0.5, spread: 0.85, image: false }
+    "materials": {
+      "glass": {
+        "enabled": true,
+        "opacity": 0.045
+      },
+      "crystallize": {
+        "enabled": false,
+        "strength": 0.85,
+        "duration": 0.45
+      },
+      "iridescence": {
+        "enabled": true,
+        "strength": 0.25
+      },
+      "seams": {
+        "enabled": true,
+        "strength": 0.4
+      },
+      "refraction": {
+        "enabled": false,
+        "strength": 0.4
+      },
+      "mirror": {
+        "enabled": false,
+        "source": "Image",
+        "strength": 0.5,
+        "spread": 0.85,
+        "image": false
+      }
     },
-    transitions: {
-      echoes: { enabled: true, strength: 0.27 },
-      pulse: { enabled: true, strength: 0.55 },
-      fade: { enabled: false, after: 4, opacity: 0.22 },
-      closeup: { enabled: false, magnification: 3 }
+    "transitions": {
+      "echoes": {
+        "enabled": true,
+        "strength": 0.27
+      },
+      "pulse": {
+        "enabled": true,
+        "strength": 0.55
+      },
+      "fade": {
+        "enabled": false,
+        "after": 4,
+        "opacity": 0.22
+      },
+      "closeup": {
+        "enabled": false,
+        "magnification": 3
+      }
     }
   }
 };
