@@ -181,6 +181,14 @@ export const backgrounds = [
             "layering different rhythms within one scene.",
     },
     {
+        name: "Koch Snowflake",
+        folder: "koch-snowflake",
+        tags: ["interactive", "fractals", "geometry", "3d"],
+        description:
+            "A glowing dot traces Koch snowflakes in 2D and glass-faced polyhedra in 3D. " +
+            "Each completed shape shrinks into a nested stack, leaving room for the next.",
+    },
+    {
         name: "Life of Math",
         folder: "life-of-math",
         tags: ["math", "3d", "generative", "interactive", "infinite"],

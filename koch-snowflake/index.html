@@ -1,0 +1,989 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Koch Snowflake</title>
+<style>
+  :root { color-scheme: dark; font: 14px system-ui,sans-serif }
+  * { box-sizing: border-box }
+  body { margin: 0; color: #e9edff }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none }
+  .controls { position: fixed; inset: auto 0 max(16px, env(safe-area-inset-bottom)); display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; padding: 0 12px }
+  button { color: inherit; font: inherit; padding: 8px 12px; border: 1px solid #56628a; border-radius: 6px; background: #111728ee; cursor: pointer }
+  button[aria-pressed="true"] { background: #303d67; border-color: #9aacef }
+  [hidden] { display: none !important }
+</style>
+</head>
+<body>
+<canvas aria-label="Nested fractal outlines"></canvas>
+<nav class="controls" aria-label="Animation controls">
+  <button id="mode" type="button">Switch to 3D</button>
+  <button id="pause" type="button">Pause</button>
+  <button id="replay" type="button">Replay</button>
+  <button id="settings" type="button" aria-expanded="false" hidden>Settings</button>
+</nav>
+<script>
+"use strict";
+
+const config = {
+  editor: { enabled: true },
+  controls: { enabled: true },
+  simulation: {
+    mode: "2D", levels: 5, grow: 1.8, hold: 0.65, shrink: 0.95,
+    repeat: false, finaleHold: 4
+  },
+  view: { size: 0.79, orbit: true, orbitSpeed: 9, perspective: true },
+  style: {
+    background: "#101128", boundary: "#ecebff", lineWidth: 1.7, glow: 12,
+    palette: ["#ff5e68", "#ffdb60", "#b1f577", "#48f0ff", "#7fbbff", "#bd9aff", "#ff90da"]
+  },
+  features: {
+    lines: {
+      tracers: { enabled: true, speed: 0.28 },
+      hotEdge: { enabled: true, strength: 0.7 },
+      depth: { enabled: true, opacity: 0.37 }
+    },
+    boundary: {
+      contact: { enabled: true, intensity: 0.75 },
+      waves: { enabled: true, strength: 0.65 },
+      sparks: { enabled: true, strength: 0.6 },
+      atmosphere: { enabled: false, strength: 0.34 }
+    },
+    materials: {
+      glass: { enabled: true, opacity: 0.085 },
+      crystallize: { enabled: true, strength: 0.85, duration: 0.45 },
+      iridescence: { enabled: true, strength: 0.25 },
+      seams: { enabled: true, strength: 0.4 },
+      refraction: { enabled: false, strength: 0.4 },
+      mirror: { enabled: false, source: "Scene", strength: 0.5, spread: 0.85, image: false }
+    },
+    transitions: {
+      echoes: { enabled: true, strength: 0.27 },
+      pulse: { enabled: true, strength: 0.55 },
+      fade: { enabled: false, after: 4, opacity: 0.22 },
+      closeup: { enabled: false, magnification: 3 }
+    }
+  }
+};
+
+const $ = id => document.getElementById(id);
+const canvas = document.querySelector("canvas");
+const ctx = canvas.getContext("2d");
+const TAU = 2 * Math.PI;
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+const ease = t => t * t * (3 - 2 * t);
+const unit = v => {
+  const length = Math.hypot(...v);
+  return v.map(component => component / length);
+};
+const midpoint = (a, b) => a.map((v, i) => (v + b[i]) / 2);
+
+function kochLevels(count) {
+  let points = Array.from({ length: 3 }, (_, i) => {
+    const angle = -Math.PI / 2 + i * TAU / 3;
+    return [Math.cos(angle), Math.sin(angle)];
+  });
+  return Array.from({ length: count }, () => {
+    const radius = Math.max(...points.map(p => Math.hypot(...p)));
+    const outline = points.map(([x, y]) => [x / radius, y / radius, 0]);
+    points = points.flatMap(([x, y], i) => {
+      const next = points[(i + 1) % points.length];
+      const dx = (next[0] - x) / 3;
+      const dy = (next[1] - y) / 3;
+      return [[x, y], [x + dx, y + dy],
+        [x + 1.5 * dx + Math.sqrt(3) * dy / 2, y + 1.5 * dy - Math.sqrt(3) * dx / 2],
+        [x + 2 * dx, y + 2 * dy]];
+    });
+    return outline;
+  });
+}
+
+function regularSolid(points) {
+  const vertices = points.map(unit);
+  const distance = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
+  const min = Math.min(...vertices.flatMap((a, i) => vertices.slice(i + 1).map(b => distance(a, b))));
+  const neighbors = vertices.map((a, i) => vertices.flatMap((b, j) =>
+    j > i && distance(a, b) < min + 1e-6 ? [j] : []));
+  const edges = neighbors.flatMap((row, i) => row.map(j => [i, j]));
+  const faces = edges.flatMap(([i, j]) => neighbors[i].filter(k => neighbors[j].includes(k))
+    .map(k => [i, j, k]));
+  return { vertices, edges, faces };
+}
+
+function subdivide({ vertices, faces }) {
+  vertices = vertices.slice();
+  const midpoints = new Map();
+  function split(i, j) {
+    const key = i < j ? i + "," + j : j + "," + i;
+    if (!midpoints.has(key)) {
+      midpoints.set(key, vertices.length);
+      vertices.push(unit(midpoint(vertices[i], vertices[j])));
+    }
+    return midpoints.get(key);
+  }
+  faces = faces.flatMap(([a, b, c]) => {
+    const ab = split(a, b), bc = split(b, c), ca = split(c, a);
+    return [[a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]];
+  });
+  const edges = new Map();
+  for (const [a, b, c] of faces) {
+    for (const [i, j] of [[a,b], [b,c], [c,a]]) {
+      if (i < j) edges.set(i + "," + j, [i,j]);
+      else edges.set(j + "," + i, [j,i]);
+    }
+  }
+  return { vertices, faces, edges: [...edges.values()] };
+}
+
+function solids() {
+  const tetra = regularSolid([[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]]);
+  const cube = regularSolid([-1,1].flatMap(x => [-1,1].flatMap(y => [-1,1].map(z => [x,y,z]))));
+  cube.faces = [[0,1,3,2],[4,5,7,6],[0,1,5,4],[2,3,7,6],[0,2,6,4],[1,3,7,5]];
+  const octa = regularSolid([[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]);
+  const phi = (1 + Math.sqrt(5)) / 2;
+  const ico = regularSolid([-1,1].flatMap(a => [-1,1].flatMap(b =>
+    [[0,a,b*phi],[a,b*phi,0],[b*phi,0,a]])));
+  const dodeca = regularSolid([
+    ...cube.vertices.map(v => v.map(Math.sign)),
+    ...[-1,1].flatMap(a => [-1,1].flatMap(b =>
+      [[0,a*phi,b/phi],[a*phi,b/phi,0],[b/phi,0,a*phi]]))
+  ]);
+  // The dual of each icosahedron vertex is a pentagonal face.
+  dodeca.faces = ico.vertices.map(normal => {
+    const dot = v => v.reduce((sum, n, i) => sum + n * normal[i], 0);
+    const scores = dodeca.vertices.map(dot);
+    const high = Math.max(...scores);
+    const face = scores.flatMap((score, i) => high - score < 1e-6 ? [i] : []);
+    const first = face[0];
+    const ordered = [first];
+    while (ordered.length < face.length) {
+      const last = ordered.at(-1);
+      const next = face.find(i => !ordered.includes(i) && dodeca.edges.some(
+        ([a,b]) => (a === last && b === i) || (b === last && a === i)));
+      if (next === undefined) break;
+      ordered.push(next);
+    }
+    return ordered;
+  });
+  const refined = subdivide(ico);
+  return [tetra, cube, octa, dodeca, ico, refined, subdivide(refined)];
+}
+
+// Six subdivisions already produce 12,288 segments. Higher logical
+// levels reuse this outline instead of generating subpixel detail.
+const outlines = kochLevels(7);
+const outlinePaths = outlines.map(points => {
+  const outline = new Path2D();
+  outline.moveTo(points[0][0], points[0][1]);
+  for (let i = 1; i < points.length; i++) outline.lineTo(points[i][0], points[i][1]);
+  outline.closePath();
+  return outline;
+});
+// Walk adjacent edges continuously. Backtracking moves the dot along a
+// finished edge without drawing a second stroke.
+function planSolidTrace(mesh) {
+  const incident = mesh.vertices.map(() => []);
+  const edgeByVertices = new Map();
+  const edgeKey = (a, b) => a < b ? a + "," + b : b + "," + a;
+  mesh.edges.forEach(([a, b], edge) => {
+    incident[a].push([b, edge]);
+    incident[b].push([a, edge]);
+    edgeByVertices.set(edgeKey(a, b), edge);
+  });
+  const firstPass = Array(mesh.edges.length).fill(-1);
+  const steps = [];
+  function walk(from) {
+    for (const [to, edge] of incident[from]) {
+      if (firstPass[edge] !== -1) continue;
+      firstPass[edge] = steps.length;
+      steps.push({ from, to, edge });
+      walk(to);
+      steps.push({ from: to, to: from, edge });
+    }
+  }
+  walk(0);
+  steps.length = Math.max(...firstPass) + 1;
+  const faceReady = mesh.faces.map(face => Math.max(...face.map((vertex, i) =>
+    firstPass[edgeByVertices.get(edgeKey(vertex, face[(i + 1) % face.length]))] + 1)));
+  return { steps, firstPass, faceReady };
+}
+
+const meshes = solids();
+const solidTraces = meshes.map(planSolidTrace);
+// Compare the inner and outer edges along every shared radial direction.
+function angularEdges(points) {
+  return points.flatMap((a, i) => {
+    const b = points[(i + 1) % points.length];
+    const angle = p => (Math.atan2(p[1], p[0]) + TAU) % TAU;
+    const start = angle(a);
+    const delta = (angle(b) - start + 1.5 * TAU) % TAU - TAU / 2;
+    const low = Math.min(start, start + delta);
+    const high = Math.max(start, start + delta);
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const cross = a[0] * b[1] - a[1] * b[0];
+    if (Math.abs(cross) < 1e-12) return [];
+    const distance = theta => cross / (Math.cos(theta) * dy - Math.sin(theta) * dx);
+    return [-TAU, 0, TAU].flatMap(shift => {
+      const from = Math.max(0, low + shift), to = Math.min(TAU, high + shift);
+      return from <= to ? [{ from, to, distance }] : [];
+    });
+  }).sort((a,b) => a.from - b.from);
+}
+
+function outlineFit(inner, outer) {
+  let fit = 1, cursor = 0;
+  const overlaps = [];
+  for (const a of inner) {
+    while (cursor < outer.length && outer[cursor].from <= a.to) {
+      overlaps.push(outer[cursor++]);
+    }
+    for (let i = overlaps.length - 1; i >= 0; i--) {
+      const b = overlaps[i];
+      if (b.to < a.from) {
+        overlaps.splice(i, 1);
+        continue;
+      }
+      const from = Math.max(a.from, b.from), to = Math.min(a.to, b.to);
+      if (from > to) continue;
+      // The ratio of two radial line intersections is monotone on this overlap.
+      fit = Math.min(fit, b.distance(from) / a.distance(from), b.distance(to) / a.distance(to));
+    }
+  }
+  return fit;
+}
+
+function solidFit(inner, outer) {
+  const dot = (a,b) => a.reduce((sum, value, i) => sum + value * b[i], 0);
+  const difference = (a,b) => a.map((value,i) => value - b[i]);
+  const angle = -SOLID_TURN;
+  const vertices = inner.vertices.map(([x,y,z]) =>
+    [x * Math.cos(angle) + z * Math.sin(angle), y, z * Math.cos(angle) - x * Math.sin(angle)]);
+  let fit = 1;
+  for (const face of outer.faces) {
+    const [a,b,c] = face.map(i => outer.vertices[i]);
+    const [x,y,z] = difference(b,a), [u,v,w] = difference(c,a);
+    const normal = [y*w-z*v, z*u-x*w, x*v-y*u];
+    if (dot(normal,a) < 0) normal.forEach((value,i) => { normal[i] = -value; });
+    const support = Math.max(...vertices.map(vertex => dot(normal,vertex)));
+    fit = Math.min(fit, dot(normal,a) / support);
+  }
+  return fit;
+}
+
+const SOLID_TURN = 0.31;
+const radialEdges = outlines.map(angularEdges);
+const outlineFits = radialEdges.map((edges,i) =>
+  outlineFit(edges, radialEdges[Math.min(i + 1, radialEdges.length - 1)]));
+const solidFits = meshes.slice(1).map((mesh,i) => solidFit(meshes[i],mesh));
+
+let width, height, radius;
+let elapsed = 0, visualTime = 0, previousFrame;
+let paused = reducedMotion;
+let yaw = 0.4, pitch = -0.23, zoom = 1;
+
+function resize() {
+  width = canvas.clientWidth;
+  height = canvas.clientHeight;
+  const density = Math.min(devicePixelRatio || 1, 2);
+  canvas.width = Math.round(width * density);
+  canvas.height = Math.round(height * density);
+  ctx.setTransform(density, 0, 0, density, 0, 0);
+}
+addEventListener("resize", resize);
+resize();
+
+function path(points, close = true) {
+  ctx.beginPath();
+  ctx.moveTo(points[0][0], points[0][1]);
+  for (const [x,y] of points.slice(1)) ctx.lineTo(x,y);
+  if (close) ctx.closePath();
+}
+
+function project([x,y,z], scale, angle) {
+  const rotatedX = x * Math.cos(angle) + z * Math.sin(angle);
+  const rotatedZ = z * Math.cos(angle) - x * Math.sin(angle);
+  const rotatedY = y * Math.cos(pitch) - rotatedZ * Math.sin(pitch);
+  const depth = y * Math.sin(pitch) + rotatedZ * Math.cos(pitch);
+  // Perspective is normalized so the projected sphere silhouette keeps its radius.
+  const lens = config.view.perspective ? Math.sqrt(15) / (4 - depth * scale) : 1;
+  return [rotatedX * scale * lens * radius, rotatedY * scale * lens * radius, depth];
+}
+
+function glow(color, blur) {
+  ctx.strokeStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = blur;
+}
+
+function createEffectsRenderer() {
+  const target = document.createElement("canvas");
+  target.setAttribute("aria-hidden", "true");
+  target.style.pointerEvents = "none";
+  target.hidden = true;
+  const gl = target.getContext("webgl", { alpha: true, premultipliedAlpha: true, antialias: true });
+  if (!gl) return null;
+  const vertex = `
+    attribute vec2 position;
+    attribute vec3 faceUV;
+    varying mediump vec3 local;
+    void main() { local = faceUV; gl_Position = vec4(position, 0., 1.); }
+  `;
+  const fragment = `
+    precision mediump float;
+    varying mediump vec3 local;
+    uniform sampler2D scene, image;
+    uniform vec2 resolution, center, tip, origin, sparkOrigin;
+    uniform vec3 tint, normal;
+    uniform vec4 p, q;
+    uniform float mode, radius, time, eventAge, shape3D, heat, atmosphere, waves, sparks, visibility, sparkAge;
+    void main() {
+      vec2 uv = gl_FragCoord.xy / resolution;
+      if (mode == 0.) {
+        vec4 base = texture2D(scene, uv);
+        vec2 sphere = (gl_FragCoord.xy - center) / radius;
+        float r = length(sphere);
+        vec2 hit = (origin - center) / radius;
+        vec2 delta = (gl_FragCoord.xy - tip) / resolution.y;
+        float ring = 0.;
+        if (eventAge >= 0. && eventAge < 1.5 && waves > 0.) {
+          float d = acos(clamp(dot(normalize(sphere + vec2(.0001,0.)), normalize(hit + vec2(.0001,0.))),-1.,1.));
+          float mask = exp(-abs(r - 1.) * radius / 2.5);
+          if (shape3D > 0. && r <= 1.) {
+            vec3 a = vec3(sphere, sqrt(max(0., 1. - r*r)));
+            vec3 b = vec3(hit, sqrt(max(0., 1. - dot(hit,hit))));
+            d = acos(clamp(dot(a, b), -1., 1.));
+            mask = .7;
+          }
+          ring = exp(-abs(d - eventAge * 2.9) * 25.) * mask * (1. - eventAge / 1.5);
+        }
+        float fog = 0.;
+        if (atmosphere > 0. && r < 1.) {
+          float depth = sqrt(max(0., 1. - r*r));
+          for (int i=0; i<6; i++) {
+            float z = (float(i) / 5. * 2. - 1.) * depth;
+            fog += exp(-length(vec3(delta * 3., z - .25)) * 4.) * depth / 6.;
+          }
+        }
+        float embers = 0.;
+        if (sparkAge >= 0. && sparkAge < .75 && sparks > 0.) {
+          for (int i=0; i<12; i++) {
+            float a = float(i) * 2.39996;
+            float speed = .045 + fract(sin(a+1.)*4365.) * .22;
+            vec2 at = sparkOrigin + vec2(cos(a),sin(a)) * sparkAge * radius * speed;
+            embers += exp(-length(gl_FragCoord.xy - at) * .55) * (1. - sparkAge/.75);
+          }
+        }
+        float core = exp(-length(delta) * resolution.y / 4.) * heat;
+        vec3 light = tint * (waves * ring + atmosphere * fog + sparks * embers)
+          + vec3(1., .91, .77) * core;
+        float lightAlpha = clamp(max(light.r, max(light.g, light.b)), 0., 1.);
+        float alpha = base.a + lightAlpha * (1. - base.a);
+        gl_FragColor = vec4(min(base.rgb * base.a + light, vec3(alpha)), alpha);
+      } else {
+        vec2 n = normal.xy;
+        float grazing = 1. - abs(normal.z);
+        float fill = max(step(.999,p.x), smoothstep(local.x - .07, local.x + .035, p.x));
+        float band = exp(-abs(local.x - p.x) * 19.) * (1. - step(.995,p.x)) * p.w;
+        vec2 bend = n * p.z * .075 * (1. - local.x);
+        vec3 refracted = texture2D(scene, clamp(uv + bend, 0., 1.)).rgb;
+        vec3 reflected = texture2D(scene, clamp(uv + (n * .25 - (uv - local.yz) * 2.) * q.z, 0., 1.)).rgb;
+        vec3 ray = reflect(vec3(0., 0., -1.), normalize(normal));
+        vec2 env = vec2(atan(ray.x, ray.z) / 6.283185 + .5, asin(clamp(ray.y,-1.,1.)) / 3.141593 + .5);
+        reflected = mix(reflected, texture2D(image, env).rgb, q.y);
+        vec3 film = .5 + .5 * cos(6.283185 * (grazing * 1.5 + vec3(0.,.33,.67)));
+        float seam = exp(-local.x * 25.) * q.w * (.2 + .8 * grazing);
+        vec3 color = mix(tint, refracted, p.z);
+        color = mix(color, film, p.y * (.25 + .75 * grazing));
+        color = mix(color, reflected, q.x * (.45 + .55 * grazing));
+        color += (band + seam) * (tint + .35);
+        float alpha = visibility * clamp(fill * (time + q.x * .45) + band * .32 + seam * .25, 0., .95);
+        gl_FragColor = vec4(clamp(color, 0., 1.) * alpha, alpha);
+      }
+    }`;
+  function compile(type, source) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw Error(gl.getShaderInfoLog(shader));
+    return shader;
+  }
+  const program = gl.createProgram();
+  gl.attachShader(program, compile(gl.VERTEX_SHADER, vertex));
+  gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fragment));
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw Error(gl.getProgramInfoLog(program));
+  gl.useProgram(program);
+  const buffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  for (const [name, count, offset] of [["position",2,0],["faceUV",3,8]]) {
+    const index = gl.getAttribLocation(program,name);
+    gl.enableVertexAttribArray(index);
+    gl.vertexAttribPointer(index,count,gl.FLOAT,false,20,offset);
+  }
+  const uniforms = new Map();
+  const set = (name, ...values) => {
+    if (!uniforms.has(name)) uniforms.set(name, gl.getUniformLocation(program,name));
+    gl["uniform" + values.length + "f"](uniforms.get(name), ...values);
+  };
+  function makeTexture(unit, name) {
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,0]));
+    gl.uniform1i(gl.getUniformLocation(program,name),unit);
+  }
+  makeTexture(0,"scene");
+  makeTexture(1,"image");
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+  const quad = new Float32Array([-1,-1,0,0,0, 1,-1,0,0,0, -1,1,0,0,0, 1,1,0,0,0]);
+  let hasImage = false;
+  canvas.after(target);
+  target.addEventListener("webglcontextlost", event => {
+    event.preventDefault();
+    target.hidden = true;
+    effectsRenderer = null;
+    canvas.style.opacity = "";
+  });
+  return {
+    hide() { target.hidden = true; canvas.style.opacity = ""; },
+    image(bitmap) {
+      hasImage = !!bitmap;
+      if (!bitmap) return;
+      gl.activeTexture(gl.TEXTURE1);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,bitmap);
+    },
+    draw(frame) {
+      if (!canvas.width || !canvas.height) return;
+      if (target.width !== canvas.width || target.height !== canvas.height) {
+        target.width = canvas.width;
+        target.height = canvas.height;
+      }
+      gl.viewport(0,0,target.width,target.height);
+      const sx = target.width / width, sy = target.height / height;
+      const cy = height / 2 - (config.controls.enabled ? 16 : 0);
+      const screen = ([x,y]) => [(x + width / 2) * sx, (height - cy - y) * sy];
+      const { lines, boundary, materials } = config.features;
+      const gain = feature => feature.enabled ? feature.strength : 0;
+      gl.activeTexture(gl.TEXTURE0);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,canvas);
+      gl.disable(gl.BLEND);
+      set("mode",0);
+      set("resolution",target.width,target.height);
+      set("center",...screen([0,0]));
+      set("radius",Math.max(1,radius*sx));
+      set("tip",...screen(frame.tip));
+      set("origin",...screen(frame.origin));
+      set("sparkOrigin",...screen(frame.sparkOrigin));
+      set("sparkAge",frame.sparkAge);
+      set("tint",...frame.color);
+      set("eventAge",frame.age);
+      set("shape3D",frame.flat ? 0 : 1);
+      set("heat",frame.tracing ? gain(lines.hotEdge) : 0);
+      set("waves",gain(boundary.waves));
+      set("sparks",gain(boundary.sparks));
+      set("atmosphere",frame.flat ? 0 : gain(boundary.atmosphere));
+      gl.bufferData(gl.ARRAY_BUFFER,quad,gl.STREAM_DRAW);
+      gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+
+      const mirror = materials.mirror;
+      const enabledMirror = mirror.enabled && (mirror.source === "Scene" || hasImage);
+      const refraction = gain(materials.refraction);
+      const film = gain(materials.iridescence);
+      const seam = gain(materials.seams);
+      const rows = (!materials.glass.enabled && !enabledMirror ? [] : frame.faces).sort((a,b) => a.depth - b.depth);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+      set("mode",1);
+      for (const face of rows) {
+        const centroid = face.points.reduce(([x,y],p) => [x + p[0]/face.points.length,y + p[1]/face.points.length],[0,0]);
+        const [cx,cy] = screen(centroid);
+        const vertices = [];
+        function add(point, inward) {
+          const [x,y] = screen(point);
+          vertices.push(x/target.width*2-1,y/target.height*2-1,inward,cx/target.width,cy/target.height);
+        }
+        for (let i=0; i<face.points.length; i++) {
+          add(centroid,1);
+          add(face.points[i],0);
+          add(face.points[(i+1)%face.points.length],0);
+        }
+        set("normal",...face.normal);
+        set("tint",...face.color);
+        set("time",face.alpha);
+        set("visibility",face.visibility);
+        set("p",face.fill,film,refraction * (face.normal[2] > 0 ? 1 : .25),gain(materials.crystallize));
+        set("q",enabledMirror && face.normal[2] > 0 ? mirror.strength : 0,
+          enabledMirror && mirror.source === "Image" ? 1 : 0,mirror.spread,seam * face.seam);
+        gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(vertices),gl.STREAM_DRAW);
+        gl.drawArrays(gl.TRIANGLES,0,vertices.length/5);
+      }
+      target.hidden = false;
+      canvas.style.opacity = "0";
+    }
+  };
+}
+
+let effectsRenderer;
+try { effectsRenderer = createEffectsRenderer(); }
+catch (error) { console.warn("WebGL effects unavailable", error); }
+
+function rgb(hex) {
+  return [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)/255);
+}
+let frameEffects, previousTip, effectCue, previousTrace, sparkCue, previousCorner;
+
+
+function tracer(x, y, color, intensity = 1, size = 3) {
+  ctx.save();
+  ctx.globalAlpha *= intensity;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = config.style.glow * 1.35;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, size, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+function markTip(x, y, color) {
+  frameEffects.tip = [x,y];
+  frameEffects.color = rgb(color);
+}
+
+function paintEcho(index, scale, flat, alpha) {
+  if (scale <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = config.style.lineWidth;
+  glow(config.style.palette[index % config.style.palette.length], 0);
+  if (flat) {
+    const size = radius * scale;
+    ctx.scale(size,size);
+    ctx.lineWidth /= size;
+    ctx.stroke(outlinePaths[Math.min(index, outlinePaths.length - 1)]);
+  } else {
+    const mesh = meshes[index];
+    const points = mesh.vertices.map(v => project(v, scale, yaw + index * SOLID_TURN));
+    ctx.beginPath();
+    for (const [a,b] of mesh.edges) {
+      ctx.moveTo(points[a][0],points[a][1]);
+      ctx.lineTo(points[b][0],points[b][1]);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawOutline(index, scale, alpha, progress, contact, active = false) {
+  const color = config.style.palette[index % config.style.palette.length];
+  const detail = Math.min(index, outlines.length - 1);
+  const points = outlines[detail];
+  const size = scale * radius;
+  const tracing = progress < 1;
+  const showTracer = tracing || (config.features.lines.tracers.enabled && scale > 0.06);
+  const phase = active ? progress % 1 : (visualTime * config.features.lines.tracers.speed + index * 0.17) % 1;
+  const position = phase * points.length;
+  const edge = Math.min(points.length - 1, Math.floor(position));
+  const a = points[edge];
+  const b = points[(edge + 1) % points.length];
+  const fraction = position - edge;
+  const x = size * (a[0] + (b[0] - a[0]) * fraction);
+  const y = size * (a[1] + (b[1] - a[1]) * fraction);
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = config.style.lineWidth;
+  ctx.lineJoin = "round";
+  glow(color, config.style.glow);
+  if (tracing && progress > 0) {
+    ctx.beginPath();
+    ctx.moveTo(points[0][0] * size, points[0][1] * size);
+    for (let i = 1; i <= edge; i++) ctx.lineTo(points[i][0] * size, points[i][1] * size);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  } else if (!tracing && size > 0) {
+    ctx.save();
+    ctx.scale(size, size);
+    ctx.lineWidth /= size;
+    ctx.stroke(outlinePaths[detail]);
+    ctx.restore();
+  }
+  if (active) {
+    markTip(x, y, color);
+    frameEffects.corner = tracing ? edge : points.length;
+    frameEffects.cornerPoint = [a[0]*size,a[1]*size];
+  }
+  if (tracing && active && config.features.lines.hotEdge.enabled) {
+    const gain = config.features.lines.hotEdge.strength;
+    const count = Math.min(edge, 80, Math.ceil(18 / Math.max(.05, size *
+      Math.hypot(points[1][0]-points[0][0],points[1][1]-points[0][1]))));
+    ctx.save();
+    ctx.globalAlpha *= gain;
+    glow("#fff3d2", config.style.glow);
+    ctx.beginPath();
+    ctx.moveTo(points[edge-count][0]*size,points[edge-count][1]*size);
+    for (let i = edge-count+1; i <= edge; i++) ctx.lineTo(points[i][0]*size,points[i][1]*size);
+    ctx.lineTo(x,y);
+    ctx.stroke();
+    ctx.restore();
+  }
+  if (showTracer) tracer(x, y, color);
+  if (contact > 0) {
+    for (const [vx,vy] of points) {
+      if (Math.hypot(vx, vy) >= 0.999) tracer(vx * size, vy * size, color, contact, 2.2);
+    }
+  }
+  ctx.restore();
+}
+
+// Recover camera-space depth at a position along a projected edge.
+function edgeDepth(a, b, t, scale) {
+  if (!config.view.perspective) return scale * (a + (b - a) * t);
+  const start = scale * a, end = scale * b;
+  const w0 = (1 - t) / (4 - start), w1 = t / (4 - end);
+  return (w0 * start + w1 * end) / (w0 + w1);
+}
+
+function strokeDepthEdge(a, b, start, end, scale, color, alpha) {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  if (end <= start || Math.hypot(dx,dy) < 0.01) return;
+  const depth = config.features.lines.depth;
+  const x0 = a[0] + dx * start, y0 = a[1] + dy * start;
+  const x1 = a[0] + dx * end, y1 = a[1] + dy * end;
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = color;
+  if (depth.enabled && depth.opacity < 1) {
+    const gradient = ctx.createLinearGradient(x0,y0,x1,y1);
+    const [r,g,bColor] = [1,3,5].map(i => parseInt(color.slice(i,i+2),16));
+    for (const stop of [0,0.25,0.5,0.75,1]) {
+      const t = start + (end - start) * stop;
+      const z = edgeDepth(a[2],b[2],t,scale);
+      const intensity = depth.opacity + (1 - depth.opacity) * ease(clamp((z + 1) / 2,0,1));
+      gradient.addColorStop(stop,`rgba(${r},${g},${bColor},${intensity})`);
+    }
+    ctx.strokeStyle = gradient;
+  }
+  ctx.beginPath();
+  ctx.moveTo(x0,y0);
+  ctx.lineTo(x1,y1);
+  ctx.stroke();
+}
+
+function drawSolid(index, scale, alpha, contact, progress = 1, active = false) {
+  const color = config.style.palette[index];
+  const angle = yaw + index * SOLID_TURN;
+  const mesh = meshes[index];
+  const points = mesh.vertices.map(v => project(v, scale, angle));
+  const { steps, firstPass, faceReady } = solidTraces[index];
+  const position = progress * steps.length;
+  const completed = Math.floor(position);
+  const step = steps[Math.min(completed, steps.length - 1)];
+  const fraction = progress === 1 ? 1 : position - completed;
+  const from = points[step.from];
+  const to = points[step.to];
+  const tipX = from[0] + (to[0] - from[0]) * fraction;
+  const tipY = from[1] + (to[1] - from[1]) * fraction;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = config.style.lineWidth;
+  ctx.lineJoin = "round";
+  const materials = config.features.materials;
+  if (materials.glass.enabled || materials.mirror.enabled) {
+    const faces = mesh.faces.flatMap((face, i) => {
+      if (faceReady[i] > completed) return [];
+      const projected = face.map(j => points[j]);
+      const world = face.map(j => mesh.vertices[j]);
+      const subtract = (a,b) => a.map((v,k) => v - b[k]);
+      const [x,y,z] = subtract(world[1],world[0]);
+      const [u,v,w] = subtract(world[2],world[0]);
+      let n = unit([y*w-z*v,z*u-x*w,x*v-y*u]);
+      if (n.reduce((sum,v,k) => sum + v*world[0][k],0) < 0) n = n.map(v => -v);
+      const nx = n[0] * Math.cos(angle) + n[2] * Math.sin(angle);
+      const nz = n[2] * Math.cos(angle) - n[0] * Math.sin(angle);
+      const ny = n[1] * Math.cos(pitch) - nz * Math.sin(pitch);
+      const depth = projected.reduce((sum,p) => sum + p[2] * scale,0) / projected.length;
+      return [{ points: projected, normal: [nx,-ny,n[1]*Math.sin(pitch)+nz*Math.cos(pitch)],
+        color: rgb(color), depth, visibility: alpha,
+        alpha: materials.glass.enabled ? materials.glass.opacity : 0,
+        fill: active && materials.crystallize.enabled
+          ? clamp((frameEffects.ageInLevel - config.simulation.grow * faceReady[i] / steps.length) / materials.crystallize.duration,0,1)
+          : 1,
+        seam: index < 5 ? 1 : 0.45 }];
+    });
+    if (effectsRenderer) {
+      frameEffects.faces.push(...faces);
+    } else {
+      ctx.fillStyle = color;
+      ctx.globalAlpha = alpha * materials.glass.opacity;
+      if (materials.glass.enabled) {
+        for (const face of faces.sort((a,b) => a.depth-b.depth)) {
+          path(face.points);
+          ctx.fill();
+        }
+      }
+    }
+  }
+  glow(color, config.style.glow / 2);
+  mesh.edges.forEach(([i,j], edge) => {
+    if (firstPass[edge] < completed) {
+      strokeDepthEdge(points[i],points[j],0,1,scale,color,alpha);
+    }
+  });
+  if (progress < 1 && firstPass[step.edge] === completed) {
+    strokeDepthEdge(from,to,0,fraction,scale,color,alpha);
+    const hot = config.features.lines.hotEdge;
+    if (hot.enabled && hot.strength > 0) {
+      const length = Math.hypot(to[0] - from[0],to[1] - from[1]);
+      const tailStart = Math.max(0,fraction - 18 / Math.max(1,length));
+      glow("#fff3d2",config.style.glow);
+      strokeDepthEdge(from,to,tailStart,fraction,scale,"#fff3d2",alpha * hot.strength);
+    }
+  }
+
+  ctx.globalAlpha = alpha;
+  if (active) {
+    markTip(tipX, tipY, color);
+    frameEffects.corner = completed;
+    frameEffects.cornerPoint = progress === 1 ? [tipX,tipY] : from.slice(0,2);
+  }
+  if (progress < 1 || (active && config.features.lines.tracers.enabled)) {
+    tracer(tipX, tipY, color);
+  } else if (config.features.lines.tracers.enabled && scale > 0.06) {
+    const phase = (visualTime * config.features.lines.tracers.speed + index * 0.17) % 1;
+    const at = phase * mesh.edges.length;
+    const edge = Math.floor(at);
+    const [a,b] = mesh.edges[edge].map(i => points[i]);
+    const t = at - edge;
+    // Edge ordering on a solid varies by face. Fade between disconnected edges.
+    const brightness = Math.sin(Math.PI * t);
+    tracer(a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t, color, brightness);
+  }
+  if (contact > 0 && config.features.boundary.contact.enabled) {
+    for (const [x,y,z] of points) {
+      if (z < 0) continue;
+      tracer(x,y,color,contact,2.2);
+    }
+  }
+  ctx.restore();
+}
+
+function drawBoundary(flat, flash) {
+  ctx.save();
+  const { boundary, glow: blur } = config.style;
+  glow(boundary, blur * 0.8);
+  ctx.lineWidth = 1.25 + flash;
+  ctx.globalAlpha = flat ? 0.92 : 0.64 + flash * 0.25;
+  ctx.beginPath();
+  ctx.arc(0,0,radius,0,TAU);
+  ctx.stroke();
+  if (!flat) {
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 0.16 + flash * 0.15;
+    for (let axis = 0; axis < 3; axis++) {
+      const ring = Array.from({length: 96}, (_, i) => {
+        const a = i * TAU / 96;
+        const v = [Math.cos(a), Math.sin(a)];
+        v.splice(axis, 0, 0);
+        return project(v, 1, yaw);
+      });
+      path(ring);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function draw(now) {
+  const dt = previousFrame === undefined ? 0 : Math.min((now - previousFrame) / 1000, 0.05);
+  previousFrame = now;
+  const s = config.simulation;
+  const flat = s.mode === "2D";
+  const levels = clamp(Math.round(s.levels), 1, flat ? 30 : meshes.length);
+  const segment = s.grow + s.hold + s.shrink;
+  const total = (levels - 1) * segment + s.grow;
+  if (!paused) {
+    visualTime += dt;
+    elapsed = Math.min(elapsed + dt, total + s.finaleHold);
+    if (!flat && config.view.orbit && pointers.size === 0) {
+      yaw += dt * config.view.orbitSpeed * Math.PI / 180;
+    }
+    if (s.repeat && elapsed >= total + s.finaleHold) elapsed = 0;
+  }
+
+  radius = Math.min(width, Math.max(1, height - (config.controls.enabled ? 70 : 0)))
+    * config.view.size * zoom / 2;
+  const transition = config.features.transitions;
+  if (transition.closeup.enabled) {
+    radius *= 1 + (transition.closeup.magnification - 1) *
+      ease(clamp((elapsed - total) / Math.max(1, s.finaleHold * .8),0,1));
+  }
+  ctx.clearRect(0,0,width,height);
+  ctx.fillStyle = config.style.background;
+  ctx.fillRect(0,0,width,height);
+  ctx.save();
+  ctx.translate(width / 2, height / 2 - (config.controls.enabled ? 16 : 0));
+
+  const current = Math.min(levels - 1, Math.floor(elapsed / segment));
+  const age = elapsed - current * segment;
+  const flash = config.features.boundary.contact.enabled && age >= s.grow
+    ? Math.max(0, 1 - (age - s.grow) / 0.42) * config.features.boundary.contact.intensity : 0;
+  drawBoundary(flat, flash);
+  const clearance = 0.94;
+  const fitAfter = index => clearance * (flat
+    ? outlineFits[Math.min(index, outlineFits.length - 1)]
+    : solidFits[index]);
+  const progress = clamp(age / s.grow, 0, 1);
+  frameEffects = { tip: [0,-radius], origin: [0,-radius], color: [1,1,1], age: -1,
+    sparkOrigin: [0,-radius], sparkAge: -1, ageInLevel: age, tracing: progress < 1, flat, faces: [] };
+  const contraction = ease(clamp((age - s.grow - s.hold) / s.shrink, 0, 1));
+  let scale = current < levels - 1 ? 1 - (1 - fitAfter(current)) * contraction : 1;
+  if (transition.echoes.enabled && contraction > 0 && current < levels - 1) {
+    for (let i = 3; i > 0; i--) {
+      const tail = ease(clamp((age - s.grow - s.hold) / s.shrink - i * .075,0,1));
+      paintEcho(current,1 - (1 - fitAfter(current)) * tail,flat,
+        transition.echoes.strength * (1 - contraction) / (i + 1));
+    }
+  }
+  for (let i = current; i >= 0; i--) {
+    if (i === current) {
+      if (flat) drawOutline(i, scale, 1, progress, flash, true);
+      else drawSolid(i, scale, 1, flash, progress, true);
+      continue;
+    }
+
+    // Move the entire finished stack together so adjacent levels stay nested.
+    scale *= fitAfter(i);
+    const fade = config.features.transitions.fade;
+    const fadeAmount = fade.enabled && current - i >= fade.after ? ease(clamp(age / 0.7, 0, 1)) : 0;
+    const alpha = fade.enabled && current - i > fade.after ? fade.opacity
+      : 1 - (1 - fade.opacity) * fadeAmount;
+    const pulse = transition.pulse;
+    if (pulse.enabled && age >= s.grow) {
+      const lag = (1 - scale) * .48;
+      const strength = Math.max(0,1 - Math.abs(age - s.grow - lag) / .17);
+      if (strength > 0) paintEcho(i,scale,flat,alpha * strength * pulse.strength);
+    }
+    if (flat) drawOutline(i, scale, alpha, 1, 0);
+    else drawSolid(i, scale, alpha, 0);
+  }
+  ctx.restore();
+  const tip = frameEffects.tip;
+  const moved = previousTip && Math.hypot(tip[0]-previousTip[0],tip[1]-previousTip[1]) > 3;
+  const touched = flat
+    ? Math.hypot(...tip) > radius * .99 && (!previousTip || Math.hypot(...previousTip) < radius * .985)
+    : previousTrace !== current || flash > 0;
+  if (previousTrace !== current || (touched && moved && (!effectCue || visualTime - effectCue.at > .16))) {
+    effectCue = { at: visualTime, point: tip };
+  }
+  if (previousTrace !== current || (frameEffects.corner !== previousCorner &&
+      (!sparkCue || visualTime - sparkCue.at > .12))) {
+    sparkCue = { at: visualTime, point: frameEffects.cornerPoint || tip };
+  }
+  previousCorner = frameEffects.corner;
+  if (sparkCue) {
+    frameEffects.sparkOrigin = sparkCue.point;
+    frameEffects.sparkAge = visualTime - sparkCue.at;
+  }
+  previousTrace = current;
+  previousTip = tip;
+  if (effectCue) {
+    frameEffects.age = visualTime - effectCue.at;
+    frameEffects.origin = effectCue.point;
+  }
+  try { effectsRenderer?.draw(frameEffects); }
+  catch (error) {
+    effectsRenderer.hide();
+    effectsRenderer = null;
+    console.warn("WebGL effects unavailable", error);
+  }
+  requestAnimationFrame(draw);
+}
+
+function syncControls() {
+  $("mode").textContent = config.simulation.mode === "2D" ? "Switch to 3D" : "Switch to 2D";
+  $("pause").textContent = paused ? "Play" : "Pause";
+}
+function reset() {
+  elapsed = 0;
+  visualTime = 0;
+  previousTip = effectCue = previousTrace = sparkCue = previousCorner = undefined;
+}
+function toggleMode() {
+  config.simulation.mode = config.simulation.mode === "2D" ? "3D" : "2D";
+  reset();
+  syncControls();
+  document.dispatchEvent(new Event("snowflake-mode"));
+}
+$("mode").addEventListener("click", toggleMode);
+$("pause").addEventListener("click", () => { paused = !paused; syncControls(); });
+$("replay").addEventListener("click", () => { reset(); paused = false; syncControls(); });
+
+const pointers = new Map();
+canvas.addEventListener("pointerdown", event => {
+  pointers.set(event.pointerId, [event.clientX,event.clientY]);
+  canvas.setPointerCapture(event.pointerId);
+});
+canvas.addEventListener("pointermove", event => {
+  const old = pointers.get(event.pointerId);
+  if (!old) return;
+  const next = [event.clientX,event.clientY];
+  pointers.set(event.pointerId,next);
+  const distance = (a,b) => Math.hypot(a[0]-b[0],a[1]-b[1]);
+  if (pointers.size === 2) {
+    const other = [...pointers].find(([id]) => id !== event.pointerId)[1];
+    zoom = clamp(zoom * distance(next,other) / Math.max(1,distance(old,other)), 0.55, 1.15);
+  } else if (config.simulation.mode === "3D" && (pointers.size === 1 || pointers.size === 3)) {
+    yaw += (next[0]-old[0]) * 0.008 / pointers.size;
+    pitch = clamp(pitch + (next[1]-old[1]) * 0.008 / pointers.size, -1.5, 1.5);
+  }
+});
+for (const event of ["pointerup","pointercancel","lostpointercapture"]) {
+  canvas.addEventListener(event, e => pointers.delete(e.pointerId));
+}
+canvas.addEventListener("wheel", event => {
+  event.preventDefault();
+  zoom = clamp(zoom * Math.exp(-event.deltaY * 0.001), 0.55, 1.15);
+}, { passive: false });
+
+document.querySelector(".controls").hidden = !config.controls.enabled;
+syncControls();
+requestAnimationFrame(draw);
+
+if (config.editor.enabled && config.controls.enabled) {
+  const script = document.createElement("script");
+  script.src = "settings-editor.js?v=20261123-6";
+  script.onload = () => window.mountSnowflakeSettings?.({
+    config, button: $("settings"),
+    onImage: async file => {
+      if (!effectsRenderer) throw new Error("Image reflections require WebGL.");
+      if (!file) { effectsRenderer.image(null); return; }
+      const bitmap = await createImageBitmap(file);
+      try {
+        const edge = Math.max(bitmap.width, bitmap.height);
+        if (edge <= 2048) effectsRenderer.image(bitmap);
+        else {
+          const copy = document.createElement("canvas");
+          copy.width = Math.max(1,Math.round(bitmap.width * 2048 / edge));
+          copy.height = Math.max(1,Math.round(bitmap.height * 2048 / edge));
+          copy.getContext("2d").drawImage(bitmap,0,0,copy.width,copy.height);
+          effectsRenderer.image(copy);
+        }
+      } finally { bitmap.close(); }
+    },
+    onChange: (path = "") => {
+      if (path.startsWith("simulation.") || !path) reset();
+      syncControls();
+    }
+  });
+  script.onerror = () => script.remove();
+  document.head.append(script);
+}
+</script>
+</body>
+</html>
