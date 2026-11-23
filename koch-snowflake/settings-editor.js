@@ -21,12 +21,14 @@ window.mountSnowflakeSettings = function ({ config, button, onChange, onImage })
       size: ["Scene size", [0.35,0.95,0.01], "Boundary diameter relative to the viewport."],
       orbit: ["Auto-orbit", null, "Slowly rotate the 3D scene while it plays."],
       orbitSpeed: ["Orbit (degrees/second)", [0,60,1], "Rotation speed in 3D."],
-      perspective: ["Perspective", null, "Turn off to switch to orthographic projection."]
+      perspective: ["Perspective", null, "Turn off to switch to orthographic projection."],
+      showBoundary: ["Show boundary", null, "Show the 2D circle or 3D sphere and its contact effects."]
     },
     style: {
       background: ["Background", "color", "Use #00000000 for a transparent background."],
       boundary: ["Boundary color", "color", "Color of the circle or sphere."],
       lineWidth: ["Line width", [0.5,4,0.1], "Outline width in CSS pixels."],
+      edgeOpacity: ["Edge opacity", [0,1,0.01], "Opacity of the 2D outlines and 3D edges."],
       glow: ["Glow", [0,30,1], "Soft light around the edges."],
       palette: ["Level colors", "palette", "Colors are applied from the center outward."]
     },
@@ -34,7 +36,8 @@ window.mountSnowflakeSettings = function ({ config, button, onChange, onImage })
       lines: {
         tracers: {
           enabled: ["Edge tracers", null, "Keep dots moving on finished outlines."],
-          speed: ["Tracer speed", [0.025,1,0.005], "Outline laps per second in 2D."]
+          speed: ["Tracer speed", [0.025,1,0.005], "Outline laps per second in 2D."],
+          size: ["Tracer diameter (px)", [2,20,0.5], "Diameter of the live and settled tracers in screen pixels."]
         },
         hotEdge: effect("Hot edge", "Warm light follows the active drawing point."),
         depth: {
@@ -80,7 +83,7 @@ window.mountSnowflakeSettings = function ({ config, button, onChange, onImage })
         },
         closeup: {
           enabled: ["Final close-up", null, "Zoom into the center after the final level finishes."],
-          magnification: ["Magnification", [1,8,0.25], "Final zoom multiplier."]
+          magnification: ["Magnification", [1,8,0.25], "Requested final zoom multiplier, capped at 2× overall."]
         }
       }
     }
@@ -122,6 +125,10 @@ window.mountSnowflakeSettings = function ({ config, button, onChange, onImage })
     #snow-settings label.snow-field select { margin-bottom: 0 }
     #snow-settings .snow-actions, #snow-settings .snow-palette { display: flex; flex-wrap: wrap; gap: 6px }
     #snow-settings .snow-palette input { width: 32px; height: 26px; padding: 0; background: transparent; border: 0 }
+    #snow-settings .snow-range { display: grid; grid-template-columns: minmax(0,1fr) 4ch;
+      align-items: center; gap: 4px }
+    #snow-settings .snow-range input { width: 100%; min-width: 0; margin: 0 }
+    #snow-settings .snow-range-value { text-align: right; font-variant-numeric: tabular-nums }
     #snow-settings output { display: block; margin-top: 6px; color: #c8d1ff }
   `;
   document.head.append(css);
@@ -250,10 +257,23 @@ window.mountSnowflakeSettings = function ({ config, button, onChange, onImage })
         input.value = model[key];
         input.onchange = () => update(input.value.trim());
       } else if (type) {
-        input.type = "number";
+        input.type = "range";
+        input.setAttribute("aria-label",name);
         [input.min, input.max, input.step] = type;
         input.value = model[key];
-        input.onchange = () => update(input.valueAsNumber);
+        const value = element("span",input.value);
+        value.className = "snow-range-value";
+        value.setAttribute("aria-hidden","true");
+        const controls = element("span");
+        controls.className = "snow-range";
+        controls.append(input,value);
+        input.oninput = () => {
+          update(input.valueAsNumber);
+          value.textContent = input.value;
+        };
+        row.append(controls);
+        parent.append(row);
+        return;
       } else {
         input.type = "checkbox";
         input.checked = model[key];
@@ -291,7 +311,7 @@ window.mountSnowflakeSettings = function ({ config, button, onChange, onImage })
       const feature = parts[0] === "features" ? config.features[parts[1]]?.[parts[2]] : null;
       const key = parts.at(-1);
       const mirror = feature === config.features.materials.mirror;
-      row.hidden = (feature && key !== "enabled" && !feature.enabled)
+      row.hidden = (feature && key !== "enabled" && key !== "size" && !feature.enabled)
         || (mirror && (key === "image" && feature.source !== "Image" || key === "spread" && feature.source !== "Scene"))
         || !row.dataset.search.includes(query);
     }

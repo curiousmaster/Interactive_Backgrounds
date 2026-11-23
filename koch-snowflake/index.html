@@ -27,123 +27,42 @@
 "use strict";
 
 const config = {
-  "editor": {
-    "enabled": true
+  editor: { enabled: true },
+  controls: { enabled: true },
+  simulation: {
+    mode: "3D", levels: 5, grow: 1.8, hold: 0.65, shrink: 0.95,
+    repeat: false, finaleHold: 4
   },
-  "controls": {
-    "enabled": true
+  view: { size: 0.79, orbit: true, orbitSpeed: 9, perspective: true, showBoundary: true },
+  style: {
+    background: "#101128", boundary: "#ecebff", lineWidth: 1.7, edgeOpacity: 1, glow: 12,
+    palette: ["#ff5e68", "#ffdb60", "#b1f577", "#48f0ff", "#7fbbff", "#bd9aff", "#ff90da"]
   },
-  "simulation": {
-    "mode": "3D",
-    "levels": 5,
-    "grow": 1.8,
-    "hold": 0.65,
-    "shrink": 0.95,
-    "repeat": false,
-    "finaleHold": 4
-  },
-  "view": {
-    "size": 0.79,
-    "orbit": true,
-    "orbitSpeed": 9,
-    "perspective": true
-  },
-  "style": {
-    "background": "#101128",
-    "boundary": "#ecebff",
-    "lineWidth": 1.7,
-    "glow": 12,
-    "palette": [
-      "#ff5e68",
-      "#ffdb60",
-      "#b1f577",
-      "#48f0ff",
-      "#7fbbff",
-      "#bd9aff",
-      "#ff90da"
-    ]
-  },
-  "features": {
-    "lines": {
-      "tracers": {
-        "enabled": true,
-        "speed": 0.1
-      },
-      "hotEdge": {
-        "enabled": true,
-        "strength": 0.1
-      },
-      "depth": {
-        "enabled": true,
-        "opacity": 0.05
-      }
+  features: {
+    lines: {
+      tracers: { enabled: true, speed: 0.1, size: 6 },
+      hotEdge: { enabled: true, strength: 0.1 },
+      depth: { enabled: true, opacity: 0.05 }
     },
-    "boundary": {
-      "contact": {
-        "enabled": true,
-        "intensity": 0.75
-      },
-      "waves": {
-        "enabled": false,
-        "strength": 0.65
-      },
-      "sparks": {
-        "enabled": true,
-        "strength": 0.6
-      },
-      "atmosphere": {
-        "enabled": false,
-        "strength": 0.34
-      }
+    boundary: {
+      contact: { enabled: true, intensity: 0.75 },
+      waves: { enabled: false, strength: 0.65 },
+      sparks: { enabled: true, strength: 0.6 },
+      atmosphere: { enabled: false, strength: 0.34 }
     },
-    "materials": {
-      "glass": {
-        "enabled": true,
-        "opacity": 0.045
-      },
-      "crystallize": {
-        "enabled": false,
-        "strength": 0.85,
-        "duration": 0.45
-      },
-      "iridescence": {
-        "enabled": true,
-        "strength": 0.25
-      },
-      "seams": {
-        "enabled": true,
-        "strength": 0.4
-      },
-      "refraction": {
-        "enabled": false,
-        "strength": 0.4
-      },
-      "mirror": {
-        "enabled": false,
-        "source": "Image",
-        "strength": 0.5,
-        "spread": 0.85,
-        "image": false
-      }
+    materials: {
+      glass: { enabled: true, opacity: 0.045 },
+      crystallize: { enabled: false, strength: 0.85, duration: 0.45 },
+      iridescence: { enabled: true, strength: 0.25 },
+      seams: { enabled: true, strength: 0.4 },
+      refraction: { enabled: false, strength: 0.4 },
+      mirror: { enabled: false, source: "Image", strength: 0.5, spread: 0.85, image: false }
     },
-    "transitions": {
-      "echoes": {
-        "enabled": true,
-        "strength": 0.27
-      },
-      "pulse": {
-        "enabled": true,
-        "strength": 0.55
-      },
-      "fade": {
-        "enabled": false,
-        "after": 4,
-        "opacity": 0.22
-      },
-      "closeup": {
-        "enabled": false,
-        "magnification": 3
-      }
+    transitions: {
+      echoes: { enabled: true, strength: 0.27 },
+      pulse: { enabled: true, strength: 0.55 },
+      fade: { enabled: false, after: 4, opacity: 0.22 },
+      closeup: { enabled: false, magnification: 3 }
     }
   }
 };
@@ -362,6 +281,7 @@ const solidFits = meshes.slice(1).map((mesh,i) => solidFit(meshes[i],mesh));
 let width, height, radius;
 let elapsed = 0, visualTime = 0, previousFrame;
 let paused = reducedMotion;
+const MAX_ZOOM = 2;
 let yaw = 0.4, pitch = -0.23, zoom = 1;
 
 function resize() {
@@ -566,7 +486,7 @@ function createEffectsRenderer() {
       set("eventAge",frame.age);
       set("shape3D",frame.flat ? 0 : 1);
       set("heat",frame.tracing ? gain(lines.hotEdge) : 0);
-      set("waves",gain(boundary.waves));
+      set("waves",config.view.showBoundary ? gain(boundary.waves) : 0);
       set("sparks",gain(boundary.sparks));
       set("atmosphere",frame.flat ? 0 : gain(boundary.atmosphere));
       gl.bufferData(gl.ARRAY_BUFFER,quad,gl.STREAM_DRAW);
@@ -620,7 +540,7 @@ function rgb(hex) {
 let frameEffects, previousTip, effectCue, previousTrace, sparkCue, previousCorner;
 
 
-function tracer(x, y, color, intensity = 1, size = 3) {
+function tracer(x, y, color, intensity = 1, size = config.features.lines.tracers.size / 2) {
   ctx.save();
   ctx.globalAlpha *= intensity;
   ctx.shadowColor = color;
@@ -640,7 +560,7 @@ function markTip(x, y, color) {
 function paintEcho(index, scale, flat, alpha) {
   if (scale <= 0) return;
   ctx.save();
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = alpha * config.style.edgeOpacity;
   ctx.lineWidth = config.style.lineWidth;
   glow(config.style.palette[index % config.style.palette.length], 0);
   if (flat) {
@@ -678,7 +598,7 @@ function drawOutline(index, scale, alpha, progress, contact, active = false) {
   const y = size * (a[1] + (b[1] - a[1]) * fraction);
 
   ctx.save();
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = alpha * config.style.edgeOpacity;
   ctx.lineWidth = config.style.lineWidth;
   ctx.lineJoin = "round";
   glow(color, config.style.glow);
@@ -714,6 +634,7 @@ function drawOutline(index, scale, alpha, progress, contact, active = false) {
     ctx.stroke();
     ctx.restore();
   }
+  ctx.globalAlpha = alpha;
   if (showTracer) tracer(x, y, color);
   if (contact > 0) {
     for (const [vx,vy] of points) {
@@ -737,7 +658,7 @@ function strokeDepthEdge(a, b, start, end, scale, color, alpha) {
   const depth = config.features.lines.depth;
   const x0 = a[0] + dx * start, y0 = a[1] + dy * start;
   const x1 = a[0] + dx * end, y1 = a[1] + dy * end;
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = alpha * config.style.edgeOpacity;
   ctx.strokeStyle = color;
   if (depth.enabled && depth.opacity < 1) {
     const gradient = ctx.createLinearGradient(x0,y0,x1,y1);
@@ -897,13 +818,13 @@ function draw(now) {
     if (s.repeat && elapsed >= total + s.finaleHold) elapsed = 0;
   }
 
-  radius = Math.min(width, Math.max(1, height - (config.controls.enabled ? 70 : 0)))
-    * config.view.size * zoom / 2;
   const transition = config.features.transitions;
-  if (transition.closeup.enabled) {
-    radius *= 1 + (transition.closeup.magnification - 1) *
-      ease(clamp((elapsed - total) / Math.max(1, s.finaleHold * .8),0,1));
-  }
+  const closeup = transition.closeup.enabled
+    ? 1 + (transition.closeup.magnification - 1) *
+      ease(clamp((elapsed - total) / Math.max(1, s.finaleHold * .8),0,1))
+    : 1;
+  radius = Math.min(width, Math.max(1, height - (config.controls.enabled ? 70 : 0)))
+    * config.view.size * Math.min(MAX_ZOOM, zoom * closeup) / 2;
   ctx.clearRect(0,0,width,height);
   ctx.fillStyle = config.style.background;
   ctx.fillRect(0,0,width,height);
@@ -912,9 +833,9 @@ function draw(now) {
 
   const current = Math.min(levels - 1, Math.floor(elapsed / segment));
   const age = elapsed - current * segment;
-  const flash = config.features.boundary.contact.enabled && age >= s.grow
+  const flash = config.view.showBoundary && config.features.boundary.contact.enabled && age >= s.grow
     ? Math.max(0, 1 - (age - s.grow) / 0.42) * config.features.boundary.contact.intensity : 0;
-  drawBoundary(flat, flash);
+  if (config.view.showBoundary) drawBoundary(flat, flash);
   const clearance = 0.94;
   const fitAfter = index => clearance * (flat
     ? outlineFits[Math.min(index, outlineFits.length - 1)]
@@ -1018,7 +939,7 @@ canvas.addEventListener("pointermove", event => {
   const distance = (a,b) => Math.hypot(a[0]-b[0],a[1]-b[1]);
   if (pointers.size === 2) {
     const other = [...pointers].find(([id]) => id !== event.pointerId)[1];
-    zoom = clamp(zoom * distance(next,other) / Math.max(1,distance(old,other)), 0.55, 1.15);
+    zoom = clamp(zoom * distance(next,other) / Math.max(1,distance(old,other)), 0.55, MAX_ZOOM);
   } else if (config.simulation.mode === "3D" && (pointers.size === 1 || pointers.size === 3)) {
     yaw += (next[0]-old[0]) * 0.008 / pointers.size;
     pitch = clamp(pitch + (next[1]-old[1]) * 0.008 / pointers.size, -1.5, 1.5);
@@ -1029,7 +950,7 @@ for (const event of ["pointerup","pointercancel","lostpointercapture"]) {
 }
 canvas.addEventListener("wheel", event => {
   event.preventDefault();
-  zoom = clamp(zoom * Math.exp(-event.deltaY * 0.001), 0.55, 1.15);
+  zoom = clamp(zoom * Math.exp(-event.deltaY * 0.001), 0.55, MAX_ZOOM);
 }, { passive: false });
 
 document.querySelector(".controls").hidden = !config.controls.enabled;
@@ -1038,7 +959,7 @@ requestAnimationFrame(draw);
 
 if (config.editor.enabled && config.controls.enabled) {
   const script = document.createElement("script");
-  script.src = "settings-editor.js?v=20261123-6";
+  script.src = "settings-editor.js?v=20261123-7";
   script.onload = () => window.mountSnowflakeSettings?.({
     config, button: $("settings"),
     onImage: async file => {
