@@ -179,6 +179,18 @@ export const backgrounds = [
             "Move your pointer to attract them; click or tap to send them spiraling outward.",
     },
     {
+        name: "Hexagonal Nexus",
+        folder: "hexagonal-nexus",
+        tags: ["abstract", "geometric", "interactive", "3d" ],
+        description:
+            "A living three-dimensional landscape of hexagonal tiles, " +
+            "shaped by dynamic waves, flowing energy and cinematic lighting. " +
+            "Move your pointer to disturb the surface, or click and tap " +
+            "to unleash expanding shockwaves. Explore floating geometry, " +
+            "iridescent materials, cellular automata and infinite landscapes " +
+            "through 15 configurable visual effects and 12 built-in presets.",
+    },
+    {
         name: "Impossible Windows",
         folder: "impossible-windows",
         tags: ["abstract", "architecture"],

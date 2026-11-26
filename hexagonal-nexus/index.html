@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>Hexagonal Nexus</title>
+
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+
+            html,body {
+                margin: 0;
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
+                background: transparent;
+                color: #e9f4ff;
+                font: 14px system-ui;
+            }
+
+            canvas {
+                display: block;
+                width: 100%;
+                height: 100%;
+                touch-action: none;
+            }
+
+            button,input,select,textarea {
+                font: inherit;
+                color: inherit;
+                background: #182536;
+                border: 1px solid #536478;
+                border-radius: 5px;
+                padding: 6px;
+            }
+
+            button {
+                cursor: pointer;
+            }
+
+            #settings-toggle {
+                position: fixed;
+                top: 12px;
+                right: 12px;
+            }
+
+            #settings {
+                position: fixed;
+                top: 52px;
+                right: 12px;
+                width: min(350px,calc(100vw - 24px));
+                max-height: calc(100dvh - 65px);
+                overflow: auto;
+                background: #101b2be8;
+                padding: 12px;
+                border: 1px solid #536478;
+                border-radius: 10px;
+                backdrop-filter: blur(12px);
+            }
+
+            #settings h2 {
+                margin: 0 0 10px;
+            }
+
+            #settings>input,#settings>select,textarea {
+                width: 100%;
+                margin-bottom: 8px;
+            }
+
+            textarea {
+                height: 220px;
+            }
+
+            details {
+                padding: 5px;
+                border-bottom: 1px solid #ffffff20;
+            }
+
+            summary {
+                cursor: pointer;
+                padding: 5px;
+            }
+
+            label {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                justify-content: space-between;
+                padding: 4px;
+                font-size: 12px;
+            }
+
+            label input:not([type=checkbox]),label select {
+                width: 48%;
+                min-width: 0;
+            }
+
+            small {
+                min-width: 30px;
+                text-align: right;
+            }
+
+            .toolbar {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px;
+                margin-bottom: 8px;
+            }
+
+            [hidden] {
+                display: none !important;
+            }
+        </style>
+
+        <script type="importmap">
+            {
+                "imports": {
+                    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+                    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+                }
+            }
+        </script>
+    </head>
+
+    <body>
+        <canvas id="scene"></canvas>
+
+        <script type="module">
+            import * as T from 'three';
+            import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+            import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+            import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+            import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+            import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+            const stamp = Date.now();
+            const {
+                defaults
+            } = await import('./settings.js?v=' + stamp);
+            const c = structuredClone(defaults);
+            const canvas = document.querySelector('canvas'), renderer = new T.WebGLRenderer({
+                canvas,
+                alpha: true,
+                antialias: true
+            });
+            renderer.toneMapping = T.ACESFilmicToneMapping;
+            renderer.shadowMap.enabled = true;
+            const scene = new T.Scene(), group = new T.Group();
+            scene.add(group);
+            const pmrem = new T.PMREMGenerator(renderer), room = new RoomEnvironment();
+            scene.environment = pmrem.fromScene(room).texture;
+            room.dispose();
+            pmrem.dispose();
+            const perspective = new T.PerspectiveCamera(42, 1, .1, 500), ortho = new T.OrthographicCamera( - 1, 1, 1, - 1, .1, 500);
+            let camera = perspective;
+            const ambient = new T.AmbientLight(), l1 = new T.PointLight(), l2 = new T.PointLight();
+            scene.add(ambient, l1, l2);
+            l1.castShadow = true;
+            l1.shadow.mapSize.set(1024, 1024);
+            const composer = new EffectComposer(renderer), renderPass = new RenderPass(scene, camera), bloom = new UnrealBloomPass(new T.Vector2(1, 1), .6, .4, .65);
+            composer.addPass(renderPass);
+            composer.addPass(bloom);
+            composer.addPass(new OutputPass());
+            const dummy = new T.Object3D(), color = new T.Color(), base = new T.Color(), accent = new T.Color(), secondary = new T.Color(), up = new T.Vector3(0, 1, 0), normal = new T.Vector3(), pos = new T.Vector3();
+            let tiles, edges, channels, fragments, particles, coords = [], states = [], next = [], waves = [], t = 0, autoTime = 0, travel = 0, orbit = 0, quality = 1, slow = 0;
+            const pointer = new T.Vector3(1e6, 0, 1e6), ray = new T.Raycaster(), ndc = new T.Vector2(), plane = new T.Plane(up, 0);
+            let last = performance.now();
+            function dispose(o) {
+                if (!o) return;
+                group.remove(o);
+                o.geometry.dispose();
+                o.material.dispose();
+            }
+            function rebuild() {
+                for (const o of [tiles, edges, channels, fragments, particles]) dispose(o);
+                coords = [];
+                const g = c.grid,
+                r = g.radius;
+                for (let j = 0; j < g.rows; j++) for (let i = 0; i < g.columns; i++) coords.push({
+                    i,
+                    j,
+                    x: Math.sqrt(3) * r * (i + (j % 2) * .5 - (g.columns - 1) / 2),
+                    z: 1.5 * r * (j - (g.rows - 1) / 2),
+                    seed: Math.random(),
+                    h: 0,
+                    v: 0
+                });
+                const n = coords.length;
+                states = coords.map(() => Math.random() < .25 ? 1: 0);
+                next = states.slice();
+                const geo = new T.CylinderGeometry(r * (1 - g.gap), r * (1 - g.gap), g.thickness, 6);
+                geo.rotateY(Math.PI / 6);
+                tiles = new T.InstancedMesh(geo, new T.MeshPhysicalMaterial(), n);
+                tiles.castShadow = tiles.receiveShadow = true;
+                tiles.frustumCulled = false;
+                group.add(tiles);
+                function ring(radius, width) {
+                    const shape = new T.Shape(),
+                    hole = new T.Path();
+                    for (let i = 0; i < 6; i++) {
+                        const a = i * Math.PI / 3 + Math.PI / 6;
+                        const x = Math.cos(a),
+                        y = Math.sin(a);
+                        i ? shape.lineTo(x * radius, y * radius): shape.moveTo(x * radius, y * radius);
+                        i ? hole.lineTo(x * (radius - width), y * (radius - width)): hole.moveTo(x * (radius - width), y * (radius - width));
+                    }
+                    shape.closePath();
+                    hole.closePath();
+                    shape.holes.push(hole);
+                    const geom = new T.ShapeGeometry(shape);
+                    geom.rotateX( - Math.PI / 2);
+                    return geom;
+                }
+                edges = new T.InstancedMesh(ring(r * (1 - g.gap), r * .035), new T.MeshBasicMaterial({
+                    toneMapped: false,
+                    side: T.DoubleSide
+                }), n);
+                channels = new T.InstancedMesh(ring(r * .995, r * .065), new T.MeshBasicMaterial({
+                    toneMapped: false,
+                    side: T.DoubleSide
+                }), n);
+                fragments = new T.InstancedMesh(new T.TetrahedronGeometry(r * .24), new T.MeshStandardMaterial({
+                    metalness: .6
+                }), n * 3);
+                for (const o of [edges, channels, fragments]) {
+                    o.frustumCulled = false;
+                    group.add(o);
+                }
+                const a = new Float32Array(Math.max(0, c.features.particles.count) * 3);
+                particles = new T.Points(new T.BufferGeometry().setAttribute('position', new T.BufferAttribute(a, 3)), new T.PointsMaterial({
+                    size: .065,
+                    transparent: true,
+                    opacity: .8,
+                    blending: T.AdditiveBlending,
+                    depthWrite: false
+                }));
+                particles.frustumCulled = false;
+                group.add(particles);
+                updateMaterials();
+            }
+            function updateMaterials() {
+                const m = c.material,
+                f = c.features;
+                let bg = m.background;
+                try {
+                    renderer.setClearColor(new T.Color(bg.slice(0, 7)), bg.length === 9 ? parseInt(bg.slice(7), 16) / 255: 1);
+                } catch {}
+                base.set(m.color);
+                accent.set(m.accent);
+                secondary.set(m.secondary);
+                Object.assign(tiles.material, {
+                    metalness: m.metalness,
+                    roughness: m.roughness,
+                    opacity: m.opacity,
+                    transparent: m.opacity < 1,
+                    transmission: f.glass.enabled ? f.glass.transmission: 0,
+                    thickness: c.grid.thickness,
+                    iridescence: f.iridescence.enabled ? f.iridescence.strength: 0
+                });
+                tiles.material.needsUpdate = true;
+                particles.material.color.copy(accent);
+                ambient.intensity = c.lighting.ambient;
+                l1.color.copy(accent);
+                l2.color.copy(secondary);
+                l1.intensity = c.lighting.intensity;
+                l2.intensity = c.lighting.secondaryIntensity;
+                l1.castShadow = c.lighting.shadows;
+                scene.fog = c.post.fog ? new T.FogExp2(new T.Color(bg.slice(0, 7)), c.post.density): null;
+            }
+            function resize() {
+                const w = innerWidth,
+                h = innerHeight;
+                renderer.setPixelRatio(Math.min(devicePixelRatio, c.performance.pixelRatio) * quality);
+                renderer.setSize(w, h);
+                composer.setPixelRatio(renderer.getPixelRatio());
+                composer.setSize(w, h);
+                perspective.aspect = w / h;
+                perspective.updateProjectionMatrix();
+                const s = 18 / c.view.zoom;
+                Object.assign(ortho, {
+                    left: - s * w / h,
+                    right: s * w / h,
+                    top: s,
+                    bottom: - s
+                });
+                ortho.updateProjectionMatrix();
+            }
+            addEventListener('resize', resize);
+            function apply(p) {
+                if (p === 'all' || p.startsWith('grid.') || p === 'features.particles.count') rebuild();
+                else updateMaterials();
+                if (p === 'all' || p.startsWith('performance') || p === 'view.zoom') resize();
+            }
+            function topology(x, z, h) {
+                const R = Math.max(3, c.grid.columns * c.grid.radius * .4 / Math.max(.1, c.view.curvature));
+                normal.set(0, 1, 0);
+                switch (c.view.shape) {
+                    case 'curved': pos.set(x, h + z * z / (R * 3), z);
+                    normal.set(0, 1, - 2 * z / (R * 3)).normalize();
+                    break;
+                    case 'cylinder': {
+                        const a = x / R;
+                        normal.set(Math.sin(a), Math.cos(a), 0);
+                        pos.set((R + h) * normal.x, (R + h) * normal.y - R, z);
+                        break;
+                    }
+                    case 'dome': {
+                        const d = Math.hypot(x, z),
+                        a = d / R;
+                        normal.set(d ? Math.sin(a) * x / d: 0, Math.cos(a), d ? Math.sin(a) * z / d: 0);
+                        pos.copy(normal).multiplyScalar(R + h);
+                        pos.y -= R;
+                        break;
+                    }
+                    case 'torus': {
+                        const a = x / R,
+                        b = z / (R * .38),
+                        r = R * .38;
+                        normal.set(Math.cos(a) * Math.sin(b), Math.cos(b), Math.sin(a) * Math.sin(b));
+                        pos.set(Math.cos(a) * (R + (r + h) * Math.sin(b)), (r + h) * Math.cos(b) - r, Math.sin(a) * (R + (r + h) * Math.sin(b)));
+                        break;
+                    }
+                    default: pos.set(x, h, z);
+                }
+            }
+            function matrix(mesh, i, offset = 0, scale = 1, spin = 0) {
+                dummy.position.copy(pos).addScaledVector(normal, offset);
+                dummy.quaternion.setFromUnitVectors(up, normal);
+                dummy.rotateY(spin);
+                dummy.scale.setScalar(scale);
+                dummy.updateMatrix();
+                mesh.setMatrixAt(i, dummy.matrix);
+            }
+            function automata() {
+                const {
+                    columns: w,
+                    rows: h
+                } = c.grid;
+                for (let k = 0; k < coords.length; k++) {
+                    const {
+                        i,
+                        j
+                    } = coords[k],
+                    s = j % 2 ? 1: - 1;
+                    let n = 0;
+                    for (const[dx, dz] of [[ - 1, 0], [1, 0], [0, - 1], [0, 1], [s, - 1], [s, 1]]) n += states[((j + dz + h) % h) * w + (i + dx + w) % w];
+                    next[k] = states[k] ? (n === 2 || n === 3 ? 1: 0): (n === 2 ? 1: 0);
+                }
+                [states, next] = [next, states];
+            }
+            function frame(now) {
+                requestAnimationFrame(frame);
+                const dt = Math.min(.04, (now - last) / 1000);
+                last = now;
+                t += dt * c.animation.speed;
+                const f = c.features,
+                g = c.grid,
+                v = c.view,
+                a = c.animation;
+                autoTime += dt;
+                if (f.automata.enabled && autoTime > f.automata.interval) {
+                    automata();
+                    autoTime = 0;
+                }
+                if (f.flight.enabled) travel += dt * f.flight.speed;
+                else travel = 0;
+                if (v.orbit) orbit += dt * v.orbitSpeed * Math.PI / 180;
+                const yaw = v.yaw * Math.PI / 180 + orbit,
+                tilt = (v.threeD ? v.tilt: 89.9) * Math.PI / 180;
+                camera = v.perspective && v.threeD ? perspective: ortho;
+                const distance = 43 / v.zoom;
+                camera.position.set(Math.sin(yaw) * Math.cos(tilt) * distance, Math.sin(tilt) * distance, Math.cos(yaw) * Math.cos(tilt) * distance);
+                camera.lookAt(0, 0, 0);
+                renderPass.camera = camera;
+                if (f.movingLights.enabled) {
+                    l1.position.set(Math.sin(t * f.movingLights.speed) * 12, 6, Math.cos(t * f.movingLights.speed) * 12);
+                    l2.position.set(Math.cos(t * .3) * 14, 5, Math.sin(t * .3) * 14);
+                } else {
+                    l1.position.set( - 8, 8, 6);
+                    l2.position.set(8, 6, - 6);
+                }
+                waves = waves.filter(w => t - w.t < 10);
+                const period = g.rows * 1.5 * g.radius;
+                for (let i = 0; i < coords.length; i++) {
+                    const q = coords[i],
+                    x = q.x,
+                    z = f.flight.enabled ? ((q.z - travel + period / 2) % period + period) % period - period / 2: q.z;
+                    let h = f.terrain.enabled ? a.amplitude * Math.sin(x * a.frequency + t) * Math.cos(z * a.frequency - t * .7): 0;
+                    if (f.interference.enabled) h += f.interference.strength * Math.sin(Math.hypot(x + 5, z - 4) * a.frequency - t * 2);
+                    let energy = 0,
+                    damage = 0;
+                    for (const w of waves) {
+                        const age = t - w.t,
+                        d = Math.hypot(x - w.x, z - w.z),
+                        delta = d - age * f.shockwaves.speed;
+                        const pulse = Math.exp( - delta * delta * .7 - age * f.shockwaves.decay * .3);
+                        if (f.shockwaves.enabled) h += Math.sin(delta * 3) * pulse * c.interaction.force;
+                        energy += pulse;
+                        if (f.destruction.enabled) damage = Math.max(damage, Math.exp( - d * d * .3) * Math.max(0, 1 - age / 2));
+                    }
+                    if (c.interaction.enabled) h += c.interaction.force * Math.exp( - (Math.hypot(x - pointer.x, z - pointer.z) ** 2) / (c.interaction.radius ** 2));
+                    if (f.floating.enabled) h += Math.max(0, Math.sin(t * .8 + q.seed * 40) - .85) * f.floating.height * 6;
+                    q.v += (h - q.h) * dt * 35;
+                    q.v *= Math.exp( - dt * 7);
+                    q.h += q.v * dt;
+                    topology(x, z, q.h);
+                    const broken = damage > .15;
+                    matrix(tiles, i, 0, broken ? .02: 1, f.floating.enabled ? Math.max(0, q.h - 1) * .15: 0);
+                    const pulse = f.energy.enabled ? (Math.sin(x * .65 + z * .5 - t * 3) + 1) * .5 * f.energy.strength: 0;
+                    color.copy(base).lerp(accent, Math.min(1, pulse * .5 + energy * .4 + (f.automata.enabled ? states[i] * .7: 0)));
+                    tiles.setColorAt(i, color);
+                    matrix(edges, i, g.thickness / 2 + .012, broken ? .001: 1);
+                    color.copy(accent).lerp(secondary, (Math.sin(t + x * .4 + z * .3) + 1) / 2).multiplyScalar(f.tracers.strength * (.1 + .9 * Math.pow((Math.sin(t * 3 + x + z) + 1) / 2, 8)) + energy);
+                    edges.setColorAt(i, color);
+                    topology(x, z, - g.thickness * .55);
+                    matrix(channels, i);
+                    channels.setColorAt(i, color.copy(accent).lerp(secondary, (Math.sin(t * 2 + x * .5 - z * .4) + 1) / 2).multiplyScalar(f.channels.strength * (.35 + pulse)));
+                    for (let j = 0; j < 3; j++) {
+                        topology(x + Math.cos(j * 2.1) * damage * f.destruction.strength, z + Math.sin(j * 2.1) * damage * f.destruction.strength, q.h + damage * (j + 1));
+                        matrix(fragments, i * 3 + j, 0, broken ? damage: 0.0001, t + j);
+                        fragments.setColorAt(i * 3 + j, base);
+                    }
+                }
+                for (const o of [tiles, edges, channels, fragments]) {
+                    o.instanceMatrix.needsUpdate = true;
+                    if (o.instanceColor) o.instanceColor.needsUpdate = true;
+                }
+                edges.visible = f.tracers.enabled;
+                channels.visible = f.channels.enabled;
+                fragments.visible = f.destruction.enabled;
+                particles.visible = f.particles.enabled;
+                const p = particles.geometry.attributes.position;
+                if (particles.visible) {
+                    for (let i = 0; i < p.count; i++) {
+                        const q = coords[(i * 97) % coords.length],
+                        z = f.flight.enabled ? ((q.z - travel + period / 2) % period + period) % period - period / 2: q.z;
+                        topology(q.x, z, q.h + .3 + ((t * .5 + i * .618) % 1) * 4);
+                        p.setXYZ(i, pos.x, pos.y, pos.z);
+                    }
+                    p.needsUpdate = true;
+                }
+                bloom.strength = c.post.strength;
+                bloom.radius = c.post.radius;
+                bloom.threshold = c.post.threshold;
+                if (c.post.bloom && c.material.background.length !== 9) composer.render();
+                else renderer.render(scene, camera);
+                if (c.performance.adaptive) {
+                    slow = dt > .029 ? slow + dt: Math.max(0, slow - dt);
+                    if (slow > 2 && quality > .55) {
+                        quality = Math.max(.55, quality - .15);
+                        slow = 0;
+                        resize();
+                    }
+                }
+            }
+            function locate(e) {
+                ndc.set(e.clientX / innerWidth * 2 - 1, 1 - e.clientY / innerHeight * 2);
+                ray.setFromCamera(ndc, camera);
+                return ray.ray.intersectPlane(plane, pointer);
+            }
+            const touches = new Map();
+            let pinch = 0, center = null;
+            canvas.addEventListener('pointerdown', e => {
+                canvas.setPointerCapture(e.pointerId);
+                touches.set(e.pointerId, {
+                    x: e.clientX,
+                    y: e.clientY
+                });
+                if (touches.size === 1 && c.interaction.enabled && locate(e)) waves.push({
+                    x: pointer.x,
+                    z: pointer.z,
+                    t
+                });
+                pinch = 0;
+                center = null;
+            });
+            canvas.addEventListener('pointermove', e => {
+                if (touches.has(e.pointerId)) touches.set(e.pointerId, {
+                    x: e.clientX,
+                    y: e.clientY
+                });
+                const p = [... touches.values()];
+                if (p.length >= 3) {
+                    const n = {
+                        x: p.reduce((s, v) => s + v.x, 0) / p.length,
+                        y: p.reduce((s, v) => s + v.y, 0) / p.length
+                    };
+                    if (center) {
+                        c.view.yaw += (n.x - center.x) * .3;
+                        c.view.tilt = T.MathUtils.clamp(c.view.tilt + (n.y - center.y) * .3, 0, 85);
+                    }
+                    center = n;
+                } else if (p.length === 2) {
+                    const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+                    if (pinch) {
+                        c.view.zoom = T.MathUtils.clamp(c.view.zoom * d / pinch, .2, 4);
+                        resize();
+                    }
+                    pinch = d;
+                } else if (e.buttons === 2) {
+                    c.view.yaw += e.movementX * .3;
+                    c.view.tilt = T.MathUtils.clamp(c.view.tilt + e.movementY * .3, 0, 85);
+                } else locate(e);
+            });
+            for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(name, e => {
+                touches.delete(e.pointerId);
+                pinch = 0;
+                center = null;
+                if (e.pointerType !== 'mouse') pointer.set(1e6, 0, 1e6);
+            });
+            canvas.addEventListener('pointerleave', () => pointer.set(1e6, 0, 1e6));
+            canvas.addEventListener('contextmenu', e => e.preventDefault());
+            canvas.addEventListener('wheel', e => {
+                e.preventDefault();
+                c.view.zoom = T.MathUtils.clamp(c.view.zoom * Math.exp( - e.deltaY * .001), .2, 4);
+                resize();
+            }, {
+                passive: false
+            });
+            rebuild();
+            resize();
+            requestAnimationFrame(frame);
+            if (c.editor.enabled) {
+                const {
+                    mountSettings
+                } = await import('./settings-editor.js?v=' + stamp);
+                mountSettings(c, apply);
+            }
+        </script>
+    </body>
+</html>
