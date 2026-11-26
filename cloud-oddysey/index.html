@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Cloud Odyssey</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #101b30;
+            color: white;
+            font: 13px system-ui;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+
+        #hud {
+            position: fixed;
+            bottom: 15px;
+            left: 15px;
+            pointer-events: none;
+            color: #fff;
+            text-shadow: 0 1px 5px #000;
+        }
+
+        #editor {
+            position: fixed;
+            right: 12px;
+            top: 12px;
+            width: min(340px,calc(100vw - 24px));
+            max-height: calc(100dvh - 24px);
+            overflow: auto;
+            background: #101827df;
+            backdrop-filter: blur(16px);
+            border: 1px solid #ffffff30;
+            border-radius: 12px;
+            padding: 12px;
+        }
+
+        #editor details {
+            border-top: 1px solid #ffffff20;
+            padding: 8px 0;
+        }
+
+        #editor summary {
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        #editor label {
+            display: grid;
+            grid-template-columns: 1fr 1fr 45px;
+            gap: 6px;
+            align-items: center;
+            margin: 8px 0;
+        }
+
+        #editor input,#editor select {
+            min-width: 0;
+            width: 100%;
+        }
+
+        #editor button,#editor select,#editor input[type=search] {
+            background: #26364b;
+            color: white;
+            border: 1px solid #ffffff30;
+            border-radius: 5px;
+            padding: 6px;
+        }
+
+        #editor button {
+            cursor: pointer;
+        }
+
+        #editor header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #editor .tools {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin: 8px 0;
+        }
+
+        #editor output {
+            text-align: right;
+            font-size: 11px;
+        }
+
+        #editor[hidden] {
+            display: none;
+        }
+
+        #open {
+            position: fixed;
+            right: 12px;
+            top: 12px;
+            background: #182638bb;
+            color: white;
+            border: 1px solid #ffffff40;
+            border-radius: 8px;
+            padding: 9px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="sky"></canvas>
+    <div id="hud"></div>
+    <button id="open">Settings</button>
+    <aside id="editor"></aside>
+
+    <script type="module">
+import { mountSettings } from './settings-editor.js?v=20261126-1';
+const defaults = { editor: { enabled: true }, flight: { speed: 35, altitude: 170, autopilot: true, turbulence: .25, banking: .5 }, view: { fov: 65, zoom: 1, sensitivity: 1 }, clouds: { formation: 'cumulus', coverage: .58, density: 1.4, scale: 1, base: 100, thickness: 140, evolution: .25 }, atmosphere: { sky: '#468bd0', horizon: '#d9e8f4', fog: .45, scattering: 1, visibility: 1800 }, lighting: { azimuth: 35, intensity: 1.4, color: '#fff1d2', shadows: true }, weather: { rain: 0, snow: 0, lightning: 0, wind: 12, direction: 45 }, timeline: { hour: 15, cycle: false, speed: .15 }, terrain: { enabled: false, height: 110, roughness: 1, snow: .5 }, effects: { bloom: .35, rays: .45, halo: 0, flare: .15, rainbow: 0, aurora: 0 }, performance: { quality: 'high', resolution: .75, steps: 64, adaptive: true }, hud: { enabled: true } };
+const config = structuredClone(defaults);
+const presets = { 'Above the Clouds': {}, 'Golden Horizon': { timeline: { hour: 18.3 }, lighting: { color: '#ffad65' }, effects: { rays: .8, bloom: .65 } }, 'Storm Chaser': { flight: { altitude: 125 }, clouds: { formation: 'storm', coverage: .85, density: 2.5, thickness: 230 }, weather: { rain: .8, lightning: .8, wind: 35 }, timeline: { hour: 16 }, lighting: { intensity: .35 } }, 'Midnight Flight': { timeline: { hour: 0 }, lighting: { intensity: .7 } }, 'Cotton Candy': { atmosphere: { sky: '#9878ce', horizon: '#ffb5ce' }, lighting: { color: '#ffc0db' }, timeline: { hour: 6.5 } }, 'Mountain Passage': { terrain: { enabled: true, height: 240 }, flight: { altitude: 220 }, clouds: { coverage: .42 } }, 'Celestial Gates': { effects: { rays: 1, bloom: .8 }, clouds: { coverage: .72 }, timeline: { hour: 7 } }, 'Arctic Aurora': { timeline: { hour: 1 }, effects: { aurora: 1 }, weather: { snow: .25 } }, 'Alien Atmosphere': { atmosphere: { sky: '#59318c', horizon: '#ff754b' }, lighting: { color: '#f9a0ff' }, clouds: { formation: 'cirrus' } }, 'Silent Mist': { clouds: { formation: 'stratus', coverage: .85 }, flight: { speed: 12, altitude: 120 }, atmosphere: { sky: '#929ba5', horizon: '#d9dce0', fog: .9 } } };
+const canvas = document.querySelector('#sky'), gl = canvas.getContext('webgl2', { alpha: false, antialias: false });
+if (!gl) {
+    document.querySelector('#hud').textContent = 'WebGL 2 is required.';
+    throw Error('WebGL 2 unavailable');
+}
+const vertex = `#version 300 es
+void main() {
+    vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));
+    gl_Position=vec4(p*2.-1.,0.,1.);
+}
+`;
+const fragment = `#version 300 es
+precision highp float;
+out vec4 frag;
+uniform vec2 res;
+uniform vec3 cam,sky,horizon,lightColor;
+uniform vec2 angles,wind;
+uniform float time,fov,bank,coverage,density,scale,base,thickness,evolution,fog,scatter,visibility,hour,azimuth,intensity,shadows,rain,snow,flash,terrain,height,roughness,snowcap,bloom,rays,halo,flare,rainbow,aurora;
+uniform int steps,quality,formation;
+float hash(vec3 p) {
+    p=fract(p*.1031);
+    p+=dot(p,p.yzx+33.33);
+    return fract((p.x+p.y)*p.z);
+}
+float noise(vec3 p) {
+    vec3 i=floor(p),f=fract(p);
+    f=f*f*(3.-2.*f);
+    return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);
+}
+float fbm(vec3 p) {
+    float v=0.,a=.5;
+    for(int i=0;i<5;i++) {
+        if(quality==0&&i>1)break;
+        if(quality==1&&i>3)break;
+        v+=a*noise(p);
+        p=p*2.03+17.;
+        a*=.5;
+    }
+    return v;
+}
+float cloud(vec3 p) {
+    float h=(p.y-base)/thickness;
+    if(h<=0.||h>=1.)return 0.;
+    vec3 q=(p+vec3(wind.x*time,0,wind.y*time))/(100.*scale);
+    q.y+=time*evolution*.025;
+    if(formation==1)q*=vec3(.5,3.,1.);
+    if(formation==2)q*=vec3(.45,2.,.45);
+    if(formation==3)q.y*=.55;
+    float n=fbm(q);
+    float edge=smoothstep(0.,.15,h)*(1.-smoothstep(.65,1.,h));
+    return max(0.,n-(1.-coverage)*.85)*edge*density;
+}
+mat2 rot(float a) {
+    return mat2(cos(a),-sin(a),sin(a),cos(a));
+}
+void main() {
+    vec2 uv=(gl_FragCoord.xy*2.-res)/res.y;
+    uv=rot(bank)*uv;
+    vec3 rd=normalize(vec3(uv*tan(fov*.5),1.));
+    rd.yz=rot(angles.y)*rd.yz;
+    rd.xz=rot(angles.x)*rd.xz;
+    float solar=(hour-6.)*3.14159265/12.;
+    vec3 sun=normalize(vec3(sin(azimuth)*cos(solar),sin(solar),cos(azimuth)*cos(solar)));
+    float day=smoothstep(-.18,.18,sun.y);
+    vec3 moon=normalize(vec3(-sun.x,abs(sun.y),-sun.z));
+    vec3 lamp=day>.1?sun:moon;
+    float mu=max(dot(rd,lamp),0.);
+    vec3 col=mix(horizon,sky,smoothstep(-.12,.7,rd.y));
+    col=mix(vec3(.009,.015,.045),col,day);
+    col+=lightColor*pow(mu,12.)*.15*scatter*day;
+    col+=lightColor*pow(mu,1500.)*intensity*day;
+    col+=vec3(.65,.75,1.)*pow(max(dot(rd,moon),0.),1800.)*(1.-day);
+    float star=step(.9985,hash(floor(rd*1300.)));
+    col+=star*(1.-day)*smoothstep(0.,.2,rd.y);
+    col+=vec3(.12,.9,.55)*aurora*(1.-day)*exp(-abs(rd.y-.35-.08*sin(rd.x*18.+time*.15))*20.)*(.5+.5*sin(rd.x*50.+time*.2));
+    float limit=visibility;
+    if(terrain>.5&&rd.y<0.) {
+        for(int j=0;j<90;j++) {
+            float t=10.+float(j)*visibility/90.;
+            vec3 p=cam+rd*t;
+            float h=height*pow(fbm(vec3(p.xz*.003*roughness,3.)),2.)*2.;
+            if(p.y<h) {
+                col=mix(vec3(.13,.19,.16),vec3(.85),smoothstep(height*(1.-snowcap),height,p.y));
+                col=mix(col,horizon,1.-exp(-t*fog*.001));
+                limit=t;
+                break;
+            }
+        }
+    }
+    float dy=abs(rd.y)<.0001?.0001:rd.y;
+    float a=(base-cam.y)/dy,b=(base+thickness-cam.y)/dy;
+    float lo=max(0.,min(a,b)),hi=min(limit,max(a,b));
+    vec4 acc=vec4(0.);
+    if(hi>lo) {
+        float dt=(hi-lo)/float(steps);
+        for(int i=0;i<128;i++) {
+            if(i>=steps||acc.a>.985)break;
+            float t=lo+(float(i)+.5)*dt;
+            vec3 p=cam+rd*t;
+            float d=cloud(p);
+            if(d>.001) {
+                float shade=1.;
+                if(shadows>.5) {
+                    shade=exp(-cloud(p+lamp*28.)*2.);
+                    if(quality==2)shade*=exp(-cloud(p+lamp*65.)*1.5);
+                }
+                vec3 ambient=mix(vec3(.09,.13,.24),vec3(.55,.65,.78),day);
+                vec3 lit=ambient+lightColor*shade*intensity*(.2+.65*day)+flash*vec3(.8,.85,1.);
+                lit+=lightColor*pow(mu,8.)*rays*.35;
+                lit=mix(lit,mix(vec3(.03,.05,.1),horizon,day),1.-exp(-t*fog*.0007));
+                float alpha=1.-exp(-d*dt*.045);
+                acc.rgb+=(1.-acc.a)*lit*alpha;
+                acc.a+=(1.-acc.a)*alpha;
+            }
+        }
+    }
+    col=acc.rgb+col*(1.-acc.a);
+    col+=lightColor*(bloom*pow(mu,30.)+flare*pow(mu,80.)+halo*exp(-abs(acos(clamp(dot(rd,lamp),-1.,1.))-.38)*90.))*day*(1.-acc.a*.8);
+    float arc=acos(clamp(dot(rd,-sun),-1.,1.));
+    col+=rainbow*day*exp(-abs(arc-.73)*90.)*(.5+.5*cos(vec3(0,2,4)+(arc-.73)*150.));
+    vec2 pix=gl_FragCoord.xy/res.y;
+    float r=hash(vec3(floor(vec2(pix.x*180.,(pix.y+time*2.)*24.)),0.));
+    col+=rain*step(.97,r)*.28;
+    vec2 sp=pix*75.+vec2(sin(time)*2.,time*7.);
+    col+=snow*step(.96,hash(vec3(floor(sp),9.)))*(1.-smoothstep(.05,.35,length(fract(sp)-.5)));
+    col+=flash*.12;
+    frag=vec4(pow(max(vec3(0.),1.-exp(-col)),vec3(.8)),1.);
+}
+`;
+function shader(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    throw Error(gl.getShaderInfoLog(s)); return s; }
+const program = gl.createProgram();
+gl.attachShader(program, shader(gl.VERTEX_SHADER, vertex));
+gl.attachShader(program, shader(gl.FRAGMENT_SHADER, fragment));
+gl.linkProgram(program);
+if (!gl.getProgramParameter(program, gl.LINK_STATUS))
+    throw Error(gl.getProgramInfoLog(program));
+gl.useProgram(program);
+gl.bindVertexArray(gl.createVertexArray());
+const locations = {};
+function u(n, v) { const l = locations[n] ?? (locations[n] = gl.getUniformLocation(program, n)); if (Array.isArray(v))
+    gl['uniform' + v.length + 'fv'](l, v);
+else if (['steps', 'quality', 'formation'].includes(n))
+    gl.uniform1i(l, v);
+else
+    gl.uniform1f(l, Number(v)); }
+const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+const rad = x => x * Math.PI / 180;
+let pos = [0, 170, 0], yaw = 0, pitch = 0, bank = 0, target = [0, 0], clock = 0, last = performance.now(), paused = false, qualityScale = 1, avg = 16, flash = 0;
+const keys = new Set();
+let touches = new Map(), pinch = 0;
+canvas.addEventListener('pointermove', e => { if (e.pointerType === 'mouse') {
+    target = [(e.clientX / innerWidth - .5) * 2, (e.clientY / innerHeight - .5) * 2];
+}
+else if (touches.has(e.pointerId)) {
+    const old = touches.get(e.pointerId);
+    touches.set(e.pointerId, [e.clientX, e.clientY]);
+    if (touches.size === 2) {
+        const [a, b] = [...touches.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+        if (pinch)
+            config.flight.speed = Math.max(0, Math.min(150, config.flight.speed + (d - pinch) * .2));
+        pinch = d;
+    }
+    else if (touches.size === 3) {
+        yaw += (e.clientX - old[0]) * .005;
+        pitch += (e.clientY - old[1]) * .005;
+    }
+    else
+        target = [(e.clientX / innerWidth - .5) * 2, (e.clientY / innerHeight - .5) * 2];
+} });
+canvas.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') {
+    touches.set(e.pointerId, [e.clientX, e.clientY]);
+    canvas.setPointerCapture(e.pointerId);
+    pinch = 0;
+} });
+for (const ev of ['pointerup', 'pointercancel'])
+    canvas.addEventListener(ev, e => { touches.delete(e.pointerId); pinch = 0; if (!touches.size)
+        target = [0, 0]; });
+canvas.addEventListener('pointerleave', () => target = [0, 0]);
+canvas.addEventListener('wheel', e => { e.preventDefault(); config.flight.speed = Math.max(0, Math.min(150, config.flight.speed - e.deltaY * .03)); }, { passive: false });
+window.addEventListener('keydown', e => { if (e.target.closest('input,select,button,textarea'))
+    return; if (['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code))
+    e.preventDefault(); keys.add(e.code); if (!e.repeat && e.code === 'Space')
+    paused = !paused; });
+window.addEventListener('keyup', e => keys.delete(e.code));
+window.addEventListener('blur', () => keys.clear());
+function frame(now) {
+    requestAnimationFrame(frame);
+    let ms = now - last, dt = Math.min(.05, ms / 1000);
+    last = now;
+    avg = avg * .98 + ms * .02;
+    const c = config, f = c.flight;
+    if (c.performance.adaptive) {
+        if (avg > 35)
+            qualityScale = Math.max(.45, qualityScale - dt * .08);
+        else if (avg < 20)
+            qualityScale = Math.min(1, qualityScale + dt * .03);
+    }
+    else
+        qualityScale = 1;
+    let r = c.performance.resolution * qualityScale * Math.min(devicePixelRatio, 1.5);
+    let w = Math.max(1, Math.floor(innerWidth * r)), h = Math.max(1, Math.floor(innerHeight * r));
+    if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+        gl.viewport(0, 0, w, h);
+    }
+    if (!paused) {
+        clock += dt;
+        let tx = target[0] + Number(keys.has('ArrowRight')) - Number(keys.has('ArrowLeft')), ty = target[1] + Number(keys.has('ArrowDown')) - Number(keys.has('ArrowUp'));
+        if (f.autopilot) {
+            tx += Math.sin(clock * .13) * .25;
+            ty += Math.sin(clock * .19) * .12;
+        }
+        yaw += tx * dt * .35 * c.view.sensitivity;
+        pitch += (Math.max(-1, Math.min(1, ty)) * .55 - pitch) * dt * 2;
+        bank += (-tx * f.banking * .25 + (Number(keys.has('KeyD')) - Number(keys.has('KeyA'))) * .35 - bank) * dt * 2;
+        f.altitude = Math.max(0, Math.min(600, f.altitude + (Number(keys.has('KeyW')) - Number(keys.has('KeyS'))) * dt * 40));
+        pos[0] += Math.sin(-yaw) * f.speed * dt;
+        pos[2] += Math.cos(yaw) * f.speed * dt;
+        pos[1] += (f.altitude + (f.autopilot ? Math.sin(clock * .08) * 25 : 0) - pos[1]) * dt;
+        pos[1] += Math.sin(clock * 7) * f.turbulence * dt * 5;
+        if (c.timeline.cycle)
+            c.timeline.hour = (c.timeline.hour + dt * c.timeline.speed) % 24;
+        flash *= Math.exp(-dt * 8);
+        if (Math.random() < dt * c.weather.lightning * .5)
+            flash = 1 + c.weather.lightning;
+    }
+    const cl = c.clouds, a = c.atmosphere, l = c.lighting, we = c.weather, t = c.terrain, e = c.effects, p = c.performance;
+    const uniforms = { res: [w, h], cam: pos, sky: rgb(a.sky), horizon: rgb(a.horizon), lightColor: rgb(l.color), angles: [yaw, pitch], wind: [Math.cos(rad(we.direction)) * we.wind, Math.sin(rad(we.direction)) * we.wind], time: clock, fov: rad(c.view.fov) / c.view.zoom, bank, coverage: cl.coverage, density: cl.density, scale: cl.scale, base: cl.base, thickness: cl.thickness, evolution: cl.evolution, fog: a.fog, scatter: a.scattering, visibility: a.visibility, hour: c.timeline.hour, azimuth: rad(l.azimuth), intensity: l.intensity, shadows: l.shadows, rain: we.rain, snow: we.snow, flash, terrain: t.enabled, height: t.height, roughness: t.roughness, snowcap: t.snow, ...e, steps: Math.min(p.steps, p.quality === 'performance' ? 24 : p.quality === 'high' ? 80 : 128), quality: ['performance', 'high', 'ultra'].indexOf(p.quality), formation: ['cumulus', 'cirrus', 'stratus', 'storm'].indexOf(cl.formation) };
+    for (const [n, v] of Object.entries(uniforms))
+        u(n, v);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    document.querySelector('#hud').textContent = c.hud.enabled ? `Cloud Odyssey · ${Math.round(f.speed)} m/s · ${Math.round(pos[1])} m · ${Math.round(1000 / avg)} FPS${paused ? ' · PAUSED' : ''}` : '';
+}
+mountSettings({ config, defaults, presets });
+requestAnimationFrame(frame);
+    </script>
+</body>
+</html>

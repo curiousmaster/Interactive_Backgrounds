@@ -101,6 +101,12 @@ export const backgrounds = [
             "then retract. Your pointer awakens nearby mechanisms.",
     },
     {
+        name: "Cloud Odyssey",
+        folder: "cloud-odyssey",
+        tags: ["clouds", "weather", "interactive", "3d"],
+        description: "An endless flight through evolving volumetric clouds, with dynamic weather, sunlight and atmospheric effects.",
+    },
+    {
         name: "Constellation Network",
         folder: "constellation-network",
         tags: ["particles", "space"],
@@ -339,6 +345,16 @@ export const backgrounds = [
     	description:
         	"Langton's ants rewrite glowing cells across planes, cubes, cylinders, and tori. " +
             "Explore emergent highways, interacting colonies, and richly illuminated 3D geometry.",
+    },
+    {
+        name: "Refractive Infinity",
+        folder: "refractive-infinity",
+        tags: ["abstract", "3d", "glass", "interactive" ],
+        description:
+            "Travel through an infinite universe of refractive " +
+            "crystalline structures, spectral reflections and " +
+            "living energy fields. Procedural geometry and " +
+            "GPU ray marching create an ever-changing optical world.",
     },
     {
         name: "Resonant Pools",

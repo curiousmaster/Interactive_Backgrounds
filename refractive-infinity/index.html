@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Refractive Infinity</title>
+<style>
+html, body {
+    margin:0;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    background:#050510
+}
+canvas {
+    display:block;
+    width:100%;
+    height:100%;
+    touch-action:none
+}
+#error {
+    position:fixed;
+    top:20px;
+    left:20px;
+    color:white;
+    font:14px monospace;
+    white-space:pre-wrap
+}
+</style>
+</head>
+<body>
+<canvas id="canvas">
+</canvas>
+<div id="error">
+</div>
+<script>
+// Original implementation inspired by the ray-marching example credited to Matthias Hurrle (@atzedent).
+const defaults= {
+    editor: {
+        enabled: true
+    },
+        simulation: {
+        speed: .7,
+        spacing: 5.5,
+        objectCount: 1000,
+        size: .85,
+        rotation: .5,
+        morph: 0,
+        geometry: 'Cube',
+        arrangement: 'Grid'
+    },
+        camera: {
+        automatic: true,
+        orbit: .25,
+        zoom: 1,
+        sensitivity: 1
+    },
+        material: {
+        preset: 'Amethyst',
+        color: '#b47aff',
+        ior: 1.45,
+        dispersion: .15,
+        reflection: .65,
+        roughness: .04,
+        absorption: .12
+    },
+        effects: {
+        plasma: 1,
+        fog: .25,
+        bloom: .6,
+        iridescence: .6,
+        core: .2,
+        deformation: 0,
+        caustics: .3,
+        distortion: 0,
+        frost: 0,
+        shockwave: 1
+    },
+        features: {
+            "luminousEdges": {
+                "enabled": true,
+                "color": "#b47aff",
+                "intensity": 0.65,
+                "thickness": 0.12,
+                "pulseSpeed": 0.4
+            },
+            "surfaceEngravings": {
+                "enabled": false,
+                "pattern": "Grid",
+                "scale": 8,
+                "thickness": 0.08,
+                "color": "#75dfff",
+                "intensity": 0.5,
+                "speed": 0.3
+            },
+            "dichroicCoating": {
+                "enabled": false,
+                "intensity": 0.5,
+                "filmThickness": 3,
+                "saturation": 0.8,
+                "colorShift": 0
+            },
+            "energyScanlines": {
+                "enabled": false,
+                "color": "#66ffff",
+                "width": 0.12,
+                "frequency": 2,
+                "speed": 1,
+                "direction": "Y",
+                "intensity": 0.7
+            },
+            "resonanceWaves": {
+                "enabled": true,
+                "wavelength": 12,
+                "speed": 0.7,
+                "amplitude": 0.3,
+                "color": "#a080ff",
+                "direction": "Z"
+            },
+            "coreHeartbeat": {
+                "enabled": false,
+                "intensity": 0.6,
+                "frequency": 1,
+                "variation": 0.5,
+                "color": "#ff77bb",
+                "synchronization": 0.2
+            },
+            "cosmicDust": {
+                "enabled": false,
+                "density": 0.35,
+                "size": 0.08,
+                "brightness": 0.5,
+                "driftSpeed": 0.3,
+                "color": "#c4dfff",
+                "twinkle": 0.5
+            },
+            "spectralDepth": {
+                "enabled": true,
+                "nearColor": "#66ddff",
+                "farColor": "#bb66ff",
+                "distance": 40,
+                "intensity": 0.3,
+                "transitionCurve": 1
+            },
+            "objectPersonalities": {
+                "enabled": true,
+                "colorVariation": 0.3,
+                "brightnessVariation": 0.2,
+                "rotationVariation": 0.2,
+                "materialVariation": 0.15
+            },
+            "breathingGeometry": {
+                "enabled": false,
+                "amplitude": 0.12,
+                "speed": 0.7,
+                "phaseVariation": 0.7,
+                "synchronization": 0.2
+            }
+        },
+        performance: {
+        resolution: .7,
+        steps: 96,
+        refractions: 5,
+        adaptive: true
+    }
+};
+const config=structuredClone(defaults);
+window.backgroundConfig=config;
+const presets= {
+    'Diamond Glass':['#e6faff', 1.52, .12, .8, 0], Obsidian:['#37253f', 1.7, .02, 1, .65], Holographic:['#78ffec', 1.4, .4, .7, .04], 'Frozen Crystal':['#83cfff', 1.31, .08, .5, .18], 'Liquid Mercury':['#c8d8ef', 2, .02, 1, .9], 'Plasma Core':['#ff6735', 1.45, .1, .6, .1], Amethyst:['#b47aff', 1.45, .15, .65, .12], 'Cyber Grid':['#00efff', 1.4, .2, .7, .08], 'Golden Amber':['#ffb341', 1.5, .1, .6, .18], 'Cosmic Glass':['#8170ff', 1.5, .3, .8, .08]
+};
+function applyPreset(name) {
+    const p=presets[name];
+    if(!p)return;
+    Object.assign(config.material, {
+        preset:name, color:p[0], ior:p[1], dispersion:p[2], reflection:p[3], absorption:p[4]
+    });
+}
+
+// Scene presets are independent of material presets and GPU quality settings.
+const scenePresets = {
+    'Amethyst Infinity': ['Amethyst', 'Cube', 'Grid', 1000, .7, 5.5, 0, .6],
+    'Diamond Universe': ['Diamond Glass', 'Sphere', 'Grid', 850, .5, 5, 0, .4],
+    'Cyber Tunnel': ['Cyber Grid', 'Cube', 'Tunnel', 1000, 1.2, 5.5, 0, .9],
+    'Plasma Reactor': ['Plasma Core', 'Octahedron', 'Spiral', 650, .8, 6, 0, 1.2],
+    'Frozen Dimension': ['Frozen Crystal', 'Dodecahedron', 'Wave', 750, .25, 6, 0, .4],
+    'Liquid Mercury': ['Liquid Mercury', 'Sphere', 'Random', 500, .45, 7, .15, .3],
+    'Golden Vortex': ['Golden Amber', 'Torus', 'Vortex', 800, .65, 6, 0, .8],
+    'Cosmic Fractal': ['Cosmic Glass', 'Fractal', 'Fractal', 350, .35, 7, 0, .8],
+    'Obsidian Void': ['Obsidian', 'Cube', 'Random', 150, .3, 8, 0, .2],
+    'Holographic Dream': ['Holographic', 'Cube', 'Galaxy', 900, .55, 6, .85, 1]
+};
+
+function applyScene(name) {
+    const preset = scenePresets[name];
+    if (!preset) return;
+    for (const section of ['simulation', 'camera', 'material', 'effects', 'features']) {
+        Object.assign(config[section], structuredClone(defaults[section]));
+    }
+    const [material, geometry, arrangement, objectCount, speed, spacing, morph, bloom] = preset;
+    applyPreset(material);
+    Object.assign(config.simulation, { geometry, arrangement, objectCount, speed, spacing, morph });
+    Object.assign(config.effects, { bloom, plasma: .6 + bloom * .5, core: bloom * .3 });
+    const extras = {
+        'Diamond Universe': ['dichroicCoating'], 'Cyber Tunnel': ['surfaceEngravings','energyScanlines'],
+        'Plasma Reactor': ['coreHeartbeat'], 'Frozen Dimension': ['surfaceEngravings'],
+        'Liquid Mercury': ['breathingGeometry'], 'Golden Vortex': ['energyScanlines'],
+        'Cosmic Fractal': ['cosmicDust'], 'Obsidian Void': ['coreHeartbeat'],
+        'Holographic Dream': ['dichroicCoating','breathingGeometry']
+    };
+    for (const key of extras[name] || []) config.features[key].enabled = true;
+    config.camera.orbit = .12 + speed * .2;
+}
+
+function randomizeScene() {
+    const pick = values => values[Math.floor(Math.random() * values.length)];
+    const range = (lo, hi) => Math.round((lo + Math.random() * (hi - lo)) * 100) / 100;
+    applyScene(pick(Object.keys(scenePresets)));
+    applyPreset(pick(Object.keys(presets)));
+    Object.assign(config.simulation, {
+        geometry: pick(geometries), arrangement: pick(arrangements),
+        objectCount: Math.round(range(100, 1000)), spacing: range(5.5, 9),
+        size: range(.45, 1), speed: range(.2, 1.2), rotation: range(.1, .9),
+        morph: Math.random() < .35 ? range(.1, .7) : 0
+    });
+    for (const feature of Object.values(config.features)) {
+        feature.enabled = Math.random() < .35;
+        for (const key of Object.keys(feature)) {
+            if (/color$/i.test(key)) feature[key] = '#' + Math.floor(Math.random()*16777216).toString(16).padStart(6,'0');
+            if (['intensity','amplitude','brightness'].includes(key)) feature[key] *= range(.5,1.3);
+        }
+    }
+    Object.assign(config.effects, {
+        bloom: range(.2, 1), plasma: range(.3, 1.2), iridescence: range(.1, .9),
+        fog: range(.05, .4), deformation: range(0, .2)
+    });
+}
+
+const canvas=document.querySelector('canvas'), gl=canvas.getContext('webgl2', {
+    alpha:false, antialias:false
+});
+const vs=`#version 300 es
+void main() {
+    vec2 p=vec2(float((gl_VertexID<<1)&2), float(gl_VertexID&2));
+    gl_Position=vec4(p*2.-1., 0, 1);
+}
+`;
+const fs=`#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec2 res, angles;
+uniform float t, spacing, size, spin, morph, zoom, ior, dispersion, reflection, roughness, absorption, plasma, fog, bloom, iridescence, core, deformation, caustics, distortion, frost, pulse;
+uniform vec3 tint;
+uniform int geometry, arrangement, steps, bounces, objectCount;
+uniform float luminousEdges_enabled;
+uniform vec3 luminousEdges_color;
+uniform float luminousEdges_intensity;
+uniform float luminousEdges_thickness;
+uniform float luminousEdges_pulseSpeed;
+uniform float surfaceEngravings_enabled;
+uniform float surfaceEngravings_pattern;
+uniform float surfaceEngravings_scale;
+uniform float surfaceEngravings_thickness;
+uniform vec3 surfaceEngravings_color;
+uniform float surfaceEngravings_intensity;
+uniform float surfaceEngravings_speed;
+uniform float dichroicCoating_enabled;
+uniform float dichroicCoating_intensity;
+uniform float dichroicCoating_filmThickness;
+uniform float dichroicCoating_saturation;
+uniform float dichroicCoating_colorShift;
+uniform float energyScanlines_enabled;
+uniform vec3 energyScanlines_color;
+uniform float energyScanlines_width;
+uniform float energyScanlines_frequency;
+uniform float energyScanlines_speed;
+uniform float energyScanlines_direction;
+uniform float energyScanlines_intensity;
+uniform float resonanceWaves_enabled;
+uniform float resonanceWaves_wavelength;
+uniform float resonanceWaves_speed;
+uniform float resonanceWaves_amplitude;
+uniform vec3 resonanceWaves_color;
+uniform float resonanceWaves_direction;
+uniform float coreHeartbeat_enabled;
+uniform float coreHeartbeat_intensity;
+uniform float coreHeartbeat_frequency;
+uniform float coreHeartbeat_variation;
+uniform vec3 coreHeartbeat_color;
+uniform float coreHeartbeat_synchronization;
+uniform float cosmicDust_enabled;
+uniform float cosmicDust_density;
+uniform float cosmicDust_size;
+uniform float cosmicDust_brightness;
+uniform float cosmicDust_driftSpeed;
+uniform vec3 cosmicDust_color;
+uniform float cosmicDust_twinkle;
+uniform float spectralDepth_enabled;
+uniform vec3 spectralDepth_nearColor;
+uniform vec3 spectralDepth_farColor;
+uniform float spectralDepth_distance;
+uniform float spectralDepth_intensity;
+uniform float spectralDepth_transitionCurve;
+uniform float objectPersonalities_enabled;
+uniform float objectPersonalities_colorVariation;
+uniform float objectPersonalities_brightnessVariation;
+uniform float objectPersonalities_rotationVariation;
+uniform float objectPersonalities_materialVariation;
+uniform float breathingGeometry_enabled;
+uniform float breathingGeometry_amplitude;
+uniform float breathingGeometry_speed;
+uniform float breathingGeometry_phaseVariation;
+uniform float breathingGeometry_synchronization;
+uniform float cosmeticQuality, visualTime;
+mat2 rot(float a) {
+    return mat2(cos(a), -sin(a), sin(a), cos(a));
+}
+
+float hash(vec3 p) {
+    vec3 q = fract(p * vec3(.1031, .1030, .0973));
+    q += dot(q, q.yxz + 33.33);
+    return fract((q.x + q.y) * q.z);
+}
+
+float box(vec3 p, vec3 b) {
+    vec3 q=abs(p)-b;
+    return length(max(q, 0.))+min(max(q.x, max(q.y, q.z)), 0.);
+}
+
+float shape(vec3 p, int g) {
+    if(g==1)return length(p)-size;
+    if(g==2)return (abs(p.x)+abs(p.y)+abs(p.z)-size*1.5)*.57735;
+    if(g==3)return length(vec2(length(p.xz)-size*.75, p.y))-size*.27;
+    if (g == 4) {
+        vec3 a=abs(p);
+        float axis = max(a.x, max(a.y, a.z));
+        float diagonal = max(
+            dot(a, normalize(vec3(1.0, 1.618, 0.0))),
+            max(
+                dot(a, normalize(vec3(0.0, 1.0, 1.618))),
+                dot(a, normalize(vec3(1.618, 0.0, 1.0)))
+            )
+        );
+        return max(axis, diagonal) - size * 0.85;
+    }
+    if(g==5) {
+        float d=box(p, vec3(size));
+        for(int i=0; i<3; i++) {
+            float s=pow(3., float(i));
+            vec3 q=abs(mod(p*s+size, 2.*size)-size);
+            float cut=min(max(q.x, q.y), min(max(q.y, q.z), max(q.x, q.z)))-size/3.;
+            d=max(d, -cut/s);
+        }
+        return d;
+    }
+    return box(p, vec3(size*.85))-size*.15;
+}
+
+vec3 lattice(vec3 p) {
+    float z=p.z;
+    if(arrangement==1) {
+        p.xy*=rot(z*.08);
+    }
+    if(arrangement==2) {
+        p.xy*=rot(z*.23);
+    }
+    if(arrangement==3) {
+        p.xy+=vec2(sin(z*.25), cos(z*.25))*spacing*.5;
+    }
+    if(arrangement==5) {
+        p.y+=sin(p.x*.35+t)*spacing*.25;
+    }
+    if(arrangement==7) {
+        p.xy*=rot(z*.12+t*.3);
+        p.xy*=1.+.12*sin(z*.2);
+    }
+    return p;
+}
+
+float scene(vec3 p) {
+    p = lattice(p);
+    vec3 cell=floor(p/spacing+.5);
+    p-=cell*spacing;
+
+    // Exactly objectCount occupied cells in each repeating 10 x 10 x 10 block.
+    // A coprime multiplier permutes all 1000 cell indices without duplicates.
+    if (objectCount < 1000) {
+    ivec3 tile = ivec3(mod(cell, 10.0));
+    int index = tile.x + 10 * tile.y + 100 * tile.z;
+    int rank = (index * 373 + 137) % 1000;
+    if (rank >= objectCount) {
+        // Bound the step near cell boundaries to avoid skipping occupied cells.
+        vec3 edge = vec3(spacing * 0.5) - abs(p);
+        return max(0.008, min(edge.x, min(edge.y, edge.z)) * 0.5);
+    }
+
+    }
+
+    if(arrangement==4)p+=(vec3(hash(cell), hash(cell+7.), hash(cell+19.))-.5)*spacing*.35;
+    if(arrangement==6)p*=1.+.2*hash(cell);
+    float seed = hash(cell);
+    float variation = objectPersonalities_enabled * objectPersonalities_rotationVariation;
+    p.xy*=rot(t*spin+seed*2. + variation*(seed-.5)*visualTime*.25);
+    p.yz*=rot(t*spin*.7);
+    float breathing = 1.;
+    if (breathingGeometry_enabled > .5) {
+        breathing += breathingGeometry_amplitude * sin(visualTime*breathingGeometry_speed + seed*6.283*breathingGeometry_phaseVariation*(1.-breathingGeometry_synchronization));
+        p /= breathing;
+    }
+    float d = shape(p, geometry);
+    if (morph > 0.001) d = mix(d, shape(p, (geometry+1)%6), morph*(.5+.5*sin(t)));
+    d *= breathing;
+    if (deformation <= 0.001) return d * .75;
+    return (d+deformation*.08*sin(p.x*7.+t)*sin(p.y*6.)*sin(p.z*5.))*.75;
+}
+
+vec3 normal(vec3 p) {
+    vec2 e=vec2(.002, 0);
+    return normalize(vec3(scene(p+e.xyy)-scene(p-e.xyy), scene(p+e.yxy)-scene(p-e.yxy), scene(p+e.yyx)-scene(p-e.yyx)));
+}
+
+vec3 spectrum(float a) {
+    return .55+.45*cos(a+vec3(0, 2.094, 4.188));
+}
+
+vec3 env(vec3 d) {
+    vec2 p=d.xy/(1.3+abs(d.z));
+    if (plasma < .001) return vec3(.008,.009,.025)+pow(max(0.,dot(d,normalize(vec3(.4,.7,1)))),24.)*vec3(1,.8,.6);
+    float f=0.;
+    float amplitude = 1.;
+    for(int i=0; i<6; i++) {
+        p=rot(.7)*p*1.8;
+        f+=sin(p.x*5.+sin(p.y*4.+t*.4)+t*.3)* amplitude;
+        amplitude /= 1.8;
+    }
+    float n=pow(.5+.5*sin(f*2.+t*.2), 4.);
+    return vec3(.008, .009, .025)+plasma*n*(tint*.3+vec3(.04, .02, .1))+pow(max(0., dot(d, normalize(vec3(.4, .7, 1)))), 24.)*vec3(1, .8, .6);
+}
+
+
+vec3 surfaceEffects(vec3 p, vec3 n, vec3 rd, float travel, float seed) {
+    vec3 c = vec3(0.);
+    float facing = abs(dot(n, rd));
+    if (luminousEdges_enabled > .5) {
+        float edge = pow(1.-facing, 1./max(.03,luminousEdges_thickness));
+        c += luminousEdges_color * edge * luminousEdges_intensity * (.8+.2*sin(visualTime*luminousEdges_pulseSpeed));
+    }
+    if (surfaceEngravings_enabled > .5 && cosmeticQuality > .45) {
+        vec3 q = lattice(p)*surfaceEngravings_scale;
+        vec2 a = abs(n.x)>abs(n.y) && abs(n.x)>abs(n.z) ? q.yz : (abs(n.y)>abs(n.z)?q.xz:q.xy);
+        a.y += visualTime*surfaceEngravings_speed;
+        float line = min(abs(fract(a.x)-.5),abs(fract(a.y)-.5));
+        if(surfaceEngravings_pattern==1.) line=min(line,abs(fract((a.x+a.y)*.866)-.5));
+        if(surfaceEngravings_pattern==2.) line=abs(fract(length(a))-.5);
+        if(surfaceEngravings_pattern==3.) line=max(min(line,abs(fract(a.x+a.y)-.5)),abs(fract(a.y*.5)-.5)*.3);
+        c += surfaceEngravings_color * surfaceEngravings_intensity * (1.-smoothstep(surfaceEngravings_thickness*.5,surfaceEngravings_thickness+.025,line));
+    }
+    if(dichroicCoating_enabled>.5) c+=mix(vec3(.55),spectrum(facing*dichroicCoating_filmThickness*6.+dichroicCoating_colorShift),dichroicCoating_saturation)*dichroicCoating_intensity*.25;
+    if(energyScanlines_enabled>.5) {
+        float axis=energyScanlines_direction==4.?p.x:energyScanlines_direction==5.?p.y:p.z;
+        float band=abs(fract(axis*energyScanlines_frequency*.2-visualTime*energyScanlines_speed)-.5);
+        c+=energyScanlines_color*energyScanlines_intensity*(1.-smoothstep(energyScanlines_width*.5,energyScanlines_width+.02,band));
+    }
+    if(resonanceWaves_enabled>.5) {
+        float axis=resonanceWaves_direction==4.?p.x:resonanceWaves_direction==5.?p.y:p.z;
+        c+=resonanceWaves_color*resonanceWaves_amplitude*pow(.5+.5*sin(axis*6.283/max(.1,resonanceWaves_wavelength)-visualTime*resonanceWaves_speed),4.);
+    }
+    if(coreHeartbeat_enabled>.5) {
+        float phase=visualTime*coreHeartbeat_frequency*(1.+(seed-.5)*coreHeartbeat_variation*(1.-coreHeartbeat_synchronization))+seed*6.283*(1.-coreHeartbeat_synchronization);
+        c+=coreHeartbeat_color*coreHeartbeat_intensity*pow(.5+.5*sin(phase),6.)*facing*facing;
+    }
+    return c;
+}
+vec3 dustLayer(vec3 d) {
+    if(cosmicDust_enabled<.5 || cosmeticQuality<.4) return vec3(0.);
+    vec2 q=vec2(atan(d.y,d.x),asin(clamp(d.z,-1.,1.)))*32.;
+    q.y+=visualTime*cosmicDust_driftSpeed;
+    vec2 cell=floor(q), local=fract(q)-.5;
+    float seed=hash(vec3(cell,13.));
+    float star=1.-smoothstep(cosmicDust_size*.5,cosmicDust_size+.025,length(local));
+    return cosmicDust_color*cosmicDust_brightness*star*step(seed,cosmicDust_density)*(1.-cosmicDust_twinkle*(.5+.5*sin(visualTime+seed*40.)));
+}
+
+void main() {
+    vec2 uv=(gl_FragCoord.xy-.5*res)/min(res.x, res.y);
+    vec3 ro=vec3(spacing*.5, spacing*.5, t), rd=normalize(vec3(uv/zoom, 1));
+    rd.yz*=rot(angles.y);
+    rd.xz*=rot(angles.x);
+    rd.xy*=rot(distortion*.15*sin(length(uv)*8.-t));
+    vec3 p=ro, col=vec3(0), through=vec3(1);
+    float travel=0., side=scene(ro)<0.?-1.:1.;
+    int hits=0;
+    float glow=0.;
+    for(int i=0; i<192; i++) {
+        if(i>=steps||travel>55.||hits>=bounces||objectCount==0||max(through.r,max(through.g,through.b))<.025)break;
+        float d=scene(p)*side;
+        if(abs(d)<.003||d<0.) {
+            vec3 n=normal(p)*side;
+            float fr=pow(1.-clamp(dot(-rd, n), 0., 1.), 5.);
+            vec3 refl=reflect(rd, n);
+            float spec=pow(max(0., dot(refl, normalize(vec3(.4, .7, 1)))), mix(100., 8., roughness));
+            vec3 spectral=mix(vec3(1), spectrum(fr*9.+t*.15), iridescence);
+            float seed = hash(floor(lattice(p)/spacing+.5));
+            vec3 personality = mix(vec3(1.), spectrum(seed*6.283)*1.5, objectPersonalities_enabled*objectPersonalities_colorVariation);
+            personality *= 1.+objectPersonalities_enabled*objectPersonalities_brightnessVariation*(seed-.5);
+            spec = mix(spec, sqrt(spec), objectPersonalities_enabled*objectPersonalities_materialVariation*seed);
+            vec3 extra = surfaceEffects(p,n,rd,travel,seed);
+            if(spectralDepth_enabled>.5) {
+                vec3 depthTint=mix(spectralDepth_nearColor,spectralDepth_farColor,pow(clamp(travel/max(.1,spectralDepth_distance),0.,1.),spectralDepth_transitionCurve));
+                personality *= mix(vec3(1.),depthTint,spectralDepth_intensity);
+            }
+            col += through*extra*personality;
+            col+=through*personality*(reflection*(.12+fr)*env(refl)+spec*reflection*2.*spectral+core*.08*tint+caustics*.15*pow(1.-fr, 12.)*spectral+frost*.05);
+            vec3 next=refract(rd, n, side>0.?1./ior:ior);
+            if(length(next)<.01) {
+                rd=refl;
+            } else {
+                if (dispersion > .001) {
+                vec3 red=refract(rd, n, side>0.?1./max(1.01, ior-dispersion*.12):max(1.01, ior-dispersion*.12));
+                vec3 blue=refract(rd, n, side>0.?1./(ior+dispersion*.12):ior+dispersion*.12);
+                col+=through*dispersion*.22*vec3(env(red).r, env(next).g, env(blue).b);
+                }
+                rd=next;
+                side=-side;
+            }
+            through*=mix(vec3(1), tint, absorption)*.86;
+            p+=rd*.025;
+            travel+=.025;
+            hits++;
+        } else {
+            float stepD=clamp(d, .004, 2.);
+            if (bloom > .001) glow+=exp(-abs(d)*9.)*stepD;
+            travel+=stepD;
+            p+=rd*stepD;
+        }
+    }
+    vec3 background = env(rd) + dustLayer(rd);
+    col += through * background;
+    col+=tint*glow*bloom*.12;
+    col=mix(col, background*.35, 1.-exp(-travel*fog*.025));
+    col+=tint*pulse*exp(-abs(length(uv)-pulse*.7)*40.)*.2;
+    col=1.-exp(-col*1.7);
+    fragColor=vec4(pow(max(col, 0.), vec3(.8)), 1);
+}
+`;
+let program;
+const uniformLocations = new Map();
+let nextQualityCheck = 0;
+function shader(type, src) {
+    const s=gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if(!gl.getShaderParameter(s, gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));
+    return s;
+}
+
+const geometries=['Cube', 'Sphere', 'Octahedron', 'Torus', 'Dodecahedron', 'Fractal'], arrangements=['Grid', 'Tunnel', 'Spiral', 'Galaxy', 'Random', 'Wave', 'Fractal', 'Vortex'];
+let visualClock=0;
+let yaw=0, pitch=0, clock=0, last=0, quality=1, avg=16, pulse=0;
+const pointers=new Map();
+let pinch=0;
+canvas.onpointerdown=e=> {
+    canvas.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, [e.clientX, e.clientY]);
+    pulse=1;
+};
+canvas.onpointermove=e=> {
+    const old=pointers.get(e.pointerId);
+    if(!old)return;
+    pointers.set(e.pointerId, [e.clientX, e.clientY]);
+    if(pointers.size===2) {
+        const [a, b]=[...pointers.values()];
+        const d=Math.hypot(a[0]-b[0], a[1]-b[1]);
+        if(pinch)config.camera.zoom=Math.max(.3, Math.min(4, config.camera.zoom*d/pinch));
+        pinch=d;
+    } else {
+        yaw+=(e.clientX-old[0])*.005*config.camera.sensitivity;
+        pitch=Math.max(-1.5, Math.min(1.5, pitch+(e.clientY-old[1])*.005*config.camera.sensitivity));
+    }
+};
+canvas.onpointerup=canvas.onpointercancel=e=> {
+    pointers.delete(e.pointerId);
+    pinch=0;
+};
+canvas.onwheel=e=> {
+    e.preventDefault();
+    config.camera.zoom=Math.max(.3, Math.min(4, config.camera.zoom*Math.exp(-e.deltaY*.001)));
+};
+function frame(now) {
+    const dt=Math.min(.05, (now-last)/1000||0);
+    if(last)avg=avg*.97+(now-last)*.03;
+    last=now;
+    visualClock+=dt;
+    clock+=dt*config.simulation.speed*3;
+    pulse=Math.max(0, pulse-dt);
+    if (config.performance.adaptive && now >= nextQualityCheck) {
+        nextQualityCheck = now + 750;
+        quality = Math.max(.25, Math.min(1, quality + (avg > 24 ? -.10 : avg < 18 ? .025 : 0)));
+    }
+    if(!config.performance.adaptive)quality=1;
+    const scale=Math.min(devicePixelRatio, 2, Math.sqrt(1600000 / Math.max(1, innerWidth * innerHeight)))*config.performance.resolution*quality, w=Math.max(1, Math.round(innerWidth*scale)), h=Math.max(1, Math.round(innerHeight*scale));
+    if(canvas.width!==w||canvas.height!==h) {
+        canvas.width=w;
+        canvas.height=h;
+        gl.viewport(0, 0, w, h);
+    }
+    const s=config.simulation, c=config.camera, m=config.material, e=config.effects, p=config.performance;
+    const u = n => {
+        if (!uniformLocations.has(n)) uniformLocations.set(n, gl.getUniformLocation(program, n));
+        return uniformLocations.get(n);
+    };
+    const values= {
+        t:clock, spacing:s.spacing, size:s.size, spin:s.rotation, morph:s.morph, zoom:c.zoom, ior:m.ior, dispersion:m.dispersion, reflection:m.reflection, roughness:m.roughness, absorption:m.absorption, ...e, pulse:pulse*e.shockwave
+    };
+    for(const [k, v] of Object.entries(values))gl.uniform1f(u(k), v);
+    const rgb = value => value.slice(1).match(/../g).map(x => parseInt(x,16)/255);
+    gl.uniform1f(u('visualTime'), visualClock);
+    gl.uniform1f(u('cosmeticQuality'), quality);
+    for (const [name, feature] of Object.entries(config.features)) {
+        for (const [key, v] of Object.entries(feature)) {
+            const location = u(name+'_'+key);
+            if (typeof v === 'string' && v.startsWith('#')) gl.uniform3fv(location,rgb(v));
+            else gl.uniform1f(location, typeof v === 'string' ? ['Grid','Hexagons','Rings','Circuit','X','Y','Z'].indexOf(v) : Number(v));
+        }
+    }
+    gl.uniform2f(u('res'), w, h);
+    gl.uniform2f(u('angles'), yaw+(c.automatic?Math.sin(clock*.13)*c.orbit:0), pitch+(c.automatic?Math.cos(clock*.1)*c.orbit:0));
+    gl.uniform3fv(u('tint'), m.color.slice(1).match(/../g).map(x=>parseInt(x, 16)/255));
+    for(const [k, v] of Object.entries( {
+        objectCount: Math.max(0, Math.min(1000, Math.round(s.objectCount))), geometry:geometries.indexOf(s.geometry), arrangement:arrangements.indexOf(s.arrangement), steps:p.steps, bounces:p.refractions
+    }))gl.uniform1i(u(k), v);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    requestAnimationFrame(frame);
+} try {
+    if(!gl)throw Error('WebGL2 is not available');
+    program=gl.createProgram();
+    gl.attachShader(program, shader(gl.VERTEX_SHADER, vs));
+    gl.attachShader(program, shader(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(program);
+    if(!gl.getProgramParameter(program, gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));
+    gl.useProgram(program);
+    requestAnimationFrame(frame);
+} catch(e) {
+    document.querySelector('#error').textContent=e.message;
+}
+</script>
+<script src="settings-editor.js?v=20261126-features-v2">
+</script>
+<script>
+if(config.editor.enabled)mountSettings(config, defaults, {
+    presets, applyPreset, geometries, arrangements, scenePresets, applyScene, randomizeScene
+});
+</script>
+</body>
+</html>
+
