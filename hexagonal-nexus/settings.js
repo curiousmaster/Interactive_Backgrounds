@@ -7,7 +7,9 @@ export const defaults = {
         columns: 42,
         rows: 42,
         gap: 0.07,
-        thickness: 0.45
+        thickness: 0.45,
+        fixedGrid: true,
+        topChamfer: 0.08
     },
     view: {
         threeD: true,
@@ -125,6 +127,7 @@ export const ranges = {
     'grid.rows': [8, 80, 1],
     'grid.gap': [0.01, 0.3, 0.01],
     'grid.thickness': [0.05, 2, 0.05],
+    'grid.topChamfer': [0, 0.45, 0.01],
     'view.tilt': [0, 85, 1],
     'view.yaw': [ - 180, 180, 1],
     'view.zoom': [0.2, 4, 0.05],
@@ -137,6 +140,8 @@ export const ranges = {
 };
 export const descriptions = {
     grid: 'Hexagonal lattice dimensions and geometry.',
+    'grid.fixedGrid': 'Show the stationary energy lattice beneath the moving tiles.',
+    'grid.topChamfer': 'Width of the upper bevel as a fraction of the tile radius. Limited by tile thickness.',
     view: 'Camera projection, orientation and surface topology.',
     material: 'Surface colors and physical material properties. Background accepts #RRGGBBAA.',
     animation: 'Global motion and wave parameters.',

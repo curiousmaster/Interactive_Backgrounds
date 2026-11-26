@@ -189,9 +189,34 @@
                 const n = coords.length;
                 states = coords.map(() => Math.random() < .25 ? 1: 0);
                 next = states.slice();
-                const geo = new T.CylinderGeometry(r * (1 - g.gap), r * (1 - g.gap), g.thickness, 6);
-                geo.rotateY(Math.PI / 6);
-                tiles = new T.InstancedMesh(geo, new T.MeshPhysicalMaterial(), n);
+                // All geometry uses the same pointy-top hexagonal orientation.
+                const tileRadius = r * (1 - g.gap);
+                const halfHeight = g.thickness / 2;
+                const chamfer = Math.min(
+                    tileRadius * Math.max(0, g.topChamfer),
+                    g.thickness * 0.95
+                );
+                const topRadius = tileRadius - chamfer;
+                const profile = [
+                    new T.Vector2(0, -halfHeight),
+                    new T.Vector2(tileRadius, -halfHeight)
+                ];
+
+                if (chamfer > 0) {
+                    profile.push(new T.Vector2(tileRadius, halfHeight - chamfer));
+                }
+
+                profile.push(
+                    new T.Vector2(topRadius, halfHeight),
+                    new T.Vector2(0, halfHeight)
+                );
+
+                const geo = new T.LatheGeometry(profile, 6);
+                tiles = new T.InstancedMesh(
+                    geo,
+                    new T.MeshPhysicalMaterial({ flatShading: true }),
+                    n
+                );
                 tiles.castShadow = tiles.receiveShadow = true;
                 tiles.frustumCulled = false;
                 group.add(tiles);
@@ -212,7 +237,7 @@
                     geom.rotateX( - Math.PI / 2);
                     return geom;
                 }
-                edges = new T.InstancedMesh(ring(r * (1 - g.gap), r * .035), new T.MeshBasicMaterial({
+                edges = new T.InstancedMesh(ring(topRadius, Math.min(r * 0.035, topRadius * 0.2)), new T.MeshBasicMaterial({
                     toneMapped: false,
                     side: T.DoubleSide
                 }), n);
@@ -288,6 +313,7 @@
             }
             addEventListener('resize', resize);
             function apply(p) {
+                if (p === 'grid.fixedGrid') return;
                 if (p === 'all' || p.startsWith('grid.') || p === 'features.particles.count') rebuild();
                 else updateMaterials();
                 if (p === 'all' || p.startsWith('performance') || p === 'view.zoom') resize();
@@ -406,11 +432,14 @@
                     q.h += q.v * dt;
                     topology(x, z, q.h);
                     const broken = damage > .15;
-                    matrix(tiles, i, 0, broken ? .02: 1, f.floating.enabled ? Math.max(0, q.h - 1) * .15: 0);
+                    const spin = f.floating.enabled
+                        ? Math.max(0, q.h - 1) * 0.15
+                        : 0;
+                    matrix(tiles, i, 0, broken ? 0.02 : 1, spin);
                     const pulse = f.energy.enabled ? (Math.sin(x * .65 + z * .5 - t * 3) + 1) * .5 * f.energy.strength: 0;
                     color.copy(base).lerp(accent, Math.min(1, pulse * .5 + energy * .4 + (f.automata.enabled ? states[i] * .7: 0)));
                     tiles.setColorAt(i, color);
-                    matrix(edges, i, g.thickness / 2 + .012, broken ? .001: 1);
+                    matrix(edges, i, g.thickness / 2 + 0.002, broken ? 0.001 : 1, spin);
                     color.copy(accent).lerp(secondary, (Math.sin(t + x * .4 + z * .3) + 1) / 2).multiplyScalar(f.tracers.strength * (.1 + .9 * Math.pow((Math.sin(t * 3 + x + z) + 1) / 2, 8)) + energy);
                     edges.setColorAt(i, color);
                     topology(x, z, - g.thickness * .55);
@@ -427,7 +456,7 @@
                     if (o.instanceColor) o.instanceColor.needsUpdate = true;
                 }
                 edges.visible = f.tracers.enabled;
-                channels.visible = f.channels.enabled;
+                channels.visible = g.fixedGrid && f.channels.enabled;
                 fragments.visible = f.destruction.enabled;
                 particles.visible = f.particles.enabled;
                 const p = particles.geometry.attributes.position;
