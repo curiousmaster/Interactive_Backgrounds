@@ -177,11 +177,87 @@
         composer.addPass(pass);
         composer.addPass(bloom);
         composer.addPass(new OutputPass());
-        scene.add(new T.HemisphereLight(0xbddfff, 0x252040, 2));
-        for (const p of [V(-8, 10, 5), V(8, -3, -5)]) {
-            const l = new T.DirectionalLight(0xc8dfff, 3);
-            l.position.copy(p);
-            scene.add(l);
+        // Environmental lighting: independent from optical emitters.
+        const ambient = new T.AmbientLight();
+        const directional = new T.DirectionalLight();
+        const rim = new T.DirectionalLight();
+        rim.position.set(-8, 4, -10);
+        scene.add(ambient, directional, rim);
+        const makeLights = () => Array.from({length: 8}, () => {
+            const light = new T.PointLight();
+            scene.add(light);
+            return light;
+        });
+        const pointLights = makeLights(), animatedLights = makeLights(), spectralLights = makeLights();
+        const pmrem = new T.PMREMGenerator(renderer);
+        let environmentTarget = null, environmentStyle = '';
+        function updateEnvironment(style) {
+            if (style === environmentStyle) return;
+            environmentStyle = style;
+            const studio = new T.Scene();
+            studio.background = new T.Color(0x080808);
+            const palette = style === 'neon' ? [0xff2288, 0x2266ff, 0x33ffee] :
+                style === 'rainbow' ? [0xff3333, 0xffaa22, 0x33ff66, 0x3377ff, 0xbb33ff] : [0xffffff, 0xb8d8ff, 0xffe4cc];
+            const count = style === 'cosmic' ? 32 : style === 'dark' ? 2 : 8;
+            for (let i = 0; i < count; i++) {
+                const angle = i * 2 * Math.PI / count;
+                const width = style === 'strip-lights' ? .35 : style === 'cosmic' ? .12 : 3;
+                const height = style === 'cosmic' ? .12 : style === 'laboratory' ? 2 : 5;
+                const panel = new T.Mesh(new T.PlaneGeometry(width, height), new T.MeshBasicMaterial({
+                    color: new T.Color(palette[i % palette.length]).multiplyScalar(style === 'dark' ? .3 : 3), side: T.DoubleSide
+                }));
+                panel.position.set(8 * Math.cos(angle), i % 2 ? 4 : -2, 8 * Math.sin(angle));
+                panel.lookAt(0, 0, 0);
+                studio.add(panel);
+            }
+            const next = pmrem.fromScene(studio, .04);
+            environmentTarget?.dispose();
+            environmentTarget = next;
+            studio.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); });
+        }
+        function updateLighting() {
+            const l = c.environmentalLighting, enabled = l.enabled;
+            const power = section => enabled && section.enabled ? section.intensity : 0;
+            ambient.color.set(l.ambient.color);
+            ambient.intensity = power(l.ambient);
+            directional.color.set(l.directional.color);
+            directional.intensity = power(l.directional);
+            const az = T.MathUtils.degToRad(l.directional.azimuth), el = T.MathUtils.degToRad(l.directional.elevation);
+            directional.position.set(10 * Math.cos(el) * Math.cos(az), 10 * Math.sin(el), 10 * Math.cos(el) * Math.sin(az));
+            rim.color.set(l.rim.color);
+            rim.intensity = power(l.rim);
+            if (enabled && l.environment.enabled) updateEnvironment(l.environment.style);
+            scene.environment = enabled && l.environment.enabled ? environmentTarget.texture : null;
+            scene.environmentIntensity = l.environment.intensity;
+            scene.environmentRotation.y = T.MathUtils.degToRad(l.environment.rotation);
+            for (let i = 0; i < 8; i++) {
+                const p = pointLights[i], a = animatedLights[i], sp = spectralLights[i];
+                const angle = i * Math.PI * 2 / Math.max(1, l.point.count);
+                p.position.set(8 * Math.cos(angle), 4, 8 * Math.sin(angle));
+                p.color.set(l.point.color); p.distance = l.point.distance; p.decay = l.point.decay;
+                p.intensity = i < l.point.count ? power(l.point) : 0;
+                const phase = now * l.animated.speed + i * Math.PI * 2 / Math.max(1, l.animated.count);
+                a.position.set(Math.cos(phase) * l.animated.radius, 4 * Math.sin(phase * .7), Math.sin(phase) * l.animated.radius);
+                a.color.setHSL(l.animated.colorVariation ? (phase / 6.283 + 10) % 1 : 0, l.animated.colorVariation ? .8 : 0, .8);
+                a.intensity = i < l.animated.count ? power(l.animated) : 0;
+                const ray = lit[Math.floor(i * lit.length / 8)];
+                sp.intensity = ray ? power(l.spectral) * Math.max(ray.color.r, ray.color.g, ray.color.b) : 0;
+                sp.distance = l.spectral.radius; sp.decay = 2;
+                if (ray) { sp.position.copy(ray.a).lerp(ray.b, .15); sp.color.copy(ray.color); }
+            }
+            for (const o of objects) {
+                const m = o.mesh.material;
+                m.specularColor.set(l.specular.color);
+                m.specularIntensity = enabled && l.specular.enabled ? l.specular.intensity : 0;
+                m.roughness = enabled && l.specular.enabled ? l.specular.roughness : c.prisms.roughness;
+                m.clearcoat = enabled && l.fresnel.enabled ? Math.min(1, l.fresnel.intensity) : 0;
+                m.clearcoatRoughness = m.roughness;
+                // View-dependent rim approximation on the existing edge geometry.
+                const edge = o.mesh.children[0].material;
+                const facing = Math.abs(V(0, 0, 1).applyQuaternion(o.mesh.quaternion).dot(camera.position.clone().sub(o.mesh.position).normalize()));
+                edge.opacity = Math.min(1, .55 + power(l.rim) * Math.pow(1 - facing, l.rim.power));
+                edge.color.set(0xaacfff).lerp(new T.Color(l.rim.color), Math.min(1, power(l.rim)));
+            }
         }
         const objects = [], optical = [], group = new T.Group();
         scene.add(group);
@@ -606,8 +682,9 @@
                     co.needsUpdate = true;
                 }
             }
+            updateLighting();
             bloom.enabled = c.bloom.enabled;
-            bloom.strength = c.bloom.strength + (c.effects.flare ? .25 : 0);
+            bloom.strength = c.bloom.strength;
             bloom.radius = c.bloom.radius;
             bloom.threshold = c.bloom.threshold;
             composer.render();

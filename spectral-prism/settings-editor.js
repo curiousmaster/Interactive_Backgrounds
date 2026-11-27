@@ -1,6 +1,7 @@
 import defaults from './settings.js';
 const copy = x => JSON.parse(JSON.stringify(x));
 const choices = {
+    style: ['studio', 'strip-lights', 'laboratory', 'neon', 'cosmic', 'dark', 'rainbow'],
     sourceShape: ['laser', 'spotlight', 'orb', 'panel'],
     mode: ['physical', 'assisted', 'choreographed'], quality: ['auto', 'low', 'high'], shape: ['triangular', 'cube', 'tetrahedron', 'sphere', 'diamond', 'hexagonal', 'mixed'], distribution: ['cluster', 'grid', 'sphere', 'random'], material: ['crown', 'flint', 'quartz', 'diamond', 'custom'], type: ['white', 'mono', 'array', 'point', 'rotating', 'pulsed', 'pointer']
 };
@@ -9,7 +10,7 @@ const ranges = {
     speed: [0, 4, .05], wavelengths: [4, 96, 1], maxBounces: [1, 16, 1], maxSegments: [100, 24000, 100], minEnergy: [.001, .1, .001], count: [1, 50, 1], size: [.2, 3, .05], variation: [0, 1, .05], rotationSpeed: [0, 90, 1], driftSpeed: [0, 2, .05], customIndex: [1, 3, .01], dispersion: [0, 5, .05], roughness: [0, 1, .01], opacity: [0, 1, .01], wavelength: [380, 780, 1], intensity: [0, 8, .1], width: [.005, .15, .005], pulseSpeed: [.1, 10, .1], absorption: [0, .5, .005], orbitSpeed: [0, 30, .5], zoom: [.3, 4, .05], tilt: [-80, 80, 1], fog: [0, .1, .001], strength: [0, 4, .05], radius: [0, 1, .01], threshold: [0, 2, .05], haloStrength: [0, 1, .01], dustCount: [0, 5000, 50], impactStrength: [0, 3, .05], trailLength: [.1, 3, .1], trailOpacity: [0, 1, .05]
 };
 const descriptions = {
-    simulation: 'Ray budget, optical interaction depth and animation speed.', prisms: 'Geometry, material and independent motion.', light: 'Emitter spectrum, targeting and beam appearance.', optics: 'Physical interface behaviour and energy loss.', view: 'Camera projection and automatic orbit.', environment: 'Background and optical boundaries.', bloom: 'HDR glow post-processing.', effects: 'Atmospheric and artistic rendering layers.', controls: 'Interaction and diagnostics.', editor: 'Settings panel visibility.'
+    environmentalLighting: 'Independent scene illumination and surface reflections.', simulation: 'Ray budget, optical interaction depth and animation speed.', prisms: 'Geometry, material and independent motion.', light: 'Emitter spectrum, targeting and beam appearance.', optics: 'Physical interface behaviour and energy loss.', view: 'Camera projection and automatic orbit.', environment: 'Background and optical boundaries.', bloom: 'HDR glow post-processing.', effects: 'Atmospheric and artistic rendering layers.', controls: 'Interaction and diagnostics.', editor: 'Settings panel visibility.'
 };
 const presets = {
     'Dark Side': {
@@ -173,10 +174,26 @@ export function mountSettings(config, onChange) {
             d.append(s);
             sections.push(d);
             panel.append(d);
+            function addRows(values, parent, path) {
             for (const [key, value] of Object.entries(values)) {
+                if (value && typeof value === 'object') {
+                    const sub = document.createElement('details');
+                    const heading = document.createElement('summary');
+                    heading.textContent = label(key);
+                    sub.append(heading);
+                    sub.dataset.group = [...path, key].join('.');
+                    sub.open = expanded.get(sub.dataset.group) ?? false;
+                    expanded.set(sub.dataset.group, sub.open);
+                    sub.addEventListener('toggle', () => {
+                        if (!searchQuery.trim() && sub.isConnected) expanded.set(sub.dataset.group, sub.open);
+                    });
+                    parent.append(sub);
+                    addRows(value, sub, [...path, key]);
+                    continue;
+                }
                 const row = document.createElement('label');
                 row.className = 'setting';
-                row.dataset.search = (group + ' ' + key + ' ' + label(key)).toLowerCase();
+                row.dataset.search = (path.map(label).join(' ') + ' ' + key + ' ' + label(key)).toLowerCase();
                 const name = document.createElement('span');
                 name.textContent = label(key);
                 row.append(name);
@@ -187,9 +204,10 @@ export function mountSettings(config, onChange) {
                 }
                 else {
                     input = document.createElement('input');
-                    input.type = typeof value === 'boolean' ? 'checkbox' : typeof value === 'number' ? 'range' : key === 'background' ? 'color' : 'text';
+                    input.type = typeof value === 'boolean' ? 'checkbox' : typeof value === 'number' ? 'range' : /^#[0-9a-f]{6}$/i.test(value) ? 'color' : 'text';
                     if (input.type === 'range') {
-                        const r = group === 'light' && key === 'count' ? [1, 8, 1] : ranges[key] || [0, 10, .1];
+                        const special = group === 'environmentalLighting' ? {count:[1,8,1], radius:[.1,25,.1], rotation:[0,360,1], azimuth:[-180,180,1], elevation:[-90,90,1], distance:[1,50,1], decay:[0,2,.1], power:[.5,8,.1]}[key] : null;
+                        const r = special || (group === 'light' && key === 'count' ? [1, 8, 1] : ranges[key] || [0, 10, .1]);
                         [input.min, input.max, input.step] = r;
                     }
                 }
@@ -200,10 +218,12 @@ export function mountSettings(config, onChange) {
                 const out = document.createElement('small');
                 if (typeof value === 'number')
                     out.textContent = value;
-                input.oninput = () => { const v = input.type === 'checkbox' ? input.checked : typeof value === 'number' ? Number(input.value) : input.value; config[group][key] = v; out.textContent = typeof v === 'number' ? v : ''; onChange(group + '.' + key); };
+                input.oninput = () => { const v = input.type === 'checkbox' ? input.checked : typeof value === 'number' ? Number(input.value) : input.value; values[key] = v; out.textContent = typeof v === 'number' ? v : ''; onChange([...path, key].join('.')); };
                 row.append(input, out);
-                d.append(row);
+                parent.append(row);
             }
+            }
+            addRows(values, d, [group]);
         }
         function filterSettings() {
             searchQuery = search.value;
@@ -214,6 +234,11 @@ export function mountSettings(config, onChange) {
                 for (const row of d.querySelectorAll('.setting')) {
                     row.hidden = !row.dataset.search.includes(q);
                     if (!row.hidden) matches++;
+                }
+                for (const sub of d.querySelectorAll('details')) {
+                    const visible = [...sub.querySelectorAll('.setting')].some(row => !row.hidden);
+                    sub.hidden = !visible;
+                    sub.open = q ? visible : expanded.get(sub.dataset.group);
                 }
                 d.hidden = matches === 0;
                 d.open = q ? matches > 0 : expanded.get(d.dataset.group);

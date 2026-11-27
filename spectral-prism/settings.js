@@ -63,6 +63,64 @@ export default {
         "mirrors": false,
         "fog": 0.019
     },
+    "environmentalLighting": {
+        "enabled": true,
+        "ambient": {
+            "enabled": true,
+            "color": "#b8c8e8",
+            "intensity": 0.15
+        },
+        "specular": {
+            "enabled": true,
+            "color": "#ffffff",
+            "intensity": 1,
+            "roughness": 0.06
+        },
+        "environment": {
+            "enabled": true,
+            "intensity": 0.8,
+            "rotation": 0,
+            "style": "studio"
+        },
+        "directional": {
+            "enabled": true,
+            "color": "#ffffff",
+            "intensity": 0.6,
+            "azimuth": 45,
+            "elevation": 35
+        },
+        "point": {
+            "enabled": false,
+            "count": 3,
+            "intensity": 1,
+            "color": "#ffffff",
+            "distance": 20,
+            "decay": 2
+        },
+        "rim": {
+            "enabled": true,
+            "color": "#9bbcff",
+            "intensity": 0.4,
+            "power": 3
+        },
+        "animated": {
+            "enabled": true,
+            "count": 2,
+            "speed": 0.2,
+            "radius": 12,
+            "intensity": 0.8,
+            "colorVariation": false
+        },
+        "spectral": {
+            "enabled": true,
+            "intensity": 0.6,
+            "radius": 1.5
+        },
+        "fresnel": {
+            "enabled": true,
+            "intensity": 0.8
+        }
+    },
     "bloom": {
         "enabled": true,
         "strength": 0.15,
