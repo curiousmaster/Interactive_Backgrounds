@@ -659,7 +659,7 @@
                     const reach = o.distanceTo(camera.position) + camera.far * 2;
                     const end = o.clone().addScaledVector(d, Number.isFinite(limit) ? limit : reach);
                     segment(o, end, col, e, medium);
-                    if ((c.environment.mirrors || floorHit) && depth < c.simulation.maxBounces) {
+                    if ((floorHit || (c.environment.mirrors && Number.isFinite(wall))) && depth < c.simulation.maxBounces) {
                         const normal = V();
                         if (floorHit)
                             normal.y = 1;
