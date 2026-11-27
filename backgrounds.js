@@ -58,6 +58,14 @@ export const backgrounds = [
         description:
             "Explore an evolving universe of mathematical fractals generated through chaos theory. " +
             "Switch between fractal algorithms, customize visual effects, and navigate luminous structures in interactive 2D or 3D.",
+        thumbnail: {
+            renderWidth: 960,
+            renderHeight: 540,
+            captureTimes: [5000],
+            navigationTimeout: 60000,
+            captureTimeout: 90000,
+            retries: 3
+        }
     },
     {
         name: "Capillary Light",
