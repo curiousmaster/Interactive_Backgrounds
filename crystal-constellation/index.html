@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Spectral Prism</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #030308;
+            color: #e4eaff;
+            font: 13px system-ui;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        #settings {
+            position: fixed;
+            top: 48px;
+            right: 12px;
+            width: min(350px,calc(100vw - 24px));
+            max-height: calc(100dvh - 60px);
+            overflow: auto;
+            padding: 14px;
+            background: #101522e8;
+            border: 1px solid #ffffff24;
+            border-radius: 12px;
+            backdrop-filter: blur(16px);
+        }
+
+        #settingsToggle {
+            position: fixed;
+            top: 10px;
+            right: 12px;
+        }
+
+        h2 {
+            margin: 0 0 12px;
+            font-size: 18px;
+        }
+
+        input,select,button,textarea {
+            font: inherit;
+            color: inherit;
+            background: #20283a;
+            border: 1px solid #ffffff24;
+            border-radius: 5px;
+            padding: 6px;
+        }
+
+        input[type=range] {
+            width: 100%;
+            padding: 0;
+            accent-color: #8aaaff;
+        }
+
+        input[type=checkbox] {
+            accent-color: #8aaaff;
+        }
+
+        #settings>input,#settings>select,textarea {
+            width: 100%;
+            margin-bottom: 8px;
+        }
+
+        details {
+            border-top: 1px solid #ffffff18;
+            padding: 8px 0;
+        }
+
+        summary {
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .setting {
+            display: grid;
+            grid-template-columns: 1fr minmax(70px,110px) 42px;
+            align-items: center;
+            gap: 5px;
+            margin: 7px 0;
+        }
+
+        .setting[hidden],[hidden] {
+            display: none!important;
+        }
+
+        .buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        #stats {
+            position: fixed;
+            left: 12px;
+            top: 12px;
+            pointer-events: none;
+            white-space: pre;
+        }
+
+        #error {
+            position: fixed;
+            bottom: 12px;
+            left: 12px;
+            color: #ffb4b4;
+        }
+    </style>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="stats"></div>
+    <div id="error"></div>
+
+    <script type="module">
+        import * as T from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+        import defaults from './settings.js';
+        const { mountSettings } = await import('./settings-editor.js?v=' + Date.now());
+        const c = structuredClone(defaults), V = (x = 0, y = 0, z = 0) => new T.Vector3(x, y, z), rand = (a, b) => a + Math.random() * (b - a), axis = () => V(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize();
+        const scene = new T.Scene(), renderer = new T.WebGLRenderer({
+            antialias: true, alpha: false
+        });
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+        document.body.prepend(renderer.domElement);
+        renderer.toneMapping = T.ACESFilmicToneMapping;
+        let camera = new T.PerspectiveCamera(48, 1, .1, 150);
+        camera.position.set(0, 7, 24);
+        let orbit = new OrbitControls(camera, renderer.domElement);
+        orbit.enableDamping = true;
+        const composer = new EffectComposer(renderer), pass = new RenderPass(scene, camera), bloom = new UnrealBloomPass(new T.Vector2(1, 1), 1.4, .45, .15);
+        composer.addPass(pass);
+        composer.addPass(bloom);
+        composer.addPass(new OutputPass());
+        scene.add(new T.HemisphereLight(0xbddfff, 0x252040, 2));
+        for (const p of [V(-8, 10, 5), V(8, -3, -5)]) {
+            const l = new T.DirectionalLight(0xc8dfff, 3);
+            l.position.copy(p);
+            scene.add(l);
+        }
+        const objects = [], optical = [], group = new T.Group();
+        scene.add(group);
+        const boundary = 13;
+        function geometry(shape) { switch (shape) {
+            case 'cube': return new T.BoxGeometry(1.5, 1.5, 1.5);
+            case 'tetrahedron': return new T.TetrahedronGeometry(1.2);
+            case 'sphere': return new T.SphereGeometry(1, 20, 12);
+            case 'diamond': return new T.OctahedronGeometry(1.25);
+            case 'hexagonal': return new T.CylinderGeometry(1, 1, 1.5, 6);
+            default: return new T.CylinderGeometry(1, 1, 1.5, 3);
+        } }
+        function dispose(o) { o.traverse(x => { x.geometry?.dispose(); if (x.material)
+            x.material.dispose(); }); o.removeFromParent(); }
+        let floor, dust, dirty = true, viewDirty = true, selected = null;
+        function rebuild() {
+            for (const o of [...group.children])
+                dispose(o);
+            objects.length = optical.length = 0;
+            selected = null;
+            const n = Math.min(50, Math.max(1, Math.round(c.prisms.count))), shapes = ['triangular', 'cube', 'tetrahedron', 'sphere', 'diamond', 'hexagonal'];
+            for (let i = 0; i < n; i++) {
+                const g = geometry(c.prisms.shape === 'mixed' ? shapes[i % 6] : c.prisms.shape), mat = new T.MeshPhysicalMaterial({
+                    color: 0xc4e4ff, transparent: true, opacity: c.prisms.opacity, roughness: c.prisms.roughness, metalness: .15, side: T.DoubleSide, depthWrite: false, iridescence: c.effects.iridescence ? 1 : 0
+                });
+                const mesh = new T.Mesh(g, mat);
+                const edge = new T.LineSegments(new T.EdgesGeometry(g, 20), new T.LineBasicMaterial({
+                    color: 0xaacfff, transparent: true, opacity: .55
+                }));
+                mesh.add(edge);
+                let p;
+                if (n === 1)
+                    p = V();
+                else if (c.prisms.distribution === 'grid') {
+                    const k = Math.ceil(Math.cbrt(n));
+                    p = V((i % k - (k - 1) / 2) * 3.5, (Math.floor(i / k) % k - (k - 1) / 2) * 3.5, (Math.floor(i / k / k) - (k - 1) / 2) * 3.5);
+                }
+                else if (c.prisms.distribution === 'sphere')
+                    p = axis().multiplyScalar(6);
+                else if (c.prisms.distribution === 'random')
+                    p = V(rand(-8, 8), rand(-5, 5), rand(-6, 6));
+                else {
+                    const a = i * 2.39996;
+                    p = V(Math.cos(a) * Math.sqrt(i) * 2.2, Math.sin(a) * Math.sqrt(i) * 1.6, rand(-1.5, 1.5));
+                }
+                mesh.position.copy(p);
+                mesh.scale.setScalar(Math.max(.1, c.prisms.size * (1 + rand(-c.prisms.variation, c.prisms.variation))));
+                mesh.rotation.set(Math.PI / 2, 0, i * .7);
+                group.add(mesh);
+                objects.push({
+                    mesh, base: p.clone(), axis: c.prisms.randomAxes ? axis() : V(0, 0, 1), phase: rand(0, 6.28)
+                });
+                optical.push(mesh);
+            }
+            floor = new T.Mesh(new T.PlaneGeometry(26, 26), new T.MeshStandardMaterial({
+                color: 0x151c2a, roughness: .3, metalness: .5, side: T.DoubleSide
+            }));
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -7;
+            group.add(floor);
+            floor.visible = c.environment.floor;
+            const positions = new Float32Array(Math.min(5000, c.effects.dustCount) * 3);
+            for (let i = 0; i < positions.length; i++)
+                positions[i] = rand(-10, 10);
+            const dg = new T.BufferGeometry();
+            dg.setAttribute('position', new T.BufferAttribute(positions, 3));
+            dg.setAttribute('color', new T.BufferAttribute(new Float32Array(positions.length), 3));
+            dust = new T.Points(dg, new T.PointsMaterial({
+                size: .035, vertexColors: true, transparent: true, opacity: .8, depthWrite: false, blending: T.AdditiveBlending
+            }));
+            group.add(dust);
+            dirty = false;
+        }
+        const max = 24000, pos = new Float32Array(max * 6), colors = new Float32Array(max * 6);
+        const bg = new T.BufferGeometry();
+        bg.setAttribute('position', new T.BufferAttribute(pos, 3).setUsage(T.DynamicDrawUsage));
+        bg.setAttribute('color', new T.BufferAttribute(colors, 3).setUsage(T.DynamicDrawUsage));
+        const lines = new T.LineSegments(bg, new T.LineBasicMaterial({
+            vertexColors: true, transparent: true, blending: T.AdditiveBlending, depthWrite: false
+        }));
+        lines.frustumCulled = false;
+        scene.add(lines);
+        const halo = new T.InstancedMesh(new T.CylinderGeometry(1, 1, 1, 6, 1, true), new T.MeshBasicMaterial({
+            transparent: true, opacity: .1, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide
+        }), max);
+        halo.frustumCulled = false;
+        scene.add(halo);
+        const dummy = new T.Object3D(), up = V(0, 1, 0);
+        const impact = new T.InstancedMesh(new T.SphereGeometry(1, 8, 6), new T.MeshBasicMaterial({
+            transparent: true, opacity: .55, blending: T.AdditiveBlending, depthWrite: false
+        }), max);
+        impact.frustumCulled = false;
+        scene.add(impact);
+        const pulseMesh = new T.InstancedMesh(new T.SphereGeometry(1, 6, 4), new T.MeshBasicMaterial({
+            blending: T.AdditiveBlending, transparent: true, opacity: .9, depthWrite: false
+        }), max);
+        pulseMesh.frustumCulled = false;
+        scene.add(pulseMesh);
+        const trailGeo = new T.BufferGeometry(), trail = new T.LineSegments(trailGeo, new T.LineBasicMaterial({
+            vertexColors: true, transparent: true, depthWrite: false, blending: T.AdditiveBlending
+        }));
+        trail.frustumCulled = false;
+        scene.add(trail);
+        let history = [], lastHistory = 0;
+        const raycaster = new T.Raycaster(), pointer = new T.Vector2(), pointerWorld = V();
+        let segments = 0, impacts = 0, pulses = 0, hits = 0, now = 0;
+        const lit = [];
+        function spectrum(w) { let r = 0, g = 0, b = 0; if (w < 440) {
+            r = (440 - w) / 60;
+            b = 1;
+        }
+        else if (w < 490) {
+            g = (w - 440) / 50;
+            b = 1;
+        }
+        else if (w < 510) {
+            g = 1;
+            b = (510 - w) / 20;
+        }
+        else if (w < 580) {
+            r = (w - 510) / 70;
+            g = 1;
+        }
+        else if (w < 645) {
+            r = 1;
+            g = (645 - w) / 65;
+        }
+        else
+            r = 1; const f = w < 420 ? .3 + .7 * (w - 380) / 40 : w > 700 ? .3 + .7 * (780 - w) / 80 : 1; return new T.Color(r * f, g * f, b * f); }
+        function index(w) { const m = {
+            crown: [1.5046, .0042], flint: [1.62, .012], quartz: [1.45, .004], diamond: [2.38, .012], custom: [c.prisms.customIndex, 0]
+        }[c.prisms.material] || [1.5, .004]; return m[0] + m[1] * (c.optics.chromatic ? (1 / .55 ** 2 + c.prisms.dispersion * (1 / (w / 1000) ** 2 - 1 / .55 ** 2)) : 1 / .55 ** 2); }
+        function segment(a, b, col, energy, inside) { if (segments >= Math.min(max, c.simulation.maxSegments) || inside && !c.effects.internalLight)
+            return; const i = segments++, k = i * 6; pos.set([a.x, a.y, a.z, b.x, b.y, b.z], k); const color = col.clone().multiplyScalar(energy * c.light.intensity); colors.set([color.r, color.g, color.b, color.r, color.g, color.b], k); const delta = b.clone().sub(a), len = delta.length(); dummy.position.copy(a).lerp(b, .5); dummy.quaternion.setFromUnitVectors(up, delta.normalize()); dummy.scale.set(c.light.width, len, c.light.width); dummy.updateMatrix(); halo.setMatrixAt(i, dummy.matrix); halo.setColorAt(i, color); if (lit.length < 300)
+            lit.push({
+                a: a.clone(), b: b.clone(), color
+            }); if (c.light.pulse || c.light.type === 'pulsed' || c.effects.pulses) {
+            dummy.position.copy(a).lerp(b, (now * c.light.pulseSpeed / Math.max(len, .1)) % 1);
+            dummy.scale.setScalar(c.light.width * 2.5);
+            dummy.updateMatrix();
+            pulseMesh.setMatrixAt(pulses, dummy.matrix);
+            pulseMesh.setColorAt(pulses++, color);
+        } }
+        function trace(origin, dir, w, energy) {
+            const col = spectrum(w), queue = [{
+                    o: origin, d: dir, e: energy, depth: 0, medium: null
+                }];
+            while (queue.length && segments < Math.min(max, c.simulation.maxSegments)) {
+                const { o, d, e, depth, medium } = queue.pop();
+                if (e < c.simulation.minEnergy || depth > c.simulation.maxBounces)
+                    continue;
+                raycaster.set(o, d);
+                raycaster.near = .0002;
+                raycaster.far = 40;
+                const h = raycaster.intersectObjects(optical, false)[0];
+                let wall = Infinity;
+                for (const k of ['x', 'y', 'z']) {
+                    if (Math.abs(d[k]) > 1e-7) {
+                        const t = ((d[k] > 0 ? boundary : -boundary) - o[k]) / d[k];
+                        if (t > 0)
+                            wall = Math.min(wall, t);
+                    }
+                }
+                const ft = c.environment.floor && d.y < 0 ? (-7 - o.y) / d.y : Infinity;
+                const floorHit = ft > .0002 && ft < wall;
+                const limit = floorHit ? ft : wall;
+                if (!h || h.distance > limit) {
+                    const end = o.clone().addScaledVector(d, Math.min(limit, 40));
+                    segment(o, end, col, e, medium);
+                    if ((c.environment.mirrors || floorHit) && depth < c.simulation.maxBounces) {
+                        const normal = V();
+                        if (floorHit)
+                            normal.y = 1;
+                        else {
+                            const k = ['x', 'y', 'z'].sort((a, b) => Math.abs(end[b]) - Math.abs(end[a]))[0];
+                            normal[k] = -Math.sign(end[k]);
+                        }
+                        const r = d.clone().reflect(normal);
+                        queue.push({
+                            o: end.clone().addScaledVector(r, .001), d: r, e: e * .75, depth: depth + 1, medium
+                        });
+                        if (floorHit && c.effects.caustics)
+                            addImpact(end, col, e * 2);
+                    }
+                    continue;
+                }
+                hits++;
+                const end = h.point, atten = e * Math.exp(-(medium ? c.optics.absorption : 0) * h.distance);
+                segment(o, end, col, atten, medium);
+                if (c.effects.impactGlow)
+                    addImpact(end, col, atten);
+                const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+                const entering = d.dot(n) < 0;
+                if (!entering)
+                    n.negate();
+                const n1 = medium ? index(w) : 1, n2 = entering ? index(w) : 1, eta = c.optics.refraction ? n1 / n2 : 1, cos = Math.max(0, -d.dot(n)), k = 1 - eta * eta * (1 - cos * cos);
+                const r0 = ((n1 - n2) / (n1 + n2)) ** 2, F = c.optics.fresnel ? r0 + (1 - r0) * (1 - cos) ** 5 : 0;
+                const push = (direction, power, m) => queue.push({
+                    o: end.clone().addScaledVector(direction, .001), d: direction, e: power, depth: depth + 1, medium: m
+                });
+                if (k < 0) {
+                    if (c.optics.internalReflection)
+                        push(d.clone().reflect(n), atten, medium);
+                }
+                else {
+                    if (F > 0)
+                        push(d.clone().reflect(n), atten * F, medium);
+                    push(d.clone().multiplyScalar(eta).addScaledVector(n, eta * cos - Math.sqrt(k)).normalize(), atten * (1 - F), entering ? h.object : null);
+                }
+            }
+        }
+        function addImpact(p, col, e) { if (impacts >= max)
+            return; dummy.position.copy(p); dummy.scale.setScalar(.035 * Math.sqrt(e) * c.effects.impactStrength); dummy.updateMatrix(); impact.setMatrixAt(impacts, dummy.matrix); impact.setColorAt(impacts++, col.clone().multiplyScalar(e * c.light.intensity)); }
+        function updateView() { const old = camera.position.clone(), target = orbit.target.clone(); orbit.dispose(); camera = c.view.perspective ? new T.PerspectiveCamera(48, 1, .1, 150) : new T.OrthographicCamera(-12, 12, 12, -12, .1, 150); camera.position.copy(old); const r = old.distanceTo(target); camera.position.copy(target).add(V(0, Math.sin(T.MathUtils.degToRad(c.view.tilt)) * r, Math.cos(T.MathUtils.degToRad(c.view.tilt)) * r)); camera.zoom = c.view.zoom; orbit = new OrbitControls(camera, renderer.domElement); orbit.target.copy(target); orbit.enableDamping = true; pass.camera = camera; resize(); viewDirty = false; }
+        function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h); composer.setSize(w, h); if (camera.isPerspectiveCamera)
+            camera.aspect = w / h;
+        else {
+            camera.left = -12 * w / h;
+            camera.right = 12 * w / h;
+            camera.top = 12;
+            camera.bottom = -12;
+        } camera.updateProjectionMatrix(); }
+        addEventListener('resize', resize);
+        mountSettings(c, key => { if (key === '*' || key.startsWith('prisms.') || key === 'effects.dustCount')
+            dirty = true; if (key === '*' || key.startsWith('view.'))
+            viewDirty = true; });
+        const pick = new T.Raycaster(), plane = new T.Plane(), dragPoint = V();
+        function setPointer(e) { pointer.set(e.clientX / innerWidth * 2 - 1, 1 - e.clientY / innerHeight * 2); pick.setFromCamera(pointer, camera); pick.ray.intersectPlane(new T.Plane(V(0, 0, 1), 0), pointerWorld); }
+        renderer.domElement.addEventListener('pointerdown', e => { setPointer(e); if (!c.controls.enabled || !c.controls.dragPrisms || !e.shiftKey)
+            return; const h = pick.intersectObjects(optical, false)[0]; if (h) {
+            selected = objects.find(o => o.mesh === h.object);
+            plane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(V()), selected.mesh.position);
+            orbit.enabled = false;
+            renderer.domElement.setPointerCapture(e.pointerId);
+        } });
+        renderer.domElement.addEventListener('pointermove', e => { setPointer(e); if (selected && pick.ray.intersectPlane(plane, dragPoint)) {
+            selected.base.copy(dragPoint);
+            selected.mesh.position.copy(dragPoint);
+        } });
+        for (const ev of ['pointerup', 'pointercancel'])
+            renderer.domElement.addEventListener(ev, () => { selected = null; orbit.enabled = c.controls.enabled; });
+        let last = performance.now(), lastTrace = 0;
+        const clock = () => performance.now() / 1000;
+        function frame(t) {
+            requestAnimationFrame(frame);
+            const dt = Math.min(.05, (t - last) / 1000);
+            last = t;
+            now += dt * c.simulation.speed;
+            if (dirty)
+                rebuild();
+            if (viewDirty)
+                updateView();
+            scene.background = new T.Color(c.environment.background);
+            scene.fog = new T.FogExp2(c.environment.background, c.environment.fog);
+            floor.visible = c.environment.floor;
+            orbit.enabled = c.controls.enabled && !selected;
+            orbit.autoRotate = c.view.orbit;
+            orbit.autoRotateSpeed = c.view.orbitSpeed / 6;
+            orbit.update();
+            for (const o of objects) {
+                if (o !== selected) {
+                    o.mesh.position.copy(o.base);
+                    if (c.prisms.drift)
+                        o.mesh.position.add(V(Math.sin(now * c.prisms.driftSpeed + o.phase), Math.cos(now * c.prisms.driftSpeed + o.phase), Math.sin(now * c.prisms.driftSpeed * .7 + o.phase)).multiplyScalar(.45));
+                    if (c.prisms.rotation)
+                        o.mesh.rotateOnWorldAxis(o.axis, dt * c.simulation.speed * T.MathUtils.degToRad(c.prisms.rotationSpeed));
+                    if (c.simulation.mode === 'choreographed')
+                        o.mesh.position.applyAxisAngle(V(0, 1, 0), now * .06);
+                }
+                o.mesh.material.iridescence = c.effects.iridescence ? 1 : 0;
+            }
+            scene.updateMatrixWorld(true);
+            const low = c.simulation.quality === 'low' || c.simulation.quality === 'auto' && matchMedia('(pointer:coarse)').matches;
+            const interval = low ? 50 : 25;
+            if (t - lastTrace >= interval) {
+                lastTrace = t;
+                segments = impacts = pulses = hits = 0;
+                lit.length = 0;
+                const count = Math.min(low ? 24 : 96, Math.max(4, c.simulation.wavelengths));
+                for (let j = 0; j < Math.min(8, c.light.count); j++) {
+                    const a = j * 2 * Math.PI / c.light.count + (c.light.type === 'rotating' ? now * .3 : 0), o = V(-11 * Math.cos(a), 1.5 * Math.sin(a), 11 * Math.sin(a));
+                    const target = objects[j % objects.length].mesh.position.clone();
+                    if (c.light.type === 'pointer')
+                        target.copy(pointerWorld);
+                    else if (!c.light.tracking && c.simulation.mode === 'physical')
+                        target.set(0, 0, 0);
+                    const d = target.sub(o).normalize();
+                    const mono = c.light.type === 'mono';
+                    for (let i = 0; i < (mono ? 1 : count); i++) {
+                        const w = mono ? c.light.wavelength : 380 + 400 * i / (count - 1), start = o.clone();
+                        if (c.light.type === 'array')
+                            start.y += (i / count - .5) * .6;
+                        const direction = c.light.type === 'point' ? d.clone().addScaledVector(axis(), .2).normalize() : d;
+                        trace(start, direction, w, mono ? 1 : 1 / Math.sqrt(count));
+                    }
+                }
+                bg.setDrawRange(0, segments * 2);
+                bg.attributes.position.needsUpdate = bg.attributes.color.needsUpdate = true;
+                for (const [mesh, n] of [[halo, segments], [impact, impacts], [pulseMesh, pulses]]) {
+                    mesh.count = n;
+                    mesh.instanceMatrix.needsUpdate = true;
+                    if (mesh.instanceColor)
+                        mesh.instanceColor.needsUpdate = true;
+                }
+                halo.visible = c.effects.halo;
+                halo.material.opacity = c.effects.haloStrength;
+                impact.visible = c.effects.impactGlow || c.effects.caustics;
+                pulseMesh.visible = c.light.pulse || c.effects.pulses || c.light.type === 'pulsed';
+                if (c.effects.trails && now - lastHistory > .12) {
+                    lastHistory = now;
+                    history.push({
+                        p: pos.slice(0, segments * 6), c: colors.slice(0, segments * 6), t: now
+                    });
+                }
+                history = history.filter(h => now - h.t < c.effects.trailLength).slice(-12);
+                if (!c.effects.trails)
+                    history = [];
+                const tp = [], tc = [];
+                for (const h of history) {
+                    const f = (1 - (now - h.t) / c.effects.trailLength) * c.effects.trailOpacity;
+                    for (let i = 0; i < h.p.length; i++) {
+                        tp.push(h.p[i]);
+                        tc.push(h.c[i] * f);
+                    }
+                }
+                trailGeo.setAttribute('position', new T.Float32BufferAttribute(tp, 3));
+                trailGeo.setAttribute('color', new T.Float32BufferAttribute(tc, 3));
+                trailGeo.setDrawRange(0, tp.length / 3);
+                dust.visible = c.effects.dust;
+                if (dust.visible) {
+                    const p = dust.geometry.attributes.position, co = dust.geometry.attributes.color, pt = V(), ab = V(), ap = V();
+                    for (let i = 0; i < p.count; i++) {
+                        pt.fromBufferAttribute(p, i);
+                        let rr = .015, gg = .02, bb = .035;
+                        for (let j = 0; j < lit.length; j += 3) {
+                            const s = lit[j];
+                            ab.subVectors(s.b, s.a);
+                            ap.subVectors(pt, s.a);
+                            const u = T.MathUtils.clamp(ap.dot(ab) / Math.max(ab.lengthSq(), .00001), 0, 1);
+                            const dist = ap.addScaledVector(ab, -u).lengthSq();
+                            if (dist < .16) {
+                                const f = 1 - dist / .16;
+                                rr += s.color.r * f;
+                                gg += s.color.g * f;
+                                bb += s.color.b * f;
+                            }
+                        }
+                        co.setXYZ(i, rr, gg, bb);
+                    }
+                    co.needsUpdate = true;
+                }
+            }
+            bloom.enabled = c.bloom.enabled;
+            bloom.strength = c.bloom.strength + (c.effects.flare ? .25 : 0);
+            bloom.radius = c.bloom.radius;
+            bloom.threshold = c.bloom.threshold;
+            composer.render();
+            document.querySelector('#stats').textContent = c.controls.showStats ? `Prisms: ${objects.length}\nSegments: ${segments}\nInterfaces: ${hits}\nFPS: ${Math.round(1 / Math.max(dt, .001))}` : '';
+        }
+        resize();
+        requestAnimationFrame(frame);
+    </script>
+</body>
+</html>

@@ -377,14 +377,6 @@ export const backgrounds = [
             "forming bright seams. Your pointer adds a source to reshape the pattern.",
     },
     {
-        name: "Solar System",
-        folder: "solar-system",
-        tags: ["space", "astronomy", "3d", "interactive"],
-        description:
-            "Explore the Sun, planets, moons, and rings in a top-down 2D atlas or an interactive 3D view. " +
-            "Adjust the simulation clock and hover or tap to inspect celestial bodies.",
-    },
-    {
         name: "Scanning Light",
         folder: "scanning-light",
         tags: ["abstract", "optics"],
@@ -415,6 +407,30 @@ export const backgrounds = [
         description:
             "Translucent leaves slowly unfurl as moving light reveals their veins. " +
             "Your pointer illuminates the foliage like a soft spotlight.",
+    },
+        {
+        name: "Solar System",
+        folder: "solar-system",
+        tags: ["space", "astronomy", "3d", "interactive"],
+        description:
+            "Explore the Sun, planets, moons, and rings in a top-down 2D atlas or an interactive 3D view. " +
+            "Adjust the simulation clock and hover or tap to inspect celestial bodies.",
+    },
+    {
+        name: "Spectral Prism",
+        folder: "spectral-prism",
+        tags: [
+            "3d",
+            "physics",
+            "optics",
+            "interactive",
+            "simulation"
+        ],
+        description:
+            "A constellation of rotating glass prisms transforms white light " +
+            "into evolving networks of spectral rays. Light refracts, reflects " +
+            "and travels between optical objects, creating a continuously " +
+            "changing three-dimensional display of colour and illumination.",
     },
     {
         name: "Stellar Extreme",
