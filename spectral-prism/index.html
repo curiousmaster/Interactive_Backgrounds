@@ -72,6 +72,29 @@
             margin-bottom: 8px;
         }
 
+        .settings-search {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 8px;
+        }
+
+        .settings-search input {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .settings-search button {
+            width: 34px;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .settings-search button:disabled {
+            opacity: 0.4;
+            cursor: default;
+        }
+
         details {
             border-top: 1px solid #ffffff18;
             padding: 8px 0;
@@ -131,6 +154,7 @@
 
     <script type="module">
         import * as T from 'three';
+        import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -162,7 +186,7 @@
         const objects = [], optical = [], group = new T.Group();
         scene.add(group);
         const boundary = 13;
-        function geometry(shape) { switch (shape) {
+        function baseGeometry(shape) { switch (shape) {
             case 'cube': return new T.BoxGeometry(1.5, 1.5, 1.5);
             case 'tetrahedron': return new T.TetrahedronGeometry(1.2);
             case 'sphere': return new T.SphereGeometry(1, 20, 12);
@@ -170,13 +194,76 @@
             case 'hexagonal': return new T.CylinderGeometry(1, 1, 1.5, 6);
             default: return new T.CylinderGeometry(1, 1, 1.5, 3);
         } }
+        // Truncate convex vertices to create real optical bevel facets.
+        function geometry(shape) {
+            const original = baseGeometry(shape);
+            const amount = c.prisms.chamfer;
+            if (amount <= 0 || shape === 'sphere') return original;
+            const attr = original.attributes.position;
+            const vertices = [];
+            for (let i = 0; i < attr.count; i++) {
+                const v = V().fromBufferAttribute(attr, i);
+                if (!vertices.some(p => p.distanceToSquared(v) < 1e-10)) vertices.push(v);
+            }
+            // Inset copies of each face create planar edge bevels.
+            const faces = new Map();
+            const ids = original.index;
+            for (let i = 0; i < (ids ? ids.count : attr.count); i += 3) {
+                const tri = [0, 1, 2].map(j => V().fromBufferAttribute(attr, ids ? ids.getX(i+j) : i+j));
+                const normal = tri[1].clone().sub(tri[0]).cross(tri[2].clone().sub(tri[0]));
+                if (normal.lengthSq() < 1e-12) continue;
+                normal.normalize();
+                const key = [...normal.toArray(), normal.dot(tri[0])].map(x => Math.round(x * 10000)).join(',');
+                if (!faces.has(key)) faces.set(key, []);
+                const face = faces.get(key);
+                for (const v of tri) if (!face.some(p => p.distanceToSquared(v) < 1e-10)) face.push(v);
+            }
+            const points = [];
+            for (const face of faces.values()) {
+                const center = face.reduce((sum, v) => sum.add(v), V()).divideScalar(face.length);
+                for (const v of face) points.push(v.clone().lerp(center, amount));
+            }
+            original.dispose();
+            return new ConvexGeometry(points);
+        }
+
+        const emitters = [];
+        function makeEmitter() {
+            const root = new T.Group();
+            const body = new T.MeshStandardMaterial({ color: c.light.sourceColor, metalness: .75, roughness: .28 });
+            const lens = new T.MeshBasicMaterial({ color: 0xffffff });
+            const add = (geometry, material, z = 0) => {
+                const mesh = new T.Mesh(geometry, material.clone());
+                mesh.position.z = z;
+                root.add(mesh);
+                return mesh;
+            };
+            const tube = (r1, r2, length, z) => {
+                const mesh = add(new T.CylinderGeometry(r1, r2, length, 24), body, z);
+                mesh.rotation.x = Math.PI / 2;
+            };
+            switch (c.light.sourceShape) {
+                case 'orb': add(new T.SphereGeometry(.38, 24, 16), body, -.42); break;
+                case 'panel': add(new T.BoxGeometry(.85, .65, .22), body, -.16); break;
+                case 'spotlight': tube(.38, .18, .65, -.38); break;
+                default: tube(.23, .23, .85, -.48); break;
+            }
+            add(new T.CircleGeometry(c.light.sourceShape === 'panel' ? .26 : .15, 32), lens, 0);
+            body.dispose(); lens.dispose();
+            root.scale.setScalar(c.light.sourceSize);
+            root.visible = c.light.showSource;
+            group.add(root);
+            return root;
+        }
+
         function dispose(o) { o.traverse(x => { x.geometry?.dispose(); if (x.material)
             x.material.dispose(); }); o.removeFromParent(); }
         let floor, dust, dirty = true, viewDirty = true, selected = null;
         function rebuild() {
             for (const o of [...group.children])
                 dispose(o);
-            objects.length = optical.length = 0;
+            objects.length = optical.length = emitters.length = 0;
+            for (let i = 0; i < Math.min(8, c.light.count); i++) emitters.push(makeEmitter());
             selected = null;
             const n = Math.min(50, Math.max(1, Math.round(c.prisms.count))), shapes = ['triangular', 'cube', 'tetrahedron', 'sphere', 'diamond', 'hexagonal'];
             for (let i = 0; i < n; i++) {
@@ -311,7 +398,7 @@
                     continue;
                 raycaster.set(o, d);
                 raycaster.near = .0002;
-                raycaster.far = 40;
+                raycaster.far = Infinity;
                 const h = raycaster.intersectObjects(optical, false)[0];
                 let wall = Infinity;
                 for (const k of ['x', 'y', 'z']) {
@@ -321,11 +408,14 @@
                             wall = Math.min(wall, t);
                     }
                 }
+                if (!c.environment.mirrors) wall = Infinity;
                 const ft = c.environment.floor && d.y < 0 ? (-7 - o.y) / d.y : Infinity;
                 const floorHit = ft > .0002 && ft < wall;
                 const limit = floorHit ? ft : wall;
                 if (!h || h.distance > limit) {
-                    const end = o.clone().addScaledVector(d, Math.min(limit, 40));
+                    // Extend escaped rays beyond the entire camera frustum.
+                    const reach = o.distanceTo(camera.position) + camera.far * 2;
+                    const end = o.clone().addScaledVector(d, Number.isFinite(limit) ? limit : reach);
                     segment(o, end, col, e, medium);
                     if ((c.environment.mirrors || floorHit) && depth < c.simulation.maxBounces) {
                         const normal = V();
@@ -381,7 +471,7 @@
             camera.bottom = -12;
         } camera.updateProjectionMatrix(); }
         addEventListener('resize', resize);
-        mountSettings(c, key => { if (key === '*' || key.startsWith('prisms.') || key === 'effects.dustCount')
+        mountSettings(c, key => { if (key === '*' || key.startsWith('prisms.') || key.startsWith('light.source') || key === 'light.showSource' || key === 'light.count' || key === 'effects.dustCount')
             dirty = true; if (key === '*' || key.startsWith('view.'))
             viewDirty = true; });
         const pick = new T.Raycaster(), plane = new T.Plane(), dragPoint = V();
@@ -445,6 +535,12 @@
                     else if (!c.light.tracking && c.simulation.mode === 'physical')
                         target.set(0, 0, 0);
                     const d = target.sub(o).normalize();
+                    const emitter = emitters[j];
+                    if (emitter) {
+                        emitter.position.copy(o);
+                        emitter.quaternion.setFromUnitVectors(V(0, 0, 1), d);
+                        emitter.visible = c.light.showSource;
+                    }
                     const mono = c.light.type === 'mono';
                     for (let i = 0; i < (mono ? 1 : count); i++) {
                         const w = mono ? c.light.wavelength : 380 + 400 * i / (count - 1), start = o.clone();

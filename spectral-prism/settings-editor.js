@@ -1,9 +1,11 @@
 import defaults from './settings.js';
 const copy = x => JSON.parse(JSON.stringify(x));
 const choices = {
+    sourceShape: ['laser', 'spotlight', 'orb', 'panel'],
     mode: ['physical', 'assisted', 'choreographed'], quality: ['auto', 'low', 'high'], shape: ['triangular', 'cube', 'tetrahedron', 'sphere', 'diamond', 'hexagonal', 'mixed'], distribution: ['cluster', 'grid', 'sphere', 'random'], material: ['crown', 'flint', 'quartz', 'diamond', 'custom'], type: ['white', 'mono', 'array', 'point', 'rotating', 'pulsed', 'pointer']
 };
 const ranges = {
+    chamfer: [0, .35, .01], sourceSize: [.2, 3, .05],
     speed: [0, 4, .05], wavelengths: [4, 96, 1], maxBounces: [1, 16, 1], maxSegments: [100, 24000, 100], minEnergy: [.001, .1, .001], count: [1, 50, 1], size: [.2, 3, .05], variation: [0, 1, .05], rotationSpeed: [0, 90, 1], driftSpeed: [0, 2, .05], customIndex: [1, 3, .01], dispersion: [0, 5, .05], roughness: [0, 1, .01], opacity: [0, 1, .01], wavelength: [380, 780, 1], intensity: [0, 8, .1], width: [.005, .15, .005], pulseSpeed: [.1, 10, .1], absorption: [0, .5, .005], orbitSpeed: [0, 30, .5], zoom: [.3, 4, .05], tilt: [-80, 80, 1], fog: [0, .1, .001], strength: [0, 4, .05], radius: [0, 1, .01], threshold: [0, 2, .05], haloStrength: [0, 1, .01], dustCount: [0, 5000, 50], impactStrength: [0, 3, .05], trailLength: [.1, 3, .1], trailOpacity: [0, 1, .05]
 };
 const descriptions = {
@@ -88,9 +90,7 @@ const presets = {
         }
     },
     'Cinematic Spectrum': {
-        bloom: {
-            strength: 2
-        }, effects: {
+        effects: {
             flare: true, iridescence: true
         }, environment: {
             floor: true
@@ -116,7 +116,16 @@ export function mountSettings(config, onChange) {
     toggle.onclick = () => { panel.hidden = !panel.hidden; };
     panel.hidden = !config.editor.enabled;
     const label = k => k.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase());
-    function apply(data) { Object.assign(config, merge(copy(defaults), data)); build(); onChange('*'); }
+    let selectedPreset = '';
+    let searchQuery = '';
+    const expanded = new Map();
+
+    function apply(data, presetName = '') {
+        selectedPreset = presetName;
+        Object.assign(config, merge(copy(defaults), data));
+        build();
+        onChange('*');
+    }
     function build() {
         panel.replaceChildren();
         const h = document.createElement('h2');
@@ -124,17 +133,40 @@ export function mountSettings(config, onChange) {
         panel.append(h);
         const search = document.createElement('input');
         search.placeholder = 'Search settings';
-        panel.append(search);
+        search.type = 'text';
+        search.setAttribute('aria-label', 'Search settings');
+        search.value = searchQuery;
+        const searchBar = document.createElement('div');
+        searchBar.className = 'settings-search';
+        const clearSearch = document.createElement('button');
+        clearSearch.type = 'button';
+        clearSearch.textContent = '×';
+        clearSearch.title = 'Clear search';
+        clearSearch.setAttribute('aria-label', 'Clear search');
+        searchBar.append(search, clearSearch);
+        panel.append(searchBar);
         const preset = document.createElement('select');
         preset.append(new Option('Choose preset', ''));
         Object.keys(presets).forEach(k => preset.append(new Option(k, k)));
-        preset.onchange = () => { if (preset.value)
-            apply(presets[preset.value]); };
+        preset.value = selectedPreset;
+        preset.onchange = () => {
+            selectedPreset = preset.value;
+            if (selectedPreset) {
+                apply(presets[selectedPreset], selectedPreset);
+            }
+        };
         panel.append(preset);
         const sections = [];
         for (const [group, values] of Object.entries(config)) {
             const d = document.createElement('details');
-            d.open = ['simulation', 'prisms', 'bloom'].includes(group);
+            d.open = expanded.get(group) ?? ['simulation', 'prisms', 'bloom'].includes(group);
+            d.dataset.group = group;
+            expanded.set(group, d.open);
+            d.addEventListener('toggle', () => {
+                if (!searchQuery.trim() && d.isConnected) {
+                    expanded.set(group, d.open);
+                }
+            });
             const s = document.createElement('summary');
             s.textContent = label(group);
             s.title = descriptions[group];
@@ -173,17 +205,27 @@ export function mountSettings(config, onChange) {
                 d.append(row);
             }
         }
-        search.oninput = () => { const q = search.value.toLowerCase(); for (const d of sections) {
-            let n = 0;
-            for (const r of d.querySelectorAll('.setting')) {
-                r.hidden = !r.dataset.search.includes(q);
-                if (!r.hidden)
-                    n++;
+        function filterSettings() {
+            searchQuery = search.value;
+            const q = searchQuery.trim().toLowerCase();
+            clearSearch.disabled = !searchQuery;
+            for (const d of sections) {
+                let matches = 0;
+                for (const row of d.querySelectorAll('.setting')) {
+                    row.hidden = !row.dataset.search.includes(q);
+                    if (!row.hidden) matches++;
+                }
+                d.hidden = matches === 0;
+                d.open = q ? matches > 0 : expanded.get(d.dataset.group);
             }
-            d.hidden = !n;
-            if (q)
-                d.open = true;
-        } };
+        }
+        search.oninput = filterSettings;
+        clearSearch.onclick = () => {
+            search.value = '';
+            filterSettings();
+            search.focus();
+        };
+        filterSettings();
         const area = document.createElement('textarea');
         area.rows = 8;
         area.hidden = true;
