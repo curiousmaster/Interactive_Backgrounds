@@ -69,6 +69,14 @@
       "size": 2724,
       "bootstrapped": true
     },
+    "constellation-network": {
+      "sourceHash": "ea52f0478486be9bd157d51e1d13b81ad593b0a9e9ae0c8c343b1430d15ab25c",
+      "captureTime": 3000,
+      "score": 24.453140061465945,
+      "size": 28354,
+      "thumbnailHash": "080619bd5b4b1824eb5a807ef5271119feeacea87e710c8aad638491a370f583",
+      "generatedAt": "2026-11-27T11:49:54.232Z"
+    },
     "echo-architecture": {
       "sourceHash": "b6174aa26b7f069bdf3aab3d908da3890599e4a749987ec09b23b232f189d470",
       "thumbnailHash": "bbc9fc088f6f1e5ae82df70fced9ba2d2c210761fddbb1ca799c866026ee389b",
