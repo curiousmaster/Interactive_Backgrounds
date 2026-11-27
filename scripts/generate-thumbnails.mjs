@@ -5,9 +5,10 @@ import {
     readFile,
     writeFile,
     mkdir,
-    stat
+    stat, rename, realpath, readdir, unlink
 } from "node:fs/promises";
 
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { createServer } from "node:http";
 
@@ -60,6 +61,52 @@ const SELECTED_FOLDERS =
 
 const REGENERATE_ALL = process.argv.includes("--all");
 const DIAGNOSTICS = process.argv.includes("--diagnostics");
+const args = process.argv.slice(2);
+const flag = name => args.includes(name);
+const option = name => args.find(a => a.startsWith(name + "="))?.slice(name.length + 1);
+const WORKERS = Number(option("--workers") ?? 2);
+if (!Number.isInteger(WORKERS) || WORKERS < 1 || WORKERS > 8) throw new Error("Workers must be 1–8");
+const MANIFEST = join(ROOT, "thumbnail-manifest.json");
+const hash = data => createHash("sha256").update(data).digest("hex");
+async function atomicWrite(path, data) {
+    const tmp = `${path}.${randomUUID()}.tmp`;
+    try { await writeFile(tmp, data); await rename(tmp, path); }
+    finally { await unlink(tmp).catch(() => {}); }
+}
+async function loadManifest() {
+    try {
+        const m = JSON.parse(await readFile(MANIFEST, "utf8"));
+        if (m.version === 1 && m.backgrounds && typeof m.backgrounds === "object") return m;
+    } catch (e) { if (e.code !== "ENOENT") console.warn("Manifest unreadable; rebuilding", e.message); }
+    return {version: 1, backgrounds: {}};
+}
+async function sourceHash(background, shared) {
+    const folder = join(ROOT, ...validateFolder(background.folder));
+    const h = createHash("sha256");
+    h.update(JSON.stringify([shared, background, CONFIG]));
+    async function walk(dir) {
+        const entries = await readdir(dir, {withFileTypes:true});
+        entries.sort((a,b) => a.name.localeCompare(b.name));
+        for (const e of entries) {
+            if (["thumbnail.webp", "node_modules", ".git", "_thumbnail-diagnostics"].includes(e.name) || e.name.endsWith(".tmp")) continue;
+            const path = join(dir,e.name);
+            if (e.isSymbolicLink()) throw new Error(`Unsupported source symlink: ${path}`);
+            if (e.isDirectory()) await walk(path);
+            else if (e.isFile()) h.update(JSON.stringify([relative(ROOT,path),hash(await readFile(path))]));
+        }
+    }
+    await walk(folder);
+    for (const dep of background.thumbnail?.dependencies ?? []) {
+        const path = await realpath(join(ROOT, ...validateFolder(dep)));
+        if (!isInsideRoot(path)) throw new Error("Dependency outside repository");
+        h.update(JSON.stringify([dep,hash(await readFile(path))]));
+    }
+    return h.digest("hex");
+}
+function warn(message) {
+    console.warn(message);
+    if (process.env.GITHUB_ACTIONS === "true") console.log("::warning::" + message.replace(/%/g,"%25").replace(/\r/g,"%0D").replace(/\n/g,"%0A"));
+}
 
 const MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -155,7 +202,7 @@ async function startServer() {
                 pathname += "index.html";
             }
 
-            const file = resolve(
+            let file = resolve(
                 ROOT,
                 "." + pathname
             );
@@ -165,6 +212,8 @@ async function startServer() {
                 return;
             }
 
+            file = await realpath(file);
+            if (!isInsideRoot(file)) { res.writeHead(403).end(); return; }
             const info = await stat(file);
 
             if (!info.isFile()) {
@@ -233,22 +282,15 @@ async function readBackgrounds() {
    SCREENSHOT CAPTURE
    ============================================================ */
 
-async function captureScreenshot(cdp) {
-    const result = await Promise.race([
-        cdp.send("Page.captureScreenshot", {
-            format: "png",
-            captureBeyondViewport: false,
-            fromSurface: true
-        }),
-
-        sleep(CONFIG.captureTimeout).then(() => {
-            throw new Error(
-                "CDP screenshot timeout"
-            );
-        })
-    ]);
-
-    return Buffer.from(result.data, "base64");
+async function captureScreenshot(cdp, timeout = CONFIG.captureTimeout) {
+    let timer;
+    try {
+        const result = await Promise.race([
+            cdp.send("Page.captureScreenshot", {format:"png", captureBeyondViewport:false, fromSurface:true}),
+            new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("CDP screenshot timeout")), timeout); })
+        ]);
+        return Buffer.from(result.data,"base64");
+    } finally { clearTimeout(timer); }
 }
 
 /* ============================================================
@@ -378,7 +420,7 @@ async function analyzeScreenshot(page, pngBuffer) {
    WEBP CONVERSION
    ============================================================ */
 
-async function convertToWebP(page, pngBuffer) {
+async function convertToWebP(page, pngBuffer, config = CONFIG) {
     const base64 = pngBuffer.toString("base64");
 
     const result = await page.evaluate(
@@ -462,9 +504,9 @@ async function convertToWebP(page, pngBuffer) {
         },
         {
             base64,
-            width: CONFIG.thumbnailWidth,
-            height: CONFIG.thumbnailHeight,
-            quality: CONFIG.webpQuality / 100
+            width: config.thumbnailWidth,
+            height: config.thumbnailHeight,
+            quality: config.webpQuality / 100
         }
     );
 
@@ -480,6 +522,8 @@ async function captureBackground(
     origin,
     background
 ) {
+    const config = {...CONFIG, ...background.thumbnail};
+    const quality = {minimumScore:0.5, minimumContrast:0.5, minimumEdges:0.1, ...background.thumbnail?.quality};
     const parts = validateFolder(
         background.folder
     );
@@ -505,28 +549,14 @@ async function captureBackground(
         );
     }
 
-    if (
-        !REGENERATE_ALL &&
-        SELECTED_FOLDERS === null &&
-        await fileExists(outputPath)
-    ) {
-        console.log(
-            `SKIP ${background.name}: thumbnail exists`
-        );
-
-        return "skipped";
-    }
-
-    const url =
-        origin + "/" +
-        parts.map(encodeURIComponent).join("/") +
-        "/index.html";
+    const url = new URL(origin + "/" + parts.map(encodeURIComponent).join("/") + "/index.html");
+    for (const [key,value] of Object.entries({thumbnail:"true", ...config.query})) url.searchParams.set(key,String(value));
 
     let lastError;
 
     for (
         let attempt = 1;
-        attempt <= CONFIG.retries;
+        attempt <= config.retries;
         attempt++
     ) {
         let context;
@@ -534,13 +564,13 @@ async function captureBackground(
         try {
             console.log(
                 `CAPTURE ${background.name} ` +
-                `(attempt ${attempt}/${CONFIG.retries})`
+                `(attempt ${attempt}/${config.retries})`
             );
 
             context = await browser.newContext({
                 viewport: {
-                    width: CONFIG.renderWidth,
-                    height: CONFIG.renderHeight
+                    width: config.renderWidth,
+                    height: config.renderHeight
                 },
 
                 deviceScaleFactor: 1,
@@ -550,6 +580,8 @@ async function captureBackground(
 
             const page = await context.newPage();
 
+            page.on("requestfailed", request => warn(`Request failed: ${request.url()} ${request.failure()?.errorText}`));
+            page.on("response", response => { if (response.status() >= 400) warn(`HTTP ${response.status()}: ${response.url()}`); });
             page.on("pageerror", error => {
                 console.warn(
                     `  PAGE ERROR: ${error.message}`
@@ -557,14 +589,14 @@ async function captureBackground(
             });
 
             page.setDefaultTimeout(
-                CONFIG.navigationTimeout
+                config.navigationTimeout
             );
 
             const response = await page.goto(
-                url,
+                url.href,
                 {
                     waitUntil: "domcontentloaded",
-                    timeout: CONFIG.navigationTimeout
+                    timeout: config.navigationTimeout
                 }
             );
 
@@ -580,12 +612,15 @@ async function captureBackground(
 
             await cdp.send("Page.enable");
 
+            if (config.waitForReady) {
+                await page.waitForFunction(() => window.THUMBNAIL_READY === true, null, {timeout:config.readyTimeout ?? 15000}).catch(() => warn(`Readiness timeout: ${background.name}`));
+            }
             const start = Date.now();
 
             const candidates = [];
 
             for (
-                const captureTime of CONFIG.captureTimes
+                const captureTime of config.captureTimes
             ) {
                 const elapsed = Date.now() - start;
 
@@ -593,7 +628,7 @@ async function captureBackground(
                     await sleep(captureTime - elapsed);
                 }
 
-                const png = await captureScreenshot(cdp);
+                const png = await captureScreenshot(cdp, config.captureTimeout);
 
                 const analysis = await analyzeScreenshot(
                     page,
@@ -620,11 +655,13 @@ async function captureBackground(
             }
 
             // Select the most visually detailed frame.
-            candidates.sort(
+            const valid = candidates.filter(c => c.score >= quality.minimumScore && c.contrast >= quality.minimumContrast && c.edges >= quality.minimumEdges);
+            if (!valid.length) throw new Error("No valid screenshot candidates");
+            valid.sort(
                 (a, b) => b.score - a.score
             );
 
-            const best = candidates[0];
+            const best = valid[0];
 
             console.log(
                 `  Selected frame at ${best.time}ms`
@@ -632,7 +669,7 @@ async function captureBackground(
 
             const webp = await convertToWebP(
                 page,
-                best.png
+                best.png, config
             );
 
             await mkdir(
@@ -641,7 +678,7 @@ async function captureBackground(
             );
 
             // Save only after successful conversion.
-            await writeFile(
+            await atomicWrite(
                 outputPath,
                 webp
             );
@@ -656,7 +693,7 @@ async function captureBackground(
             if (DIAGNOSTICS) {
                 const diagnosticDirectory = join(
                     ROOT,
-                    CONFIG.diagnosticDirectory
+                    config.diagnosticDirectory
                 );
 
                 await mkdir(
@@ -676,7 +713,7 @@ async function captureBackground(
                 );
             }
 
-            return "generated";
+            return {captureTime:best.time, score:best.score, size:info.size, thumbnailHash:hash(webp)};
 
         } catch (error) {
             lastError = error;
@@ -829,152 +866,69 @@ function escapeHTML(value) {
    ============================================================ */
 
 async function main() {
-    const allBackgrounds = await readBackgrounds();
-    
-    if (!allBackgrounds.length) {
-        throw new Error(
-            "No backgrounds found in backgrounds.js"
-        );
+    const all = await readBackgrounds();
+    if (!all.length) throw new Error("No backgrounds found");
+    const names = new Set();
+    for (const b of all) {
+        validateFolder(b.folder);
+        if (names.has(b.folder)) throw new Error(`Duplicate folder: ${b.folder}`);
+        names.add(b.folder);
     }
-    
-    const backgrounds = SELECTED_FOLDERS === null
-        ? allBackgrounds
-        : allBackgrounds.filter(background =>
-            SELECTED_FOLDERS.has(background.folder)
-        );
-    
-    if (!backgrounds.length) {
-        console.log("No updated backgrounds to capture.");
-        return;
+    const manifest = await loadManifest();
+    const shared = hash(await readFile(fileURLToPath(import.meta.url)));
+    const folder = option("--folder");
+    if (folder && !names.has(folder)) throw new Error(`Unknown folder: ${folder}`);
+    const selected = all.filter(b => (!folder || b.folder === folder) && (SELECTED_FOLDERS === null || SELECTED_FOLDERS.has(b.folder)));
+    const queue = [], failed = [];
+    let skipped = 0;
+    for (const b of selected) {
+        try {
+            const source = await sourceHash(b, shared);
+            const path = join(ROOT,...validateFolder(b.folder),"thumbnail.webp");
+            const current = await readFile(path).then(hash).catch(() => null);
+            const old = Object.hasOwn(manifest.backgrounds,b.folder) ? manifest.backgrounds[b.folder] : null;
+            const stale = !current || old?.sourceHash !== source || old?.thumbnailHash !== current;
+            console.log(`${stale || REGENERATE_ALL ? "UPDATE" : "SKIP"} ${b.folder}`);
+            if (stale || REGENERATE_ALL) queue.push({b,source}); else skipped++;
+        } catch (e) { failed.push(b.folder); warn(`${b.folder}: ${e.message}`); }
     }
-    console.log("====================================");
-    console.log("Background Thumbnail Generator");
-    console.log("====================================");
-
-    console.log(
-        `Backgrounds: ${backgrounds.length}`
-    );
-
-    console.log(
-        `Render resolution: ` +
-        `${CONFIG.renderWidth}x${CONFIG.renderHeight}`
-    );
-
-    console.log(
-        `Thumbnail resolution: ` +
-        `${CONFIG.thumbnailWidth}x${CONFIG.thumbnailHeight}`
-    );
-
-    console.log(
-        `Regenerate all: ${REGENERATE_ALL}`
-    );
-
-    console.log(
-        `Diagnostics: ${DIAGNOSTICS}`
-    );
-
-    const { server, origin } = await startServer();
-
-    let browser;
-
-    const results = {
-        generated: [],
-        skipped: [],
-        failed: []
-    };
-
-    try {
-        browser = await chromium.launch({
-            headless: true,
-
-            args: [
-                "--enable-webgl",
-                "--use-gl=angle",
-                "--use-angle=swiftshader",
-                "--enable-unsafe-swiftshader",
-                "--disable-dev-shm-usage"
-            ]
-        });
-
-        for (const background of backgrounds) {
-            try {
-                const result = await captureBackground(
-                    browser,
-                    origin,
-                    background
-                );
-
-                results[result].push(
-                    background.name
-                );
-
-            } catch (error) {
-                results.failed.push({
-                    name: background.name,
-                    error: error.message
-                });
-
-                console.error(
-                    `FAILED ${background.name}: ` +
-                    error.message
-                );
+    const orphans = Object.keys(manifest.backgrounds).filter(f => !names.has(f));
+    for (const f of orphans) console.log(`ORPHAN ${f}`);
+    console.log(`Pending: ${queue.length}; current: ${skipped}; failed: ${failed.length}; orphan records: ${orphans.length}`);
+    if (flag("--verify")) { if (queue.length || failed.length || orphans.length) process.exitCode = 1; return; }
+    if (flag("--dry-run") || flag("--stats")) return;
+    if (flag("--clean")) {
+        // Remove only manifest records, not user files or untracked images.
+        for (const f of orphans) delete manifest.backgrounds[f];
+    }
+    let generated = 0;
+    if (queue.length) {
+        const {server,origin} = await startServer();
+        let browser;
+        try {
+            browser = await chromium.launch({headless:true,args:["--enable-webgl","--use-gl=angle","--use-angle=swiftshader","--enable-unsafe-swiftshader","--disable-dev-shm-usage"]});
+            async function worker() {
+                while (queue.length) {
+                    const {b,source} = queue.shift();
+                    try {
+                        const result = await captureBackground(browser,origin,b);
+                        Object.defineProperty(manifest.backgrounds,b.folder,{value:{sourceHash:source,...result,generatedAt:new Date().toISOString()},enumerable:true,configurable:true,writable:true});
+                        generated++;
+                    } catch(e) { failed.push(b.folder); warn(`${b.folder}: ${e.message}`); }
+                }
             }
+            await Promise.all(Array.from({length:Math.min(WORKERS,queue.length)},worker));
+        } finally {
+            if (browser) await browser.close().catch(() => {});
+            await new Promise(done => server.close(done));
         }
-
-        await generateContactSheet(backgrounds);
-
-        console.log("");
-        console.log("====================================");
-        console.log("THUMBNAIL GENERATION SUMMARY");
-        console.log("====================================");
-
-        console.log(
-            `Generated: ${results.generated.length}`
-        );
-
-        console.log(
-            `Skipped: ${results.skipped.length}`
-        );
-
-        console.log(
-            `Failed: ${results.failed.length}`
-        );
-
-        if (results.failed.length) {
-            console.log("");
-            console.log("Failed backgrounds:");
-
-            for (const failed of results.failed) {
-                console.log(
-                    ` - ${failed.name}: ${failed.error}`
-                );
-            }
-        }
-
-        console.log("====================================");
-
-        // Individual failures are reported but do not block
-        // the workflow from committing successful thumbnails.
-        //
-        // A total generator failure (missing backgrounds.js,
-        // browser startup failure, etc.) still throws.
-
-    } finally {
-        if (browser) {
-            await browser.close().catch(() => {});
-        }
-
-        await new Promise(resolveClose => {
-            server.close(() => resolveClose());
-        });
     }
+    if (generated || (flag("--clean") && orphans.length)) {
+        manifest.backgrounds = Object.fromEntries(Object.entries(manifest.backgrounds).sort(([a],[b]) => a.localeCompare(b)));
+        await atomicWrite(MANIFEST,JSON.stringify(manifest,null,2)+"\n");
+    }
+    await generateContactSheet(selected);
+    console.log(`Generated: ${generated}; skipped: ${skipped}; failed: ${failed.length}`);
+    if (failed.length && flag("--strict")) process.exitCode = 1;
 }
-
-main().catch(error => {
-    console.error(
-        "FATAL:",
-        error.stack || error.message
-    );
-
-    process.exitCode = 1;
-});
+main().catch(error => { console.error("FATAL:",error.stack || error.message); process.exitCode = 1; });

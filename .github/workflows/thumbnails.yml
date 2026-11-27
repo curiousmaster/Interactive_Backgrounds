@@ -2,22 +2,7 @@ name: Generate Background Thumbnails
 
 on:
   push:
-    branches:
-      - main
-      - master
-    paths:
-      - "index.html"
-      - "layered.html"
-      - "backgrounds.js"
-      - "*/index.html"
-      - "*/*/index.html"
-      - "*/settings-editor.js"
-      - "*/*/settings-editor.js"
-      - "scripts/generate-thumbnails.mjs"
-      - ".github/workflows/thumbnails.yml"
-      - "zaxxon.html"
-      - "asteroids.html"
-
+    branches: [main, master]
   workflow_dispatch:
     inputs:
       regenerate_all:
@@ -27,9 +12,7 @@ on:
         default: false
 
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: read
 
 concurrency:
   group: thumbnails-${{ github.ref }}
@@ -39,12 +22,16 @@ jobs:
   generate:
     name: Generate and commit thumbnails
     runs-on: ubuntu-24.04
-
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    outputs:
+      commit_sha: ${{ steps.commit.outputs.sha }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          persist-credentials: true
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -52,144 +39,91 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Find updated background folders
-        if: github.event_name == 'push'
-        shell: bash
-        env:
-          BEFORE_SHA: ${{ github.event.before }}
-          AFTER_SHA: ${{ github.sha }}
-        run: |
-          node --input-type=module <<'NODE'
-          import { execFileSync } from "node:child_process";
-          import { appendFileSync } from "node:fs";
-
-          const before = process.env.BEFORE_SHA;
-          const after = process.env.AFTER_SHA;
-
-          function git(args) {
-            return execFileSync("git", args, {
-              encoding: "utf8",
-              maxBuffer: 64 * 1024 * 1024
-            });
-          }
-
-          let files;
-
-          if (/^0+$/.test(before)) {
-            // New branch: consider its current background source files.
-            files = git([
-              "ls-tree",
-              "-r",
-              "--name-only",
-              "-z",
-              after
-            ]);
-          } else {
-            // A force push can leave the previous tip outside local history.
-            try {
-              git(["cat-file", "-e", `${before}^{commit}`]);
-            } catch {
-              git(["fetch", "--no-tags", "origin", before]);
-            }
-
-            // Compare the entire push, including multiple commits.
-            files = git([
-              "diff",
-              "--name-only",
-              "--no-renames",
-              "--diff-filter=ACMT",
-              "-z",
-              before,
-              after
-            ]);
-          }
-
-          const folders = new Set();
-
-          for (const file of files.split("\0").filter(Boolean)) {
-            const match = file.match(
-              /^(.+)\/(?:index\.html|settings-editor\.js)$/
-            );
-
-            if (match) {
-              folders.add(match[1]);
-            }
-          }
-
-          const selected = [...folders].sort();
-
-          appendFileSync(
-            process.env.GITHUB_ENV,
-            `THUMBNAIL_FOLDERS=${JSON.stringify(selected)}\n`
-          );
-
-          console.log(
-            selected.length
-              ? `Updated background folders:\n${selected.join("\n")}`
-              : "No background source files changed."
-          );
-          NODE
-
       - name: Install Playwright
-        run: |
-          npm install --no-save --no-package-lock playwright@1.56.1
-          npx playwright install --with-deps chromium
+        run: npm install --no-save --no-package-lock playwright@1.56.1
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
 
       - name: Generate thumbnails
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
           REGENERATE_ALL: ${{ inputs.regenerate_all }}
         run: |
-          if [[ "$EVENT_NAME" == "push" ]]; then
-            # The folder filter limits --all to updated effects.
-            node scripts/generate-thumbnails.mjs --all
-          elif [[ "$REGENERATE_ALL" == "true" ]]; then
-            node scripts/generate-thumbnails.mjs --all
+          set -euo pipefail
+          unset THUMBNAIL_FOLDERS
+          if [[ "$REGENERATE_ALL" == "true" ]]; then
+            node scripts/generate-thumbnails.mjs --all --workers=2
           else
-            node scripts/generate-thumbnails.mjs
+            node scripts/generate-thumbnails.mjs --workers=2
           fi
 
       - name: Commit generated thumbnails
+        id: commit
         shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           find . -name thumbnail.webp \
             -not -path './node_modules/*' \
             -not -path './.git/*' \
             -print0 | xargs -0 -r git add --
-
+          if [[ -f thumbnail-manifest.json ]]; then
+            git add -- thumbnail-manifest.json
+          fi
           if git diff --cached --quiet; then
             echo "No thumbnail changes to commit."
           else
             git commit -m "chore: update background thumbnails [skip ci]"
-            git push
+            git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
           fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   deploy:
     name: Deploy GitHub Pages
     needs: generate
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
     steps:
-      - name: Checkout latest repository
+      - name: Checkout generated repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ needs.generate.outputs.commit_sha }}
+          persist-credentials: false
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      - name: Prepare website
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/website"
+          rsync -a \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='node_modules/' \
+            --exclude='scripts/' \
+            --exclude='.gitignore' \
+            --exclude='package.json' \
+            --exclude='package-lock.json' \
+            --exclude='thumbnail-manifest.json' \
+            --exclude='_thumbnail-diagnostics/' \
+            ./ "$RUNNER_TEMP/website/"
+
       - name: Upload website
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "."
+          path: "${{ runner.temp }}/website"
+          retention-days: 1
 
       - name: Deploy website
         id: deployment
