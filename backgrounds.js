@@ -386,10 +386,10 @@ export const backgrounds = [
             thumbnail: {
                 renderWidth: 960,
                 renderHeight: 540,
-                captureTimes: [5000],
+                captureTimes: [10000],
                 navigationTimeout: 60000,
                 captureTimeout: 90000,
-                retries: 3
+                retries: 2
             }
     },
     {
