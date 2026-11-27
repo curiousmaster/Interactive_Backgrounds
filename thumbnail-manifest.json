@@ -320,12 +320,12 @@
       "bootstrapped": true
     },
     "spectral-prism": {
-      "sourceHash": "e305415747021101790c6a184f089ec9ae98f63df0beb1ec65db930480f87273",
+      "sourceHash": "6931159b9874a6e39f94c5c963fa547748f4f61ee047484ed6c70ed25845b070",
       "captureTime": 3000,
-      "score": 14.616274656861235,
-      "size": 9232,
-      "thumbnailHash": "4707c190468955451dd8ef6dbce31da7adb1055fb7a4fa8cff29ffa305b0403c",
-      "generatedAt": "2026-11-27T20:45:18.263Z"
+      "score": 12.572512549572846,
+      "size": 7598,
+      "thumbnailHash": "8af481d346d7ace6bf15b31878e6f00659f81a041b194975603b259c16c11aa8",
+      "generatedAt": "2026-11-27T21:29:52.695Z"
     },
     "stellar-extreme": {
       "sourceHash": "9a63162c0ff141ebfc3084ae1a899ee219a5a02e79980ae72a9f4dbadef8df73",
