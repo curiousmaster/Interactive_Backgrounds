@@ -154,6 +154,9 @@
 
     <script type="module">
         import * as T from 'three';
+        import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+        import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+        import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
         import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -182,7 +185,10 @@
         const directional = new T.DirectionalLight();
         const rim = new T.DirectionalLight();
         rim.position.set(-8, 4, -10);
-        scene.add(ambient, directional, rim);
+        const hemisphere = new T.HemisphereLight();
+        const extraDirectional = Array.from({length: 3}, () => new T.DirectionalLight());
+        scene.add(ambient, directional, rim, hemisphere, ...extraDirectional);
+        renderer.shadowMap.type = T.PCFSoftShadowMap;
         const makeLights = () => Array.from({length: 8}, () => {
             const light = new T.PointLight();
             scene.add(light);
@@ -192,56 +198,83 @@
         const pmrem = new T.PMREMGenerator(renderer);
         let environmentTarget = null, environmentStyle = '';
         function updateEnvironment(style) {
-            if (style === environmentStyle) return;
-            environmentStyle = style;
+            const panels = c.environmentalLighting.studioPanels;
+            const key = JSON.stringify([style, panels, c.environmentalLighting.environment.blur]);
+            if (key === environmentStyle) return;
+            environmentStyle = key;
             const studio = new T.Scene();
             studio.background = new T.Color(0x080808);
             const palette = style === 'neon' ? [0xff2288, 0x2266ff, 0x33ffee] :
                 style === 'rainbow' ? [0xff3333, 0xffaa22, 0x33ff66, 0x3377ff, 0xbb33ff] : [0xffffff, 0xb8d8ff, 0xffe4cc];
-            const count = style === 'cosmic' ? 32 : style === 'dark' ? 2 : 8;
+            const count = Math.max(1, Math.round(panels.count));
             for (let i = 0; i < count; i++) {
                 const angle = i * 2 * Math.PI / count;
                 const width = style === 'strip-lights' ? .35 : style === 'cosmic' ? .12 : 3;
                 const height = style === 'cosmic' ? .12 : style === 'laboratory' ? 2 : 5;
-                const panel = new T.Mesh(new T.PlaneGeometry(width, height), new T.MeshBasicMaterial({
-                    color: new T.Color(palette[i % palette.length]).multiplyScalar(style === 'dark' ? .3 : 3), side: T.DoubleSide
+                const panel = new T.Mesh(new T.PlaneGeometry(width * panels.size, height * panels.size), new T.MeshBasicMaterial({
+                    color: new T.Color(palette[i % palette.length]).multiply(new T.Color(1, Math.min(1, panels.temperature / 6500), Math.min(1, panels.temperature / 7500))).multiplyScalar(style === 'dark' ? panels.brightness * .1 : panels.brightness), side: T.DoubleSide
                 }));
-                panel.position.set(8 * Math.cos(angle), i % 2 ? 4 : -2, 8 * Math.sin(angle));
+                panel.position.set(panels.distance * Math.cos(angle), i % 2 ? 4 : -2, panels.distance * Math.sin(angle));
                 panel.lookAt(0, 0, 0);
                 studio.add(panel);
             }
-            const next = pmrem.fromScene(studio, .04);
+            const next = pmrem.fromScene(studio, c.environmentalLighting.environment.blur);
             environmentTarget?.dispose();
             environmentTarget = next;
             studio.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); });
         }
         function updateLighting() {
             const l = c.environmentalLighting, enabled = l.enabled;
-            const power = section => enabled && section.enabled ? section.intensity : 0;
+            const power = section => enabled && section.enabled ? section.intensity * l.masterIntensity : 0;
             ambient.color.set(l.ambient.color);
-            ambient.intensity = power(l.ambient);
+            ambient.intensity = l.ambient.hemisphere ? 0 : power(l.ambient);
+            hemisphere.color.set(l.ambient.color);
+            hemisphere.groundColor.set(l.ambient.groundColor);
+            hemisphere.intensity = l.ambient.hemisphere ? power(l.ambient) : 0;
+            renderer.toneMappingExposure = enabled ? l.exposure : 1;
+            renderer.shadowMap.enabled = enabled && l.shadows.enabled;
+            directional.castShadow = renderer.shadowMap.enabled;
+            if (directional.shadow.mapSize.x !== l.shadows.resolution) {
+                directional.shadow.map?.dispose();
+                directional.shadow.map = null;
+                directional.shadow.mapSize.set(l.shadows.resolution, l.shadows.resolution);
+            }
+            directional.shadow.radius = l.shadows.softness;
+            directional.shadow.bias = l.shadows.bias;
+            Object.assign(directional.shadow.camera, {left:-15,right:15,top:15,bottom:-15,far:60});
+            directional.shadow.camera.updateProjectionMatrix();
             directional.color.set(l.directional.color);
             directional.intensity = power(l.directional);
             const az = T.MathUtils.degToRad(l.directional.azimuth), el = T.MathUtils.degToRad(l.directional.elevation);
             directional.position.set(10 * Math.cos(el) * Math.cos(az), 10 * Math.sin(el), 10 * Math.cos(el) * Math.sin(az));
+            extraDirectional.forEach((light, i) => {
+                const angle = az + T.MathUtils.degToRad(l.directional.spread * (i + 1));
+                light.position.set(10*Math.cos(el)*Math.cos(angle), 10*Math.sin(el), 10*Math.cos(el)*Math.sin(angle));
+                light.color.copy(directional.color);
+                light.intensity = i + 1 < l.directional.count ? power(l.directional) : 0;
+            });
             rim.color.set(l.rim.color);
             rim.intensity = power(l.rim);
             if (enabled && l.environment.enabled) updateEnvironment(l.environment.style);
             scene.environment = enabled && l.environment.enabled ? environmentTarget.texture : null;
-            scene.environmentIntensity = l.environment.intensity;
+            scene.environmentIntensity = l.environment.intensity * l.masterIntensity;
+            scene.environmentRotation.x = T.MathUtils.degToRad(l.environment.verticalRotation);
             scene.environmentRotation.y = T.MathUtils.degToRad(l.environment.rotation);
             for (let i = 0; i < 8; i++) {
                 const p = pointLights[i], a = animatedLights[i], sp = spectralLights[i];
                 const angle = i * Math.PI * 2 / Math.max(1, l.point.count);
-                p.position.set(8 * Math.cos(angle), 4, 8 * Math.sin(angle));
-                p.color.set(l.point.color); p.distance = l.point.distance; p.decay = l.point.decay;
+                p.position.set(l.point.radius * Math.cos(angle), l.point.height, l.point.radius * Math.sin(angle));
+                p.color.set(l.point.color); if (l.point.colorVariation) p.color.offsetHSL(i / 8, 0, 0); p.distance = l.point.distance; p.decay = l.point.decay;
                 p.intensity = i < l.point.count ? power(l.point) : 0;
-                const phase = now * l.animated.speed + i * Math.PI * 2 / Math.max(1, l.animated.count);
+                const phase = now * l.animated.speed * (1 + i * l.animated.speedVariation / 8) + i * Math.PI * 2 / Math.max(1, l.animated.count);
                 a.position.set(Math.cos(phase) * l.animated.radius, 4 * Math.sin(phase * .7), Math.sin(phase) * l.animated.radius);
+                if (l.animated.axis === "x") a.position.applyAxisAngle(V(0,0,1), Math.PI/2);
+                if (l.animated.axis === "z") a.position.applyAxisAngle(V(1,0,0), Math.PI/2);
+                if (l.animated.pattern === "oscillate") a.position.multiplyScalar(Math.sin(phase));
                 a.color.setHSL(l.animated.colorVariation ? (phase / 6.283 + 10) % 1 : 0, l.animated.colorVariation ? .8 : 0, .8);
                 a.intensity = i < l.animated.count ? power(l.animated) : 0;
                 const ray = lit[Math.floor(i * lit.length / 8)];
-                sp.intensity = ray ? power(l.spectral) * Math.max(ray.color.r, ray.color.g, ray.color.b) : 0;
+                sp.intensity = ray && i < l.spectral.count ? power(l.spectral) * Math.max(ray.color.r, ray.color.g, ray.color.b) : 0;
                 sp.distance = l.spectral.radius; sp.decay = 2;
                 if (ray) { sp.position.copy(ray.a).lerp(ray.b, .15); sp.color.copy(ray.color); }
             }
@@ -250,13 +283,31 @@
                 m.specularColor.set(l.specular.color);
                 m.specularIntensity = enabled && l.specular.enabled ? l.specular.intensity : 0;
                 m.roughness = enabled && l.specular.enabled ? l.specular.roughness : c.prisms.roughness;
-                m.clearcoat = enabled && l.fresnel.enabled ? Math.min(1, l.fresnel.intensity) : 0;
+                m.clearcoat = 0;
                 m.clearcoatRoughness = m.roughness;
-                // View-dependent rim approximation on the existing edge geometry.
-                const edge = o.mesh.children[0].material;
-                const facing = Math.abs(V(0, 0, 1).applyQuaternion(o.mesh.quaternion).dot(camera.position.clone().sub(o.mesh.position).normalize()));
-                edge.opacity = Math.min(1, .55 + power(l.rim) * Math.pow(1 - facing, l.rim.power));
-                edge.color.set(0xaacfff).lerp(new T.Color(l.rim.color), Math.min(1, power(l.rim)));
+                o.rim.visible = enabled && (l.rim.enabled || l.fresnel.enabled);
+                const u = o.rim.material.uniforms;
+                u.rimColor.value.set(l.rim.color);
+                u.rimPower.value = l.rim.power;
+                u.rimWidth.value = l.rim.width;
+                u.rimIntensity.value = power(l.rim);
+                u.fresnelColor.value.set(l.fresnel.color);
+                u.fresnelPower.value = l.fresnel.falloff;
+                u.fresnelIntensity.value = power(l.fresnel);
+                const e = c.edges;
+                for (const line of [o.edge, o.edgeGlow]) {
+                    line.visible = e.enabled && (line === o.edge || e.glow);
+                    line.material.color.set(e.color);
+                    if (e.colorMode === 'spectral') line.material.color.setHSL((o.phase / 6.283) % 1, .9, .6);
+                    if (e.colorMode === 'iridescent') line.material.color.setHSL((now * .1 + o.phase / 6.283) % 1, .7, .7);
+                    if (e.colorMode === 'material') line.material.color.copy(m.color);
+                    line.material.linewidth = e.thickness * (line === o.edgeGlow ? 4 : 1);
+                    line.material.opacity = e.opacity * (line === o.edgeGlow ? e.glowIntensity : 1);
+                    line.material.depthTest = !e.showHiddenEdges;
+                    line.material.resolution.set(innerWidth, innerHeight);
+                }
+                o.edgeDepth.visible = e.enabled && !e.showHiddenEdges;
+
             }
         }
         const objects = [], optical = [], group = new T.Group();
@@ -347,10 +398,27 @@
                     color: 0xc4e4ff, transparent: true, opacity: c.prisms.opacity, roughness: c.prisms.roughness, metalness: .15, side: T.DoubleSide, depthWrite: false, iridescence: c.effects.iridescence ? 1 : 0
                 });
                 const mesh = new T.Mesh(g, mat);
-                const edge = new T.LineSegments(new T.EdgesGeometry(g, 20), new T.LineBasicMaterial({
-                    color: 0xaacfff, transparent: true, opacity: .55
+                const edgeGeometry = new T.EdgesGeometry(g, c.edges.showChamferEdges ? 1 : 65);
+                const makeEdge = () => {
+                    const geo = new LineSegmentsGeometry();
+                    geo.setPositions(edgeGeometry.attributes.position.array);
+                    return new LineSegments2(geo, new LineMaterial({transparent:true, depthWrite:false}));
+                };
+                const edge = makeEdge(), edgeGlow = makeEdge();
+                edgeGeometry.dispose();
+                edgeGlow.material.blending = T.AdditiveBlending;
+                const edgeDepth = new T.Mesh(g.clone(), new T.MeshBasicMaterial({colorWrite:false, depthWrite:true, transparent:true}));
+                edgeDepth.renderOrder = 1;
+                edge.renderOrder = edgeGlow.renderOrder = 2;
+                const rimSurface = new T.Mesh(g.clone(), new T.ShaderMaterial({
+                    transparent:true, depthWrite:false, blending:T.AdditiveBlending,
+                    uniforms:{rimColor:{value:new T.Color()},rimPower:{value:3},rimWidth:{value:.5},rimIntensity:{value:0},fresnelColor:{value:new T.Color()},fresnelPower:{value:3},fresnelIntensity:{value:0}},
+                    vertexShader:`varying vec3 n; varying vec3 v; void main(){vec4 p=modelViewMatrix*vec4(position,1.); n=normalize(normalMatrix*normal); v=-p.xyz; gl_Position=projectionMatrix*p;}`,
+                    fragmentShader:`varying vec3 n; varying vec3 v; uniform vec3 rimColor,fresnelColor; uniform float rimPower,rimWidth,rimIntensity,fresnelPower,fresnelIntensity; void main(){float f=1.-abs(dot(normalize(n),normalize(v))); float r=pow(smoothstep(1.-rimWidth,1.,f),rimPower)*rimIntensity; float q=pow(f,fresnelPower)*fresnelIntensity; gl_FragColor=vec4(rimColor*r+fresnelColor*q,1.);}`
                 }));
-                mesh.add(edge);
+                mesh.add(edgeDepth, edge, edgeGlow, rimSurface);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
                 let p;
                 if (n === 1)
                     p = V();
@@ -371,13 +439,14 @@
                 mesh.rotation.set(Math.PI / 2, 0, i * .7);
                 group.add(mesh);
                 objects.push({
-                    mesh, base: p.clone(), axis: c.prisms.randomAxes ? axis() : V(0, 0, 1), phase: rand(0, 6.28)
+                    mesh, edge, edgeGlow, edgeDepth, rim: rimSurface, base: p.clone(), axis: c.prisms.randomAxes ? axis() : V(0, 0, 1), phase: rand(0, 6.28)
                 });
                 optical.push(mesh);
             }
             floor = new T.Mesh(new T.PlaneGeometry(26, 26), new T.MeshStandardMaterial({
                 color: 0x151c2a, roughness: .3, metalness: .5, side: T.DoubleSide
             }));
+            floor.receiveShadow = true;
             floor.rotation.x = -Math.PI / 2;
             floor.position.y = -7;
             group.add(floor);
@@ -547,7 +616,7 @@
             camera.bottom = -12;
         } camera.updateProjectionMatrix(); }
         addEventListener('resize', resize);
-        mountSettings(c, key => { if (key === '*' || key.startsWith('prisms.') || key.startsWith('light.source') || key === 'light.showSource' || key === 'light.count' || key === 'effects.dustCount')
+        mountSettings(c, key => { if (key === '*' || key.startsWith('prisms.') || key === 'edges.showChamferEdges' || key.startsWith('light.source') || key === 'light.showSource' || key === 'light.count' || key === 'effects.dustCount')
             dirty = true; if (key === '*' || key.startsWith('view.'))
             viewDirty = true; });
         const pick = new T.Raycaster(), plane = new T.Plane(), dragPoint = V();

@@ -68,7 +68,9 @@ export default {
         "ambient": {
             "enabled": true,
             "color": "#b8c8e8",
-            "intensity": 0.15
+            "intensity": 0.15,
+            "hemisphere": false,
+            "groundColor": "#303040"
         },
         "specular": {
             "enabled": true,
@@ -80,14 +82,18 @@ export default {
             "enabled": true,
             "intensity": 0.8,
             "rotation": 0,
-            "style": "studio"
+            "style": "studio",
+            "verticalRotation": 0,
+            "blur": 0.04
         },
         "directional": {
             "enabled": true,
             "color": "#ffffff",
             "intensity": 0.6,
             "azimuth": 45,
-            "elevation": 35
+            "elevation": 35,
+            "count": 1,
+            "spread": 90
         },
         "point": {
             "enabled": false,
@@ -95,13 +101,17 @@ export default {
             "intensity": 1,
             "color": "#ffffff",
             "distance": 20,
-            "decay": 2
+            "decay": 2,
+            "radius": 8,
+            "height": 4,
+            "colorVariation": false
         },
         "rim": {
             "enabled": true,
             "color": "#9bbcff",
             "intensity": 0.4,
-            "power": 3
+            "power": 3,
+            "width": 0.5
         },
         "animated": {
             "enabled": true,
@@ -109,16 +119,38 @@ export default {
             "speed": 0.2,
             "radius": 12,
             "intensity": 0.8,
-            "colorVariation": false
+            "colorVariation": false,
+            "axis": "y",
+            "pattern": "orbit",
+            "speedVariation": 0
         },
         "spectral": {
             "enabled": true,
             "intensity": 0.6,
-            "radius": 1.5
+            "radius": 1.5,
+            "count": 8
         },
         "fresnel": {
             "enabled": true,
-            "intensity": 0.8
+            "intensity": 0.8,
+            "color": "#ffffff",
+            "falloff": 3
+        },
+        "masterIntensity": 1,
+        "exposure": 1,
+        "preset": "Custom",
+        "studioPanels": {
+            "count": 8,
+            "size": 1,
+            "distance": 8,
+            "brightness": 3,
+            "temperature": 6500
+        },
+        "shadows": {
+            "enabled": false,
+            "resolution": 1024,
+            "softness": 2,
+            "bias": -0.0001
         }
     },
     "bloom": {
@@ -147,5 +179,16 @@ export default {
         "enabled": true,
         "dragPrisms": true,
         "showStats": false
+    },
+    "edges": {
+        "enabled": true,
+        "color": "#aabbdd",
+        "opacity": 0.35,
+        "thickness": 1,
+        "glow": false,
+        "glowIntensity": 0.3,
+        "showChamferEdges": true,
+        "showHiddenEdges": false,
+        "colorMode": "fixed"
     }
 };

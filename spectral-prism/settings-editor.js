@@ -1,15 +1,19 @@
 import defaults from './settings.js';
 const copy = x => JSON.parse(JSON.stringify(x));
 const choices = {
+    colorMode: ['fixed','spectral','iridescent','material'], axis:['x','y','z'], pattern:['orbit','oscillate'],
+    preset:['Dark Side','Soft Studio','Hard Studio','Neon','Laboratory','Cinematic','Cosmic','Rainbow','High Contrast','Custom'],
     style: ['studio', 'strip-lights', 'laboratory', 'neon', 'cosmic', 'dark', 'rainbow'],
     sourceShape: ['laser', 'spotlight', 'orb', 'panel'],
     mode: ['physical', 'assisted', 'choreographed'], quality: ['auto', 'low', 'high'], shape: ['triangular', 'cube', 'tetrahedron', 'sphere', 'diamond', 'hexagonal', 'mixed'], distribution: ['cluster', 'grid', 'sphere', 'random'], material: ['crown', 'flint', 'quartz', 'diamond', 'custom'], type: ['white', 'mono', 'array', 'point', 'rotating', 'pulsed', 'pointer']
 };
 const ranges = {
+    thickness:[.5,8,.1], glowIntensity:[0,2,.05], masterIntensity:[0,3,.05], exposure:[.1,3,.05], verticalRotation:[-180,180,1], blur:[0,.5,.01], brightness:[0,10,.1], temperature:[2000,10000,100], spread:[0,180,1], height:[-15,15,.1], speedVariation:[0,2,.05], falloff:[.5,10,.1], resolution:[512,2048,512], softness:[0,8,.1], bias:[-.01,.01,.0001],
     chamfer: [0, .35, .01], sourceSize: [.2, 3, .05],
     speed: [0, 4, .05], wavelengths: [4, 96, 1], maxBounces: [1, 16, 1], maxSegments: [100, 24000, 100], minEnergy: [.001, .1, .001], count: [1, 50, 1], size: [.2, 3, .05], variation: [0, 1, .05], rotationSpeed: [0, 90, 1], driftSpeed: [0, 2, .05], customIndex: [1, 3, .01], dispersion: [0, 5, .05], roughness: [0, 1, .01], opacity: [0, 1, .01], wavelength: [380, 780, 1], intensity: [0, 8, .1], width: [.005, .15, .005], pulseSpeed: [.1, 10, .1], absorption: [0, .5, .005], orbitSpeed: [0, 30, .5], zoom: [.3, 4, .05], tilt: [-80, 80, 1], fog: [0, .1, .001], strength: [0, 4, .05], radius: [0, 1, .01], threshold: [0, 2, .05], haloStrength: [0, 1, .01], dustCount: [0, 5000, 50], impactStrength: [0, 3, .05], trailLength: [.1, 3, .1], trailOpacity: [0, 1, .05]
 };
 const descriptions = {
+    edges: "Independent wide-line outlines and glow.",
     environmentalLighting: 'Independent scene illumination and surface reflections.', simulation: 'Ray budget, optical interaction depth and animation speed.', prisms: 'Geometry, material and independent motion.', light: 'Emitter spectrum, targeting and beam appearance.', optics: 'Physical interface behaviour and energy loss.', view: 'Camera projection and automatic orbit.', environment: 'Background and optical boundaries.', bloom: 'HDR glow post-processing.', effects: 'Atmospheric and artistic rendering layers.', controls: 'Interaction and diagnostics.', editor: 'Settings panel visibility.'
 };
 const presets = {
@@ -206,8 +210,9 @@ export function mountSettings(config, onChange) {
                     input = document.createElement('input');
                     input.type = typeof value === 'boolean' ? 'checkbox' : typeof value === 'number' ? 'range' : /^#[0-9a-f]{6}$/i.test(value) ? 'color' : 'text';
                     if (input.type === 'range') {
+                        const specific = path.join('.') === 'environmentalLighting.rim' && key === 'width' ? [.01,1,.01] : path.join('.') === 'environmentalLighting.directional' && key === 'count' ? [1,4,1] : path.join('.') === 'environmentalLighting.studioPanels' && key === 'count' ? [1,32,1] : null;
                         const special = group === 'environmentalLighting' ? {count:[1,8,1], radius:[.1,25,.1], rotation:[0,360,1], azimuth:[-180,180,1], elevation:[-90,90,1], distance:[1,50,1], decay:[0,2,.1], power:[.5,8,.1]}[key] : null;
-                        const r = special || (group === 'light' && key === 'count' ? [1, 8, 1] : ranges[key] || [0, 10, .1]);
+                        const r = specific || special || (group === 'light' && key === 'count' ? [1, 8, 1] : ranges[key] || [0, 10, .1]);
                         [input.min, input.max, input.step] = r;
                     }
                 }
@@ -218,7 +223,23 @@ export function mountSettings(config, onChange) {
                 const out = document.createElement('small');
                 if (typeof value === 'number')
                     out.textContent = value;
-                input.oninput = () => { const v = input.type === 'checkbox' ? input.checked : typeof value === 'number' ? Number(input.value) : input.value; values[key] = v; out.textContent = typeof v === 'number' ? v : ''; onChange([...path, key].join('.')); };
+                input.oninput = () => { const v = input.type === 'checkbox' ? input.checked : typeof value === 'number' ? Number(input.value) : input.value; values[key] = v;
+                    if (group === 'environmentalLighting' && key === 'preset' && v !== 'Custom') {
+                        const styles = {'Dark Side':['dark',.15,.1], 'Soft Studio':['studio',.8,.25], 'Hard Studio':['strip-lights',1.2,.03], Neon:['neon',1,.08], Laboratory:['laboratory',.8,.12], Cinematic:['studio',1.3,.05], Cosmic:['cosmic',.6,.08], Rainbow:['rainbow',1,.1], 'High Contrast':['strip-lights',1.5,.02]};
+                        const [style,intensity,roughness] = styles[v];
+                        const l = config.environmentalLighting;
+                        Object.assign(l, copy(defaults.environmentalLighting), {preset:v});
+                        Object.assign(l.environment,{style,intensity});
+                        l.specular.roughness = roughness;
+                        l.ambient.intensity = v === 'Dark Side' ? .03 : .15;
+                        build(); onChange('environmentalLighting.preset'); return;
+                    }
+                    if (group === 'environmentalLighting' && key !== 'preset') {
+                        config.environmentalLighting.preset = 'Custom';
+                        const selector = panel.querySelector('[data-search="environmental lighting preset preset"] select');
+                        if (selector) selector.value = 'Custom';
+                    }
+                    out.textContent = typeof v === 'number' ? v : ''; onChange([...path, key].join('.')); };
                 row.append(input, out);
                 parent.append(row);
             }
