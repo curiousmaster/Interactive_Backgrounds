@@ -1,6 +1,6 @@
 export default {
     "editor": {
-        "enabled": true
+        "enabled": false
     },
     "simulation": {
         "mode": "assisted",
