@@ -275,6 +275,14 @@
       "size": 9302,
       "bootstrapped": true
     },
+    "refractive-infinity": {
+      "sourceHash": "0c2d9c718549fe20a00f4b179d4051756aa97331573c15329c2d553d1fdc9d66",
+      "captureTime": 10000,
+      "score": 35.778415447522974,
+      "size": 29774,
+      "thumbnailHash": "6ab7660149b32f527c3dfe7785be04e26e10fd57634bd14ecae7dc6a30d88e13",
+      "generatedAt": "2026-11-27T14:01:49.455Z"
+    },
     "resonant-pools": {
       "sourceHash": "ad8a2649fe878e0c144b51d86b19c0b5cb53cd2bf96cb67f1f41874bb8fd2990",
       "thumbnailHash": "374e91df915365095b8bb67f2dce54113c4022948b8cc911de8e6b7881ddb6dc",
