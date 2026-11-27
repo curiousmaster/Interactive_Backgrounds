@@ -383,6 +383,14 @@ export const backgrounds = [
             "crystalline structures, spectral reflections and " +
             "living energy fields. Procedural geometry and " +
             "GPU ray marching create an ever-changing optical world.",
+            thumbnail: {
+                renderWidth: 960,
+                renderHeight: 540,
+                captureTimes: [5000],
+                navigationTimeout: 60000,
+                captureTimeout: 90000,
+                retries: 3
+            }
     },
     {
         name: "Resonant Pools",
