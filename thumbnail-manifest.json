@@ -77,6 +77,14 @@
       "size": 2724,
       "bootstrapped": true
     },
+    "cloud-odyssey": {
+      "sourceHash": "9af09b40bb545b3a5c362e361c30dd1d7388c26d9af1e72c645be5fb00bf7eda",
+      "captureTime": 5000,
+      "score": 38.02427259941998,
+      "size": 6626,
+      "thumbnailHash": "2a6f3b6562eecc379ea85c6dac4ee654d0d43058d5a3ea5fa077f599f11c919a",
+      "generatedAt": "2026-11-27T13:08:00.993Z"
+    },
     "constellation-network": {
       "sourceHash": "ea52f0478486be9bd157d51e1d13b81ad593b0a9e9ae0c8c343b1430d15ab25c",
       "captureTime": 3000,
