@@ -113,6 +113,14 @@ export const backgrounds = [
         folder: "cloud-odyssey",
         tags: ["clouds", "weather", "interactive", "3d"],
         description: "An endless flight through evolving volumetric clouds, with dynamic weather, sunlight and atmospheric effects.",
+        thumbnail: {
+            renderWidth: 960,
+            renderHeight: 540,
+            captureTimes: [5000],
+            navigationTimeout: 60000,
+            captureTimeout: 90000,
+            retries: 3
+        }
     },
     {
         name: "Constellation Network",
