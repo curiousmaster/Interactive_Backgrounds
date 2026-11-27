@@ -20,282 +20,100 @@ const descriptions = {
 const presets = {
     'Dark Side': {
         prisms: {
-            count: 1,
-            rotation: false,
-            drift: false
-        },
-        light: {
+            count: 1, rotation: false, drift: false
+        }, light: {
             count: 1
-        },
-        view: {
+        }, view: {
             orbit: false
-        },
-        effects: {
-            dust: false,
-            trails: false
-        },
-        simulation: {
+        }, effects: {
+            dust: false, trails: false
+        }, simulation: {
             mode: 'physical'
-        },
-        environmentalLighting: {
-            reflectionEnvironment: {
-                enabled: false
-            }
         }
     },
-
     'Spectral Ballet': {
         prisms: {
-            count: 3,
-            rotationSpeed: 5
-        },
-        environmentalLighting: {
-            reflectionEnvironment: {
-                enabled: true,
-                source: 'image',
-                file: 'sunset.png',
-                intensity: 1.2,
-                reflectionOpacity: 0.45,
-                reflectionRoughness: 0.05,
-                independentLayer: true,
-                reflectionOnly: true,
-                animate: false
-            }
+            count: 3, rotationSpeed: 5
         }
     },
-
-    'Crystal Constellation': {
-        environmentalLighting: {
-            reflectionEnvironment: {
-                enabled: true,
-                source: 'image',
-                file: 'studio.png',
-                intensity: 1.5,
-                reflectionOpacity: 0.65,
-                reflectionRoughness: 0.02,
-                independentLayer: true,
-                reflectionOnly: true,
-                animate: false
-            }
-        }
-    },
-
+    'Crystal Constellation': {},
     'Diamond Fire': {
         prisms: {
-            count: 5,
-            shape: 'diamond',
-            material: 'diamond'
-        },
-        environmentalLighting: {
-            reflectionEnvironment: {
-                enabled: true,
-                source: 'image',
-                file: 'studio.png',
-                intensity: 2.0,
-                reflectionOpacity: 0.8,
-                reflectionRoughness: 0.01,
-                independentLayer: true,
-                reflectionOnly: true,
-                chamferReflections: true,
-                chamferBoost: 2.0,
-                animate: false
-            }
+            count: 5, shape: 'diamond', material: 'diamond'
         }
     },
-
     'Optical Laboratory': {
         simulation: {
             mode: 'physical'
-        },
-        prisms: {
-            count: 6,
-            dispersion: 1
-        },
-        effects: {
-            halo: false,
-            trails: false
-        },
-        environmentalLighting: {
-            reflectionEnvironment: {
-                enabled: true,
-                source: 'image',
-                file: 'studio.png',
-                intensity: 0.8,
-                reflectionOpacity: 0.3,
-                reflectionRoughness: 0.02,
-                independentLayer: true,
-                reflectionOnly: true,
-                animate: false
-            }
+        }, prisms: {
+            count: 6, dispersion: 1
+        }, effects: {
+            halo: false, trails: false
         }
     },
-
     'Infinite Echoes': {
         prisms: {
             count: 8
-        },
-        environment: {
+        }, environment: {
             mirrors: true
-        },
-        environmentalLighting: {
-            reflectionEnvironment: {
-                enabled: true,
-                source: 'image',
-                file: 'neon.png',
-                intensity: 1.5,
-                reflectionOpacity: 0.65,
-                reflectionRoughness: 0.02,
-                independentLayer: true,
-                reflectionOnly: true,
-                animate: true,
-                animationSpeed: 2,
-                animationAxis: 'y'
-            }
         }
     },
-
     'Reverse Spectrum': {
         prisms: {
-            count: 2,
-            rotation: false,
-            drift: false
-        },
-        light: {
+            count: 2, rotation: false, drift: false
+        }, light: {
             count: 1
-        },
-        environmentalLighting: {
-            reflectionEnvironment: {
-                enabled: false
-            }
         }
     },
-
     'Spectral Storm': {
         prisms: {
-            count: 25,
-            rotationSpeed: 30
-        },
-        light: {
+            count: 25, rotationSpeed: 30
+        }, light: {
             count: 4
-        },
-        environmentalLighting: {
-            reflectionEnvironment: {
-                enabled: true,
-                source: 'image',
-                file: 'neon.png',
-                intensity: 2.0,
-                reflectionOpacity: 0.75,
-                reflectionRoughness: 0.02,
-                independentLayer: true,
-                reflectionOnly: true,
-                animate: true,
-                animationSpeed: 8,
-                animationAxis: 'y'
-            }
         }
     },
-
     'Chromatic Galaxy': {
         prisms: {
-            count: 40,
-            distribution: 'sphere'
-        },
-        simulation: {
+            count: 40, distribution: 'sphere'
+        }, simulation: {
             wavelengths: 24
-        },
-        environmentalLighting: {
-            reflectionEnvironment: {
-                enabled: true,
-                source: 'image',
-                file: 'neon.png',
-                intensity: 1.2,
-                reflectionOpacity: 0.5,
-                reflectionRoughness: 0.04,
-                independentLayer: true,
-                reflectionOnly: true,
-                animate: true,
-                animationSpeed: 1,
-                animationAxis: 'y'
-            }
         }
     },
-
     'Cathedral of Light': {
         prisms: {
-            count: 16,
-            distribution: 'grid'
-        },
-        environment: {
+            count: 16, distribution: 'grid'
+        }, environment: {
             floor: true
-        },
-        effects: {
+        }, effects: {
             halo: true
-        },
-        environmentalLighting: {
-            reflectionEnvironment: {
-                enabled: true,
-                source: 'image',
-                file: 'studio.png',
-                intensity: 1.8,
-                reflectionOpacity: 0.65,
-                reflectionRoughness: 0.04,
-                independentLayer: true,
-                reflectionOnly: true,
-                animate: false
-            }
         }
     },
-
     'Quantum Optics': {
         effects: {
-            pulses: true,
-            internalLight: true
-        },
-        light: {
+            pulses: true, internalLight: true
+        }, light: {
             pulse: true
-        },
-        environmentalLighting: {
-            reflectionEnvironment: {
-                enabled: true,
-                source: 'image',
-                file: 'neon.png',
-                intensity: 1.5,
-                reflectionOpacity: 0.55,
-                reflectionRoughness: 0.02,
-                independentLayer: true,
-                reflectionOnly: true,
-                animate: true,
-                animationSpeed: 4,
-                animationAxis: 'y'
-            }
         }
     },
-
     'Cinematic Spectrum': {
         effects: {
-            flare: true,
-            iridescence: true
-        },
-        environment: {
+            flare: true, iridescence: true
+        }, environment: {
             floor: true
-        },
-        environmentalLighting: {
-            reflectionEnvironment: {
-                enabled: true,
-                source: 'image',
-                file: 'sunset.png',
-                intensity: 1.5,
-                reflectionOpacity: 0.7,
-                reflectionRoughness: 0.03,
-                independentLayer: true,
-                reflectionOnly: true,
-                animate: true,
-                animationSpeed: 0.5,
-                animationAxis: 'y'
-            }
         }
     }
 };
+const reflectionFiles = ['none','sunset','studio','studio','studio','neon','none','neon','neon','studio','neon','sunset'];
+Object.values(presets).forEach((preset,i) => {
+    preset.edges = {...preset.edges, enabled:false};
+    const file=reflectionFiles[i];
+    preset.environmentalLighting = { ...preset.environmentalLighting, reflectionEnvironment: {
+        enabled:file!=='none', source:'image', file:file==='none'?'neon.png':file+'.png',
+        intensity:[1.5,1.2,1.5,2,.8,1.5,1.5,2,1.2,1.8,1.5,1.5][i],
+        reflectionOpacity:[.65,.45,.65,.8,.3,.65,.65,.75,.5,.65,.55,.7][i],
+        animate:[5,7,8,10,11].includes(i), animationSpeed:({5:2,7:8,8:1,10:4,11:.5})[i]||2
+    }};
+});
 const merge = (a, b) => { for (const k of Object.keys(a)) {
     if (b && Object.hasOwn(b, k)) {
         if (typeof a[k] === 'object')
@@ -410,6 +228,9 @@ export function mountSettings(config, onChange) {
                     input.append(new Option("Select panorama", ""));
                     for (const item of catalog) if (typeof item.file === "string" && typeof item.name === "string") input.append(new Option(item.name,item.file));
                     if (value && !catalog.some(x=>x.file===value)) input.append(new Option(value+" (missing)",value));
+                } else if (path[0] === "transmission" && key === "mode") {
+                    input = document.createElement("select");
+                    ["classic", "physical", "advanced"].forEach(v => input.append(new Option(label(v), v)));
                 } else if (choices[key]) {
                     input = document.createElement('select');
                     choices[key].forEach(v => input.append(new Option(label(v), v)));
@@ -421,7 +242,8 @@ export function mountSettings(config, onChange) {
                         const specific = path.join('.') === 'environmentalLighting.rim' && key === 'width' ? [.01,1,.01] : path.join('.') === 'environmentalLighting.directional' && key === 'count' ? [1,4,1] : path.join('.') === 'environmentalLighting.studioPanels' && key === 'count' ? [1,32,1] : null;
                         const special = group === 'environmentalLighting' ? {count:[1,8,1], radius:[.1,25,.1], rotation:[0,360,1], azimuth:[-180,180,1], elevation:[-90,90,1], distance:[1,50,1], decay:[0,2,.1], power:[.5,8,.1]}[key] : null;
                         const reflectionRange = path.includes("reflectionEnvironment") ? {reflectionOpacity:[0,1,.01],reflectionStrength:[0,8,.05],reflectionRoughness:[0,1,.01],fresnelPower:[.1,10,.1],minReflectivity:[0,1,.01],maxReflectivity:[0,1,.01],chamferBoost:[0,4,.05],rotationX:[-180,180,1],rotationY:[-180,180,1],rotationZ:[-180,180,1],animationSpeed:[-30,30,.5],maxResolution:[256,2048,256],saturation:[0,2,.05],contrast:[0,2,.05],blur:[0,1,.01]}[key] : null;
-                        const r = reflectionRange || specific || special || (group === 'light' && key === 'count' ? [1, 8, 1] : ranges[key] || [0, 10, .1]);
+                        const transmissionRange = path[0] === "transmission" ? {intensity:[0,2,.05],thickness:[0,4,.05],ior:[1,2.5,.01],dispersion:[0,.2,.005],roughness:[0,1,.01],absorption:[0,1,.005],maxLayers:[1,4,1],resolutionScale:[.25,1,.05]}[key] : null;
+                        const r = transmissionRange || reflectionRange || specific || special || (group === 'light' && key === 'count' ? [1, 8, 1] : ranges[key] || [0, 10, .1]);
                         [input.min, input.max, input.step] = r;
                     }
                 }
