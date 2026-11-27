@@ -3,12 +3,18 @@ name: Generate Background Thumbnails
 on:
   push:
     branches: [main, master]
+  schedule:
+    - cron: "17 * * * *"
   workflow_dispatch:
     inputs:
       regenerate_all:
         description: "Regenerate all thumbnails"
         type: boolean
         required: false
+        default: false
+      bootstrap_manifest:
+        description: "Trust existing thumbnails without rendering (first run only)"
+        type: boolean
         default: false
 
 permissions:
@@ -27,6 +33,7 @@ jobs:
       contents: write
     outputs:
       commit_sha: ${{ steps.commit.outputs.sha }}
+      changed: ${{ steps.commit.outputs.changed }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,51 +41,84 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
 
+      - name: Record starting commit
+        id: start
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "24"
 
-      - name: Install Playwright
-        run: npm install --no-save --no-package-lock playwright@1.56.1
+      - name: Configure checkpoint commits
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-
-      - name: Generate thumbnails
+      - name: Check pending thumbnails
+        id: preflight
         shell: bash
         env:
-          REGENERATE_ALL: ${{ inputs.regenerate_all }}
+          FORCE: ${{ inputs.regenerate_all }}
+          BOOTSTRAP: ${{ inputs.bootstrap_manifest }}
         run: |
           set -euo pipefail
           unset THUMBNAIL_FOLDERS
-          if [[ "$REGENERATE_ALL" == "true" ]]; then
-            node scripts/generate-thumbnails.mjs --all --workers=1
+          if [[ "$FORCE" == true || "$BOOTSTRAP" == true ]]; then
+            echo "render=true" >> "$GITHUB_OUTPUT"
           else
-            node scripts/generate-thumbnails.mjs --workers=1
+            node scripts/generate-thumbnails.mjs --dry-run | tee "$RUNNER_TEMP/thumbnail-plan"
+            if grep -q '^Pending: 0; current: .*; failed: 0;' "$RUNNER_TEMP/thumbnail-plan"; then
+              echo "render=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "render=true" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
-      - name: Commit generated thumbnails
+      - name: Install Playwright
+        if: steps.preflight.outputs.render == 'true'
+        run: npm install --no-save --no-package-lock playwright@1.56.1
+
+      - name: Install Chromium
+        if: steps.preflight.outputs.render == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Generate thumbnails with checkpoints
+        if: steps.preflight.outputs.render == 'true'
+        shell: bash
+        env:
+          FORCE: ${{ inputs.regenerate_all }}
+          BOOTSTRAP: ${{ inputs.bootstrap_manifest }}
+        run: |
+          set -euo pipefail
+          unset THUMBNAIL_FOLDERS
+          args=(--checkpoint --workers=1 --batch-size=1 --max-runtime=40)
+          if [[ "$FORCE" == true ]]; then args+=(--all); fi
+          if [[ "$BOOTSTRAP" == true ]]; then args+=(--bootstrap-manifest); fi
+          # Hard safety limit: completed checkpoints are already on GitHub.
+          set +e
+          timeout --kill-after=15s 45m node scripts/generate-thumbnails.mjs "${args[@]}"
+          status=$?
+          set -e
+          if [[ "$status" == 124 || "$status" == 137 ]]; then
+            echo "::warning::Generation time budget exhausted; resuming on next run."
+            # Discard any incomplete, uncheckpointed working-tree changes.
+            git reset --hard HEAD
+          elif [[ "$status" != 0 ]]; then
+            exit "$status"
+          fi
+
+      - name: Record checkpoint commit
         id: commit
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          find . -name thumbnail.webp \
-            -not -path './node_modules/*' \
-            -not -path './.git/*' \
-            -print0 | xargs -0 -r git add --
-          if [[ -f thumbnail-manifest.json ]]; then
-            git add -- thumbnail-manifest.json
-          fi
-          if git diff --cached --quiet; then
-            echo "No thumbnail changes to commit."
-          else
-            git commit -m "chore: update background thumbnails [skip ci]"
-            git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
-          fi
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if [[ "$(git rev-parse HEAD)" != "${{ steps.start.outputs.sha }}" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
   deploy:
     name: Deploy GitHub Pages

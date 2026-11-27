@@ -1,5 +1,6 @@
 
-import { chromium } from "playwright";
+import { execFileSync } from "node:child_process";
+let chromium;
 
 import {
     readFile,
@@ -66,6 +67,15 @@ const flag = name => args.includes(name);
 const option = name => args.find(a => a.startsWith(name + "="))?.slice(name.length + 1);
 const WORKERS = Number(option("--workers") ?? 1);
 if (!Number.isInteger(WORKERS) || WORKERS < 1 || WORKERS > 8) throw new Error("Workers must be 1–8");
+const CHECKPOINT = flag("--checkpoint");
+const BOOTSTRAP = flag("--bootstrap-manifest");
+const BATCH = Number(option("--batch-size") ?? 1);
+const MAX_RUNTIME = Number(option("--max-runtime") ?? (CHECKPOINT ? 40 : Infinity));
+const MAX_THUMBNAILS = Number(option("--max-thumbnails") ?? Infinity);
+const deadline = Date.now() + MAX_RUNTIME * 60000;
+if (!Number.isInteger(BATCH) || BATCH < 1 || !(MAX_RUNTIME > 0) || !(MAX_THUMBNAILS > 0)) throw new Error("Invalid checkpoint limits");
+if (CHECKPOINT && (WORKERS !== 1 || !process.env.GITHUB_REF_NAME)) throw new Error("Checkpoint mode requires one worker and a GitHub branch");
+if (BOOTSTRAP && REGENERATE_ALL) throw new Error("Bootstrap and --all are mutually exclusive");
 const MANIFEST = join(ROOT, "thumbnail-manifest.json");
 const hash = data => createHash("sha256").update(data).digest("hex");
 async function atomicWrite(path, data) {
@@ -877,13 +887,39 @@ async function main() {
     if (folder && !names.has(folder)) throw new Error(`Unknown folder: ${folder}`);
     const selected = all.filter(b => (!folder || b.folder === folder) && (SELECTED_FOLDERS === null || SELECTED_FOLDERS.has(b.folder)));
     const queue = [], failed = [];
+    const dirty = new Set();
+    let manifestDirty = false;
+    function git(args) {
+        return execFileSync("git", args, {cwd:ROOT, stdio:"inherit", timeout:60000});
+    }
+    async function checkpoint(force = false) {
+        if (!manifestDirty || (!force && dirty.size < BATCH)) return;
+        manifest.backgrounds = Object.fromEntries(Object.entries(manifest.backgrounds).sort(([a],[b]) => a.localeCompare(b)));
+        await atomicWrite(MANIFEST, JSON.stringify(manifest,null,2)+"\n");
+        if (CHECKPOINT) {
+            git(["add","--","thumbnail-manifest.json",...dirty]);
+            git(["commit","-m","chore: checkpoint background thumbnails [skip ci]"]);
+            git(["push","origin",`HEAD:refs/heads/${process.env.GITHUB_REF_NAME}`]);
+        }
+        dirty.clear();
+        manifestDirty = false;
+    }
+    const readonly = flag("--verify") || flag("--dry-run") || flag("--stats");
     let skipped = 0;
     for (const b of selected) {
         try {
             const source = await sourceHash(b, shared);
             const path = join(ROOT,...validateFolder(b.folder),"thumbnail.webp");
-            const current = await readFile(path).then(hash).catch(() => null);
+            const bytes = await readFile(path).catch(() => null);
+            const current = bytes ? hash(bytes) : null;
             const old = Object.hasOwn(manifest.backgrounds,b.folder) ? manifest.backgrounds[b.folder] : null;
+            if (BOOTSTRAP && !readonly && !old && bytes && bytes.length >= 20 && bytes.toString("ascii",0,4) === "RIFF" && bytes.toString("ascii",8,12) === "WEBP" && bytes.readUInt32LE(4)+8 === bytes.length) {
+                Object.defineProperty(manifest.backgrounds,b.folder,{value:{sourceHash:source,thumbnailHash:current,size:bytes.length,bootstrapped:true},enumerable:true,configurable:true,writable:true});
+                manifestDirty = true;
+                skipped++;
+                console.log(`BOOTSTRAP ${b.folder}: existing thumbnail trusted`);
+                continue;
+            }
             const stale = !current || old?.sourceHash !== source || old?.thumbnailHash !== current;
             const reasons = [REGENERATE_ALL && "forced", !current && "thumbnail missing", !old && "no manifest entry", old && old.sourceHash !== source && "source hash changed", old && current && old.thumbnailHash !== current && "thumbnail hash mismatch"].filter(Boolean);
             console.log(`${stale || REGENERATE_ALL ? "UPDATE" : "SKIP"} ${b.folder}: ${reasons.join(", ") || "up to date"}`);
@@ -898,29 +934,46 @@ async function main() {
     if (flag("--clean")) {
         // Remove only manifest records, not user files or untracked images.
         for (const f of orphans) delete manifest.backgrounds[f];
+        if (orphans.length) manifestDirty = true;
     }
-    let generated = 0;
-    if (queue.length) {
+    // Persist forced invalidation before rendering so normal future runs resume it.
+    if (REGENERATE_ALL && CHECKPOINT) {
+        for (const {b} of queue) {
+            if (Object.hasOwn(manifest.backgrounds,b.folder)) {
+                delete manifest.backgrounds[b.folder];
+                manifestDirty = true;
+            }
+        }
+    }
+    await checkpoint(true);
+    let generated = 0, attempted = 0;
+    const canStart = () => Date.now() < deadline && attempted < MAX_THUMBNAILS;
+    if (queue.length && canStart()) {
+        ({chromium} = await import("playwright"));
         const {server,origin} = await startServer();
         let browser;
         try {
             browser = await chromium.launch({headless:true,args:["--enable-webgl","--use-gl=angle","--use-angle=swiftshader","--enable-unsafe-swiftshader","--disable-dev-shm-usage"]});
             const retryQueue = [];
             async function worker(sequential = false) {
-                while (queue.length) {
+                while (queue.length && canStart()) {
                     const {b,source} = queue.shift();
+                    attempted++;
                     try {
                         const result = await captureBackground(browser,origin,b);
                         Object.defineProperty(manifest.backgrounds,b.folder,{value:{sourceHash:source,...result,generatedAt:new Date().toISOString()},enumerable:true,configurable:true,writable:true});
                         generated++;
+                        dirty.add(`${b.folder}/thumbnail.webp`);
+                        manifestDirty = true;
                     } catch(e) {
                         if (WORKERS > 1 && !sequential) { retryQueue.push({b,source}); warn(`${b.folder}: ${e.message}; queued for sequential retry`); }
                         else { failed.push(b.folder); warn(`${b.folder}: ${e.message}`); }
                     }
+                    if (CHECKPOINT) await checkpoint();
                 }
             }
             await Promise.all(Array.from({length:Math.min(WORKERS,queue.length)}, () => worker()));
-            if (retryQueue.length) {
+            if (retryQueue.length && canStart()) {
                 console.log(`Sequential fallback: ${retryQueue.length} backgrounds`);
                 await browser.close();
                 browser = await chromium.launch({headless:true,args:["--enable-webgl","--use-gl=angle","--use-angle=swiftshader","--enable-unsafe-swiftshader","--disable-dev-shm-usage"]});
@@ -932,10 +985,8 @@ async function main() {
             await new Promise(done => server.close(done));
         }
     }
-    if (generated || (flag("--clean") && orphans.length)) {
-        manifest.backgrounds = Object.fromEntries(Object.entries(manifest.backgrounds).sort(([a],[b]) => a.localeCompare(b)));
-        await atomicWrite(MANIFEST,JSON.stringify(manifest,null,2)+"\n");
-    }
+    await checkpoint(true);
+    console.log(`Deferred: ${queue.length}; attempted: ${attempted}`);
     await generateContactSheet(selected);
     console.log(`Generated: ${generated}; skipped: ${skipped}; failed: ${failed.length}`);
     if (failed.length && flag("--strict")) process.exitCode = 1;
