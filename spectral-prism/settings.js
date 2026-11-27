@@ -155,7 +155,7 @@ export default {
         "reflectionEnvironment": {
             "enabled": true,
             "source": "image",
-            "file": "neon.webp",
+            "file": "neon.png",
             "intensity": 1.5,
             "exposure": 1,
             "saturation": 1,
