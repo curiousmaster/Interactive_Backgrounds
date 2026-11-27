@@ -196,6 +196,13 @@ export function mountSettings(config, onChange) {
                     });
                     parent.append(sub);
                     addRows(value, sub, [...path, key]);
+                    if(key==='reflectionEnvironment') {
+                        const status=document.createElement('div'); status.className='reflection-status';
+                        const preview=document.createElement('img'); preview.style.cssText='width:100%;border-radius:4px;display:none'; preview.alt='Selected environment panorama';
+                        const retry=document.createElement('button'); retry.textContent='Retry environment'; retry.onclick=()=>window.retryReflection?.();
+                        sub.append(status,preview,retry);
+                        const refresh=()=>{ if(!status.isConnected)return; const st=window.reflectionStatus||{}; status.textContent=`Texture: ${st.state||'idle'} | Active: ${st.active||'none'} | Attempts: ${st.attempts||0}${st.error?' | '+st.error:''}`; const file=config.environmentalLighting.reflectionEnvironment.file; const show=config.environmentalLighting.reflectionEnvironment.showPreview && /\.(webp|png|jpe?g)$/i.test(file); preview.style.display=show?'block':'none'; if(show && preview.dataset.file!==file){preview.dataset.file=file;preview.src='./environments/'+encodeURIComponent(file);} setTimeout(refresh,500); }; refresh();
+                    }
                     continue;
                 }
                 const row = document.createElement('label');
@@ -220,7 +227,7 @@ export function mountSettings(config, onChange) {
                     if (input.type === 'range') {
                         const specific = path.join('.') === 'environmentalLighting.rim' && key === 'width' ? [.01,1,.01] : path.join('.') === 'environmentalLighting.directional' && key === 'count' ? [1,4,1] : path.join('.') === 'environmentalLighting.studioPanels' && key === 'count' ? [1,32,1] : null;
                         const special = group === 'environmentalLighting' ? {count:[1,8,1], radius:[.1,25,.1], rotation:[0,360,1], azimuth:[-180,180,1], elevation:[-90,90,1], distance:[1,50,1], decay:[0,2,.1], power:[.5,8,.1]}[key] : null;
-                        const reflectionRange = path.includes("reflectionEnvironment") ? {rotationX:[-180,180,1],rotationY:[-180,180,1],rotationZ:[-180,180,1],animationSpeed:[-30,30,.5],maxResolution:[256,2048,256],saturation:[0,2,.05],contrast:[0,2,.05],blur:[0,1,.01]}[key] : null;
+                        const reflectionRange = path.includes("reflectionEnvironment") ? {reflectionOpacity:[0,1,.01],reflectionStrength:[0,8,.05],reflectionRoughness:[0,1,.01],fresnelPower:[.1,10,.1],minReflectivity:[0,1,.01],maxReflectivity:[0,1,.01],chamferBoost:[0,4,.05],rotationX:[-180,180,1],rotationY:[-180,180,1],rotationZ:[-180,180,1],animationSpeed:[-30,30,.5],maxResolution:[256,2048,256],saturation:[0,2,.05],contrast:[0,2,.05],blur:[0,1,.01]}[key] : null;
                         const r = reflectionRange || specific || special || (group === 'light' && key === 'count' ? [1, 8, 1] : ranges[key] || [0, 10, .1]);
                         [input.min, input.max, input.step] = r;
                     }

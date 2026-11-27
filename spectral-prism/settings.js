@@ -154,9 +154,9 @@ export default {
         },
         "reflectionEnvironment": {
             "enabled": true,
-            "source": "procedural",
-            "file": "",
-            "intensity": 0.8,
+            "source": "image",
+            "file": "neon.webp",
+            "intensity": 1.5,
             "exposure": 1,
             "saturation": 1,
             "contrast": 1,
@@ -172,7 +172,24 @@ export default {
             "affectFloor": false,
             "reflectionOnly": true,
             "fallback": "procedural",
-            "maxResolution": 1024
+            "maxResolution": 1024,
+            "independentLayer": true,
+            "reflectionOpacity": 0.65,
+            "reflectionStrength": 1.5,
+            "reflectionRoughness": 0.02,
+            "fresnelModulation": true,
+            "fresnelPower": 3,
+            "minReflectivity": 0.15,
+            "maxReflectivity": 1,
+            "tint": "#ffffff",
+            "frontFaces": true,
+            "backFaces": false,
+            "chamferReflections": true,
+            "chamferBoost": 1.5,
+            "mirrorDiagnostic": false,
+            "debugLogging": false,
+            "autoRetry": true,
+            "showPreview": true
         }
     },
     "bloom": {

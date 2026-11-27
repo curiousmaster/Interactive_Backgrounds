@@ -236,72 +236,86 @@
             .then(r => { if (!r.ok) throw Error(r.status); return r.json(); })
             .then(items => Array.isArray(items) ? items.filter(x => typeof x.name === 'string' && typeof x.file === 'string' && /^[\w .-]+\.(hdr|exr|webp|png|jpe?g)$/i.test(x.file)) : [])
             .catch(() => []);
-        let imageTarget = null, imageKey = '', imageState = 'idle', generation = 0;
+        let imageTarget = null, imageKey = '', imageState = 'idle', generation = 0, retryAt = 0, attempts = 0, imageError = '';
+        const report = (r, state, active) => {
+            window.reflectionStatus = {file:r.file, state, active, error:imageError, attempts};
+        };
         async function loadReflection(r) {
-            const key = JSON.stringify([r.file,r.exposure,r.saturation,r.contrast,r.maxResolution]);
-            if (key === imageKey) return;
-            imageKey = key;
-            const token = ++generation;
-            imageState = 'loading';
-            let texture, target, material, geometry, adjusted;
+            const key = JSON.stringify([r.file,r.maxResolution]);
+            if (key !== imageKey) { imageKey=key; generation++; attempts=0; imageState='idle'; imageError=''; imageTarget?.dispose(); imageTarget=null; }
+            if (imageState==='loading' || imageState==='ready' || (imageState==='failed' && (!r.autoRetry || attempts>=3 || performance.now()<retryAt))) return;
+            const token=++generation; attempts++; imageState='loading';
+            let texture;
             try {
-                if (!environmentCatalog.some(x => x.file === r.file)) throw Error('Unknown environment');
-                const url = './environments/' + encodeURIComponent(r.file);
-                const ext = r.file.split('.').pop().toLowerCase();
-                texture = await (ext === 'hdr' ? new RGBELoader() : ext === 'exr' ? new EXRLoader() : new T.TextureLoader()).loadAsync(url);
-                if (token !== generation) return;
-                if (!['hdr','exr'].includes(ext)) texture.colorSpace = T.SRGBColorSpace;
-                const width = Math.max(16, Math.floor(Math.min(r.maxResolution, renderer.capabilities.maxTextureSize, texture.image.width)));
-                adjusted = new T.WebGLRenderTarget(width, Math.max(1, Math.floor(width/2)), {type:T.HalfFloatType, depthBuffer:false});
-                material = new T.ShaderMaterial({uniforms:{map:{value:texture}, exposure:{value:r.exposure}, saturation:{value:r.saturation}, contrast:{value:r.contrast}}, vertexShader:`varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`, fragmentShader:`varying vec2 vUv; uniform sampler2D map; uniform float exposure,saturation,contrast; void main(){vec3 c=texture2D(map,vUv).rgb*exposure; c=mix(vec3(dot(c,vec3(.2126,.7152,.0722))),c,saturation); gl_FragColor=vec4(max(vec3(0.),(c-.18)*contrast+.18),1.);}`});
-                geometry = new T.PlaneGeometry(2,2);
-                const staging = new T.Scene(); staging.add(new T.Mesh(geometry,material));
-                const previous = renderer.getRenderTarget();
-                try { renderer.setRenderTarget(adjusted); renderer.render(staging,new T.Camera()); }
-                finally { renderer.setRenderTarget(previous); }
-                adjusted.texture.mapping = T.EquirectangularReflectionMapping;
-                target = pmrem.fromEquirectangular(adjusted.texture);
-                if (token !== generation) { target.dispose(); return; }
-                imageTarget?.dispose(); imageTarget = target; imageState = 'ready';
-            } catch (error) {
-                if (token === generation) { imageState = 'failed'; console.warn('Reflection environment:',error); }
-            } finally { texture?.dispose(); adjusted?.dispose(); material?.dispose(); geometry?.dispose(); }
+                if (!environmentCatalog.some(x=>x.file===r.file)) throw Error('Image missing from manifest: '+r.file);
+                const ext=r.file.split('.').pop().toLowerCase();
+                const url='./environments/'+encodeURIComponent(r.file);
+                texture=await (ext==='hdr'?new RGBELoader():ext==='exr'?new EXRLoader():new T.TextureLoader()).loadAsync(url);
+                if(token!==generation) return;
+                if(!['hdr','exr'].includes(ext)) {
+                    texture.colorSpace=T.SRGBColorSpace;
+                    const img=texture.image, limit=Math.min(r.maxResolution,renderer.capabilities.maxTextureSize);
+                    if(img.width>limit || img.height>limit) { const canvas=document.createElement('canvas'); const scale=limit/Math.max(img.width,img.height); canvas.width=Math.max(1,Math.round(img.width*scale)); canvas.height=Math.max(1,Math.round(img.height*scale)); canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height); texture.image=canvas; texture.needsUpdate=true; }
+                }
+                texture.mapping=T.EquirectangularReflectionMapping;
+                imageTarget=pmrem.fromEquirectangular(texture);
+                imageState='ready'; imageError='';
+                if(r.debugLogging) console.info('Reflection PMREM ready',url,imageTarget.width,imageTarget.height);
+            } catch(error) { if(token===generation) { imageState='failed'; imageError=String(error.message||error); retryAt=performance.now()+2000; console.warn('Reflection environment:',error); } }
+            finally { texture?.dispose(); }
+        }
+        window.retryReflection = () => { generation++; imageKey=''; imageState='idle'; attempts=0; };
+        function makeReflectionLayer(g) {
+            const m=new T.MeshStandardMaterial({color:0xffffff,metalness:1,roughness:.02,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
+            const u={alpha:{value:.65},power:{value:3},lo:{value:.15},hi:{value:1},fresnel:{value:1},exposure:{value:1},saturation:{value:1},contrast:{value:1},boost:{value:1},chamfer:{value:1},mirror:{value:0}};
+            m.userData.u=u;
+            m.onBeforeCompile=shader=>{
+                for(const [k,v] of Object.entries(u)) shader.uniforms['refl_'+k]=v;
+                shader.fragmentShader=Object.keys(u).map(k=>'uniform float refl_'+k+';').join('\n')+'\n'+shader.fragmentShader;
+                shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float facing=abs(dot(normalize(normal),normalize(vViewPosition)));
+                    float f=mix(1.0,mix(refl_lo,refl_hi,pow(1.0-clamp(facing,0.0,1.0),refl_power)),refl_fresnel);
+                    vec3 localN=abs(normalize(inverseTransformDirection(normal,viewMatrix)));
+                    float edge= smoothstep(0.25,0.55,min(localN.x,localN.y)+min(localN.y,localN.z)+min(localN.z,localN.x));
+                    outgoingLight*=refl_exposure*mix(1.0,refl_boost,edge);
+                    outgoingLight=mix(vec3(dot(outgoingLight,vec3(.2126,.7152,.0722))),outgoingLight,refl_saturation);
+                    outgoingLight=max(vec3(0.0),(outgoingLight-.18)*refl_contrast+.18);
+                    diffuseColor.a=mix(clamp(refl_alpha*f*mix(1.0,refl_chamfer,edge),0.0,1.0),1.0,refl_mirror);
+                    #include <opaque_fragment>`);
+            };
+            m.customProgramCacheKey=()=> 'reflection-layer-v7';
+            const mesh=new T.Mesh(g.clone(),m); mesh.renderOrder=0; mesh.visible=false; return mesh;
         }
         function applyReflection(l) {
-            const r = l.reflectionEnvironment;
-            const active = l.enabled && r.enabled && r.source !== 'none';
-            if (active && r.source === 'image') loadReflection(r);
-            else if (imageKey) { generation++; imageKey=''; imageState='idle'; imageTarget?.dispose(); imageTarget=null; }
-            const image = active && r.source === 'image' && imageState === 'ready';
-            const procedural = l.enabled && l.environment.enabled ? environmentTarget?.texture : null;
-            const selected = !active ? null : image ? imageTarget.texture : (r.source === 'procedural' || r.fallback === 'procedural') ? procedural : null;
-            const rotation = new T.Euler(...[r.rotationX,r.rotationY,r.rotationZ].map(T.MathUtils.degToRad));
-            if (r.animate) rotation[r.animationAxis] += now * T.MathUtils.degToRad(r.animationSpeed);
-            if (r.source === 'procedural') { rotation.x += T.MathUtils.degToRad(l.environment.verticalRotation); rotation.y += T.MathUtils.degToRad(l.environment.rotation); }
-            // Explicit material maps prevent the selected panorama from affecting other objects.
-            scene.environment = null;
-            const apply = (m, affected) => {
-                if (!m?.isMeshStandardMaterial) return;
-                const map = affected ? selected : null;
-                if (m.envMap !== map) { m.envMap=map; m.needsUpdate=true; }
-                m.envMapIntensity = r.intensity * l.masterIntensity * (r.source === 'procedural' ? l.environment.intensity / .8 : 1);
-                m.envMapRotation.copy(rotation);
-                // Reflection-only suppresses the environment's diffuse term, not direct lights.
-                if (!m.userData.reflectionHook) {
-                    m.userData.reflectionHook=true;
-                    const uniform={value:0}; m.userData.reflectionUniform=uniform;
-                    m.onBeforeCompile = shader => {
-                        shader.uniforms.reflectionOnly=uniform;
-                        shader.fragmentShader='uniform float reflectionOnly;\n'+shader.fragmentShader;
-                        shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_maps>', T.ShaderChunk.lights_fragment_maps.replace('iblIrradiance += getIBLIrradiance( geometryNormal );','iblIrradiance += (1.0-reflectionOnly) * getIBLIrradiance( geometryNormal );'));
-                    };
-                    m.customProgramCacheKey=()=> 'reflection-only-v6'; m.needsUpdate=true;
-                }
-                m.userData.reflectionUniform.value=r.reflectionOnly ? 1 : 0;
-            };
-            for (const o of objects) { apply(o.mesh.material,r.affectPrisms); if (selected && r.affectPrisms) o.mesh.material.roughness=Math.max(o.mesh.material.roughness,r.blur); }
-            for (const emitter of emitters) emitter.traverse(o=>apply(o.material,r.affectLightSources));
-            apply(floor?.material,r.affectFloor);
+            const r=l.reflectionEnvironment, active=l.enabled && r.enabled && r.source!=='none';
+            if(active && r.source==='image') loadReflection(r);
+            else if(imageKey) { generation++; imageKey=''; imageState='idle'; imageTarget?.dispose(); imageTarget=null; }
+            const image=active && r.source==='image' && imageState==='ready';
+            const procedural=l.enabled && l.environment.enabled ? environmentTarget?.texture:null;
+            const selected=!active?null:image?imageTarget.texture:(r.source==='procedural'||r.fallback==='procedural')?procedural:null;
+            report(r,r.source==='image'?imageState:'idle',selected?(image?'image':'procedural'):'none');
+            const rotation=new T.Euler(...[r.rotationX,r.rotationY,r.rotationZ].map(T.MathUtils.degToRad));
+            if(r.animate) rotation[r.animationAxis]+=now*T.MathUtils.degToRad(r.animationSpeed);
+            if(r.source==='procedural') { rotation.x+=T.MathUtils.degToRad(l.environment.verticalRotation); rotation.y+=T.MathUtils.degToRad(l.environment.rotation); }
+            scene.environment=null;
+            const apply=(m,map,intensity)=>{ if(!m?.isMeshStandardMaterial)return; if(m.envMap!==map){m.envMap=map;m.needsUpdate=true;} m.envMapIntensity=intensity; m.envMapRotation.copy(rotation); };
+            const intensity=r.intensity*l.masterIntensity*(image?1:l.environment.intensity/.8);
+            for(const o of objects){
+                const layer=o.reflection, m=layer.material, u=m.userData.u;
+                const enabled=!!selected && r.affectPrisms && (r.independentLayer||r.mirrorDiagnostic) && (r.frontFaces||r.backFaces||r.mirrorDiagnostic);
+                layer.visible=enabled;
+                apply(o.mesh.material,selected && r.affectPrisms && !r.reflectionOnly && !r.mirrorDiagnostic?selected:null,intensity);
+                o.mesh.material.opacity=enabled&&r.mirrorDiagnostic?0:c.prisms.opacity;
+                if(!enabled) continue;
+                apply(m,selected,r.mirrorDiagnostic?1:intensity*r.reflectionStrength);
+                m.color.set(r.mirrorDiagnostic?'#ffffff':r.tint);
+                m.roughness=r.mirrorDiagnostic?0:Math.max(r.blur,r.reflectionRoughness);
+                const side=r.mirrorDiagnostic?T.FrontSide:r.frontFaces&&r.backFaces?T.DoubleSide:r.frontFaces?T.FrontSide:T.BackSide;
+                if(m.side!==side){m.side=side;m.needsUpdate=true;}
+                m.depthWrite=r.mirrorDiagnostic; m.transparent=!r.mirrorDiagnostic;
+                u.alpha.value=r.reflectionOpacity;u.power.value=r.fresnelPower;u.lo.value=r.minReflectivity;u.hi.value=r.maxReflectivity;u.fresnel.value=Number(r.fresnelModulation);u.exposure.value=r.exposure;u.saturation.value=r.saturation;u.contrast.value=r.contrast;u.boost.value=r.chamferBoost;u.chamfer.value=Number(r.chamferReflections);u.mirror.value=Number(r.mirrorDiagnostic);
+            }
+            for(const emitter of emitters) emitter.traverse(o=>apply(o.material,r.affectLightSources?selected:null,intensity));
+            apply(floor?.material,r.affectFloor?selected:null,intensity);
         }
         function updateLighting() {
             const l = c.environmentalLighting, enabled = l.enabled;
@@ -496,7 +510,8 @@
                     vertexShader:`varying vec3 n; varying vec3 v; void main(){vec4 p=modelViewMatrix*vec4(position,1.); n=normalize(normalMatrix*normal); v=-p.xyz; gl_Position=projectionMatrix*p;}`,
                     fragmentShader:`varying vec3 n; varying vec3 v; uniform vec3 rimColor,fresnelColor; uniform float rimPower,rimWidth,rimIntensity,fresnelPower,fresnelIntensity; void main(){float f=1.-abs(dot(normalize(n),normalize(v))); float r=pow(smoothstep(1.-rimWidth,1.,f),rimPower)*rimIntensity; float q=pow(f,fresnelPower)*fresnelIntensity; gl_FragColor=vec4(rimColor*r+fresnelColor*q,1.);}`
                 }));
-                mesh.add(edgeDepth, edge, edgeGlow, rimSurface);
+                const reflection = makeReflectionLayer(g);
+                mesh.add(edgeDepth, edge, edgeGlow, rimSurface, reflection);
                 mesh.castShadow = true;
                 mesh.receiveShadow = true;
                 let p;
@@ -519,7 +534,7 @@
                 mesh.rotation.set(Math.PI / 2, 0, i * .7);
                 group.add(mesh);
                 objects.push({
-                    mesh, edge, edgeGlow, edgeDepth, rim: rimSurface, base: p.clone(), axis: c.prisms.randomAxes ? axis() : V(0, 0, 1), phase: rand(0, 6.28)
+                    mesh, reflection, edge, edgeGlow, edgeDepth, rim: rimSurface, base: p.clone(), axis: c.prisms.randomAxes ? axis() : V(0, 0, 1), phase: rand(0, 6.28)
                 });
                 optical.push(mesh);
             }
