@@ -220,7 +220,7 @@ export default {
         "showStats": false
     },
     "edges": {
-        "enabled": true,
+        "enabled": false,
         "color": "#aabbdd",
         "opacity": 0.35,
         "thickness": 1,
@@ -229,5 +229,25 @@ export default {
         "showChamferEdges": true,
         "showHiddenEdges": false,
         "colorMode": "fixed"
+    },
+    "transmission": {
+        "enabled": true,
+        "mode": "advanced",
+        "intensity": 1,
+        "thickness": 1,
+        "useMaterialIOR": true,
+        "ior": 1.52,
+        "chromaticAberration": true,
+        "dispersion": 0.04,
+        "roughness": 0.02,
+        "absorption": 0.015,
+        "tint": "#ffffff",
+        "multiLayer": true,
+        "maxLayers": 3,
+        "refractPrisms": true,
+        "refractBeams": true,
+        "refractDust": true,
+        "resolutionScale": 0.75,
+        "quality": "auto"
     }
 };
