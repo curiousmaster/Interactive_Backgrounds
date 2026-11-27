@@ -8,6 +8,330 @@
       "size": 4500,
       "thumbnailHash": "2ec89c8754c44d022aa3c06f36eb8fdb8ee9809a26c44a2e810ef9ac156841fc",
       "generatedAt": "2026-11-27T11:31:27.237Z"
+    },
+    "asteroids": {
+      "sourceHash": "fdc504f8c8ccfaa5efffa697d165b217d65197f167b8123df809ee82094fd7fd",
+      "thumbnailHash": "0f953e1135f7e3a4b2209b7babd18c2d404e8c97b581653e6a202b84ebd30e87",
+      "size": 6728,
+      "bootstrapped": true
+    },
+    "aurora-ribbons": {
+      "sourceHash": "187f871686ba0333670745f8350192c9aedb61335fe9ecf1f21589adf60ad9d2",
+      "thumbnailHash": "1a86d0e5e393d00b19dcf87c2d7bcd63d01b3452f84fb1444a0b61712ffb890d",
+      "size": 7840,
+      "bootstrapped": true
+    },
+    "blob-grid-evolved": {
+      "sourceHash": "3b9ce6184aedd3e7d6ed4a840b287dafdeb418a939eb16e3f494e7598c467d4c",
+      "thumbnailHash": "f859eeaf9287edd02a348a736dc5edeb1a16820cddb8b65c3fc1946ae803ca2c",
+      "size": 23872,
+      "bootstrapped": true
+    },
+    "borrowed-dimensions": {
+      "sourceHash": "d81e0cf3a451769bdd8a661979244654290cfbdeb5040130c55947ecc054346b",
+      "thumbnailHash": "aebcb102e6a7546c9149e6937a90d08cfd3dff8c1f746523f946079bd352d02d",
+      "size": 4428,
+      "bootstrapped": true
+    },
+    "breathing-caverns": {
+      "sourceHash": "b6ea70b3465c106c618b93b5d891110a928cdc2f732f7cd636dca8068513aa2d",
+      "thumbnailHash": "ab1408e2e9be69d8e87436904d86667361ad404bc8e3e0a54d8d14bff934728a",
+      "size": 3260,
+      "bootstrapped": true
+    },
+    "capillary-light": {
+      "sourceHash": "362ab11f67998cf261b1565db1de1706ac27a9b39298f7eee6bc13ea9baf0137",
+      "thumbnailHash": "948b434bcb02d80e231fa3b0695ab819801ca382e4e1b1bae9a8e5f15783a71a",
+      "size": 4718,
+      "bootstrapped": true
+    },
+    "chromatic-faults": {
+      "sourceHash": "1f47c3c811145a2c4f6f45860920c95a7e62520ccaa878925f8a7d653833aff8",
+      "thumbnailHash": "3b3c31a89cbb77dd7336a584b5f6b1d93bd44e31e6af116da7e6156126a5740c",
+      "size": 5406,
+      "bootstrapped": true
+    },
+    "chromatic-reflections": {
+      "sourceHash": "23dddfbe2217ff8df556a42398883cabd2dc072f98dcb32308d0b8842e62dd5c",
+      "thumbnailHash": "25294521a665586703db317f8c3c2e15f7aaa82b26cb6cf516f4abb53100cfae",
+      "size": 12750,
+      "bootstrapped": true
+    },
+    "chromatic-ribbons": {
+      "sourceHash": "411b588971e829d247b896ee9585f38b041aa51006a96b7bf7b0ab4b634e3594",
+      "thumbnailHash": "e95b6c58cb39d497691f32b518b5070408c9114ab04190a2589ece68d91c083e",
+      "size": 1122,
+      "bootstrapped": true
+    },
+    "clockwork-garden": {
+      "sourceHash": "29e8d7b182f76b51e7c5032491cc561c7c3757a1100fd44ca5e0a2cd86f3fe37",
+      "thumbnailHash": "d2ae6666accf0bcc8cad6d5badfb5917fba38d355acd2156301eafab769bc94f",
+      "size": 2724,
+      "bootstrapped": true
+    },
+    "echo-architecture": {
+      "sourceHash": "b6174aa26b7f069bdf3aab3d908da3890599e4a749987ec09b23b232f189d470",
+      "thumbnailHash": "bbc9fc088f6f1e5ae82df70fced9ba2d2c210761fddbb1ca799c866026ee389b",
+      "size": 5112,
+      "bootstrapped": true
+    },
+    "elastic-mesh": {
+      "sourceHash": "1205dc5871798f9cdb2beef6b111476528df108d5476707af2b1e2ab7723a333",
+      "thumbnailHash": "64086c0eebb65fcb78e74eb0c763c0461230861065ec3f1ca8f26aae92a994a5",
+      "size": 26624,
+      "bootstrapped": true
+    },
+    "ember-migration": {
+      "sourceHash": "ee2fb81600786dbf0be2b737688cb075f898369babc108d58021c298749f7743",
+      "thumbnailHash": "e13534e5113cb305daaa7efd936d256c9e365450f94d27b581bed2f2403a3dbb",
+      "size": 7838,
+      "bootstrapped": true
+    },
+    "floating-tesserae": {
+      "sourceHash": "b6ae55b11bf03b67d595cff6379c104434a277b96498ea30d45e935872b355a1",
+      "thumbnailHash": "11163be5b057e4834e9a46291b63a30a79028204c670a150c08aa85a2d0d56f3",
+      "size": 28436,
+      "bootstrapped": true
+    },
+    "flowing-glyphs": {
+      "sourceHash": "2a67da4e97c9d606dbf79c1d957f5f2d7f24c622d5b68a5c32905759baeb9e28",
+      "thumbnailHash": "44a76af33d15b7f4ddb4bf07755b6f5a3636d51d1b30adbb781e1dc9e41004f0",
+      "size": 13122,
+      "bootstrapped": true
+    },
+    "glass-tides": {
+      "sourceHash": "5002ff6252784388e7dab86693bc7e12eea45e5dc1507c8480f3c322ae540a43",
+      "thumbnailHash": "dbd3f092e67e3fcb3af3f9f37063af4ff6d4481d0f113cd4f7926cecea427dc7",
+      "size": 5756,
+      "bootstrapped": true
+    },
+    "gravity-calligraphy": {
+      "sourceHash": "938730bc60e27578acf245636319addd101321ee6c148038f69e94441f6e907b",
+      "thumbnailHash": "1a9252234aa81c02c554d6c1f7c2cb3148e300728bc20325e2ff1aa25277371b",
+      "size": 16594,
+      "bootstrapped": true
+    },
+    "hexagonal-nexus": {
+      "sourceHash": "35310855b1919b65778d727bf2635aef499ab69e17fbf77aeeb606864364d47b",
+      "thumbnailHash": "a785cdfe5c23b74db7d4b11cf781497903b9faaaa1509ee7384268a52872d29d",
+      "size": 25328,
+      "bootstrapped": true
+    },
+    "impossible-windows": {
+      "sourceHash": "3768fd8e2b27025fdd2bc92bd3186fdf5ce5394d859db18e219520225d07d328",
+      "thumbnailHash": "b129a1b03efce8e235d231dc6ed9a1028414abb741f8893327d817ac959479a0",
+      "size": 2200,
+      "bootstrapped": true
+    },
+    "koch-snowflake": {
+      "sourceHash": "affbafafebdbfba6c18334a03b36dd824169348932a78402dc0d8f3b45de3fec",
+      "thumbnailHash": "133c94e9be497fabd806a13ba03cc4f943f8196a73c57d34f72324bf3d3955e7",
+      "size": 3520,
+      "bootstrapped": true
+    },
+    "life-of-math": {
+      "sourceHash": "92089ff4d862647f2bcc293dddfdc3f1c2066215ccc552a12fd418a223b58138",
+      "thumbnailHash": "3a5c2078072c78a43da4480b61d89cb9c8d5dfbd4227d71ec98d2bf7973159cd",
+      "size": 8576,
+      "bootstrapped": true
+    },
+    "liquid-interference": {
+      "sourceHash": "271e57836f04357622294a2b2fc528b5d78cd2c69c6ff3073f7c73f958337c35",
+      "thumbnailHash": "53015e7063277735a4ec560e6a5905c777bc779b05222bba52db9c2462216beb",
+      "size": 30376,
+      "bootstrapped": true
+    },
+    "living-atlas": {
+      "sourceHash": "3cd39ddb80821cd8291aef9500ef54fb6591cb68ecdd623af854c91aee568353",
+      "thumbnailHash": "c7b16d252540313793133d03c3c521248833e3f50188bd1ce67e7e43304754f5",
+      "size": 3258,
+      "bootstrapped": true
+    },
+    "luminous-sediments": {
+      "sourceHash": "ddf94419cd7a2a502642beb499cf085481dfb10cd3ba2dbd773d8bde2591ef5b",
+      "thumbnailHash": "ec730f3c7c4aef84feb1273a8122b126e81fd37e8223c9f80ea0539390872460",
+      "size": 6598,
+      "bootstrapped": true
+    },
+    "magnetic-particles": {
+      "sourceHash": "e4d5c0f3915222dedfae9c3a717a4575fdc4c867fa20b473df8836b88ed3a879",
+      "thumbnailHash": "23a9f2a5a93a542b2852bfe6d79570db823775166c6e52083b08e6075bd8990b",
+      "size": 10336,
+      "bootstrapped": true
+    },
+    "melody-currents": {
+      "sourceHash": "1a48731f29a1adcc816633ca80974f30a679233c903483b6180c1e0190e815ee",
+      "thumbnailHash": "263b97d1a2eb47902536dcba2f419f23405138e6262c41b45261adb04c66601c",
+      "size": 7334,
+      "bootstrapped": true
+    },
+    "memory-fossils": {
+      "sourceHash": "ed517e313c305bd44415293954dd332bc6574d2747d02308220abe389926369e",
+      "thumbnailHash": "d0f9036ff59b7526e9543c0afe04287be6121cd6bd82f937d41847b8cddf64bc",
+      "size": 2074,
+      "bootstrapped": true
+    },
+    "mirrage-loom": {
+      "sourceHash": "34ac4ae1cbb480ae574cc59a0a15d7df9a376617b11faab3c8192b4fe1cd4f43",
+      "thumbnailHash": "6f47ceb874048d4f0a0d001d4dcba30faa9cfaebab3160b690ff3075f70949ef",
+      "size": 41100,
+      "bootstrapped": true
+    },
+    "negative-constellations": {
+      "sourceHash": "f3a9fe8f53831b6eea9d1639caa9c86d39ce283f817361c1479869fbbf9ffcce",
+      "thumbnailHash": "cb06e3569f2e16a416aabf26e306eb9f2f188b230ac9930d76410416f269aa40",
+      "size": 3008,
+      "bootstrapped": true
+    },
+    "orbital-trails": {
+      "sourceHash": "2b82d8ba51316ac4fa17dd95b6f6a09d220296fbc0b4042f9855e4289c0f7c67",
+      "thumbnailHash": "82a72e7717fe744e6ccdf249c2a3d60302a0f24b863f145e687ded4c9841e195",
+      "size": 6378,
+      "bootstrapped": true
+    },
+    "orbiting-silence": {
+      "sourceHash": "7a06b3ac4b8b3e30421d9418bddebcf263deca340c48f092b0ed8593c3ee7af9",
+      "thumbnailHash": "5220cf6d517cbd094b0a4ab0fe887a35ce61dd56ce6a579b0b4a4b5527f311c5",
+      "size": 1652,
+      "bootstrapped": true
+    },
+    "origami-horizons": {
+      "sourceHash": "3c191951556a815a57fafcd5b76f10641a087c39393bf723c892c950052a4dfd",
+      "thumbnailHash": "01a18b38e4c581e67823d6fa9b198cb1e755b6f134bce04ab2bdda340dd442fd",
+      "size": 10862,
+      "bootstrapped": true
+    },
+    "pacman": {
+      "sourceHash": "3e9a490b2af7ef556d096af8188f96acb322fb25c75ce37836f8f94edd3336e0",
+      "thumbnailHash": "69b7390dce01d78d6c27df759987f315e0231e187aec17132c34255690e53879",
+      "size": 13520,
+      "bootstrapped": true
+    },
+    "paper-weather": {
+      "sourceHash": "e383ce448d71f2b2ec53b2e7d4c90b44a6d872f7935ea1c8a5ae449ff04018fa",
+      "thumbnailHash": "ec83919a277461405b125dc405c14d8f6be3e792e3e361f82ee830bcaec26fc4",
+      "size": 3288,
+      "bootstrapped": true
+    },
+    "phase-lanterns": {
+      "sourceHash": "478356f0b418b062165bfa784a705dc9f426c04cbd9e1c29c0a00cf2e2e41534",
+      "thumbnailHash": "fbc1e78f4a48306ba3ea1faf5120537aed6147fbdacc0911726243106b807b30",
+      "size": 10102,
+      "bootstrapped": true
+    },
+    "plasma-reactor": {
+      "sourceHash": "a858304d1581229e0ca211c442591b139b7844b06e6b7eac785e38bd1af06d48",
+      "thumbnailHash": "8223802d6c843b73da65a365de2f69b0153288a040fb1f0961316e481ef2c3ad",
+      "size": 27844,
+      "bootstrapped": true
+    },
+    "polarized-secrets": {
+      "sourceHash": "65336ad47078ed36714479b6a6a6b94b907d523c1b23492344422505ad3ba700",
+      "thumbnailHash": "6b08343690daf3125609a330a45210ccbe2374810d73a5bdd065b1e5f8de0be0",
+      "size": 1396,
+      "bootstrapped": true
+    },
+    "prismatic-rain": {
+      "sourceHash": "cc48adaba9a7529c7e38f632996e150ef35e4b24c528166c619ffb3c0a62a801",
+      "thumbnailHash": "41f1050b62ae3b4627a4f7b1fcc963e39228ef422f29a4391d7c00e829f3d3f1",
+      "size": 28344,
+      "bootstrapped": true
+    },
+    "quantum-ant-colony": {
+      "sourceHash": "964208307029ba1b83b75db15df68ade2a151bc25ad1fe574165d836c8d97032",
+      "thumbnailHash": "87bf63ce9bfbf30a169e8e0efa6604a4edf35e182df4432ec4990ba6028e47af",
+      "size": 9302,
+      "bootstrapped": true
+    },
+    "resonant-pools": {
+      "sourceHash": "ad8a2649fe878e0c144b51d86b19c0b5cb53cd2bf96cb67f1f41874bb8fd2990",
+      "thumbnailHash": "374e91df915365095b8bb67f2dce54113c4022948b8cc911de8e6b7881ddb6dc",
+      "size": 6974,
+      "bootstrapped": true
+    },
+    "scanning-light": {
+      "sourceHash": "43b6c70e62bb479cfb07cb5f347b6291ab37fc16ff37e8fa2730bfa15883fc39",
+      "thumbnailHash": "d719b4ed0f85e0dcb19afffec1df19a09589a2786d76641287c55d0627ae0278",
+      "size": 13988,
+      "bootstrapped": true
+    },
+    "shadow-organisms": {
+      "sourceHash": "16dd41c660b433c5d54c8bb154173896e54acb66d552b0819f8f85244339406a",
+      "thumbnailHash": "7cfb1c08b0f882808d048a8886e06aebb6f3bc2094fe5d78897cdff1757c4a75",
+      "size": 1946,
+      "bootstrapped": true
+    },
+    "signal-archaeology": {
+      "sourceHash": "b6bbad00745e0222e2113e3fe81a93422299be7fdd35752a474fd28eee598895",
+      "thumbnailHash": "92613f746c51b956b404a89edbe8a0826d3f875cb77d8ac370f7d9aec4a9c3e0",
+      "size": 2632,
+      "bootstrapped": true
+    },
+    "solar-herbarium": {
+      "sourceHash": "f2468dc6f92b33bde783c63b444c5c30cbf6a4468265825da66194ab5e358d18",
+      "thumbnailHash": "0048fc495a9a0d70dc721c7f951f345fb93334b7aa24a772252ca3aa5161920f",
+      "size": 9440,
+      "bootstrapped": true
+    },
+    "solar-system": {
+      "sourceHash": "34a9ed44ba26bf75bf692876c72bddb3b017a30fdde1b7d08025450b818fd42b",
+      "thumbnailHash": "c5ed26d6d5f2b86cb937ecc53812c4201c5cbec5b71968a066298c7cd63ac2c6",
+      "size": 3872,
+      "bootstrapped": true
+    },
+    "spectral-prism": {
+      "sourceHash": "a718d31ed121ef6671a1d188741f2fb563f78917266bec10ede5791e16901b78",
+      "thumbnailHash": "b4efebd9421acbe5de634ddf9c3e342c42095b85ca14e13d39f295fa1994b962",
+      "size": 11824,
+      "bootstrapped": true
+    },
+    "stellar-extreme": {
+      "sourceHash": "9a63162c0ff141ebfc3084ae1a899ee219a5a02e79980ae72a9f4dbadef8df73",
+      "thumbnailHash": "5e57408f54c5874bbce112f726f8f4071c3e8d2978b0f8e494e89cd62ea74135",
+      "size": 5860,
+      "bootstrapped": true
+    },
+    "three-body-problem": {
+      "sourceHash": "cc33927a38c90e8d4017e1c9a7991b3b20696812453049cf6ebb042c1d8478d6",
+      "thumbnailHash": "fa9ea46478ddeb75ec1e9c7ae36b9e3dd561a96aa5d6b1b4ead683a0a7bd3daf",
+      "size": 6726,
+      "bootstrapped": true
+    },
+    "topographic-contours": {
+      "sourceHash": "05e458a971bb0e14e10d5ed07c410478b3c8b7468efa5ef7e952742121312dc8",
+      "thumbnailHash": "052f39bd7db1a477e5d4abfb04801110c2e8d8cdef6babc9c6841109c5e502e1",
+      "size": 26940,
+      "bootstrapped": true
+    },
+    "velvet-vortices": {
+      "sourceHash": "971a91d94136c177c7b9c5cc86fd18ccd6a5205eb49986ac2b95e4c83ae8cbc1",
+      "thumbnailHash": "079596e346228b1efd2b7c197b6c0120a8bcabd1505e77b92194d267f1f61e48",
+      "size": 8336,
+      "bootstrapped": true
+    },
+    "viscous-flow": {
+      "sourceHash": "257a59bb2d124bad30ddc9b314c89aa7d0df453312278476de8c68e242212e25",
+      "thumbnailHash": "bfe00d575cee54f67e1a3566cfece789d61f01df6f1646624ae91b9c147a204a",
+      "size": 7858,
+      "bootstrapped": true
+    },
+    "wave-field": {
+      "sourceHash": "836497fef971586beef2dfea4143436443017be6b8b80ad4f000462627825299",
+      "thumbnailHash": "7283cf5a032a85e137de4b568a7435170bc1d77f31a9b0e258e6cd06d1187b8b",
+      "size": 30518,
+      "bootstrapped": true
+    },
+    "woven-time": {
+      "sourceHash": "a3ae7c505a7260269f2843d92c5202b66931e5631d6b543963d251ef9e1c5023",
+      "thumbnailHash": "579b90333d351217b4e43e92a560ca9104b631f3e7073f97786b39afa23ead22",
+      "size": 45190,
+      "bootstrapped": true
+    },
+    "zaxxon": {
+      "sourceHash": "91b7fc66066c1adf95b33b1427c7440575b5c7c4e37cf32b6366bd766a434827",
+      "thumbnailHash": "c493a99380e088ee5c0ab1bdfb59ad1606c958617f7aeb8f3466d91a1457e9b0",
+      "size": 6424,
+      "bootstrapped": true
     }
   }
 }
