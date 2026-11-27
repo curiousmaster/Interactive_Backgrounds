@@ -1,3 +1,4 @@
+```html
 <!doctype html>
 <html lang="en">
 <head>
@@ -477,7 +478,7 @@
             return root;
         }
 
-        function dispose(o) { o.traverse(x => { x.geometry?.dispose(); if (x.material)
+        function dispose(o) { o.traverse(x=>{if(x.userData.glass){x.userData.glass.dispose();x.userData.transmissionMaterial.dispose();}}); o.traverse(x => { x.geometry?.dispose(); if (x.material)
             x.material.dispose(); }); o.removeFromParent(); }
         let floor, dust, dirty = true, viewDirty = true, selected = null;
         function rebuild() {
@@ -492,6 +493,8 @@
                     color: 0xc4e4ff, transparent: true, opacity: c.prisms.opacity, roughness: c.prisms.roughness, metalness: .15, side: T.DoubleSide, depthWrite: false, iridescence: c.effects.iridescence ? 1 : 0
                 });
                 const mesh = new T.Mesh(g, mat);
+                mesh.userData.glass = mat;
+                mesh.userData.transmissionMaterial = makeTransmissionMaterial();
                 const edgeGeometry = new T.EdgesGeometry(g, c.edges.showChamferEdges ? 1 : 65);
                 const makeEdge = () => {
                     const geo = new LineSegmentsGeometry();
@@ -731,6 +734,62 @@
             renderer.domElement.addEventListener(ev, () => { selected = null; orbit.enabled = c.controls.enabled; });
         let last = performance.now(), lastTrace = 0;
         const clock = () => performance.now() / 1000;
+
+        // Screen-space transmission: capture the scene, then composite depth-ordered
+        // groups of prisms into successive independent render targets.
+        const transmissionTargets = [];
+        function makeTransmissionMaterial() {
+            return new T.ShaderMaterial({side:T.FrontSide,depthWrite:true,depthTest:true,
+                uniforms:{image:{value:null},viewport:{value:new T.Vector2(1,1)},ior:{value:1.52},amount:{value:1},thickness:{value:1},dispersion:{value:.04},roughness:{value:.02},absorption:{value:.015},tint:{value:new T.Color()},ortho:{value:0}},
+                vertexShader:`varying vec3 n; varying vec3 p; void main(){vec4 v=modelViewMatrix*vec4(position,1.);p=v.xyz;n=normalize(normalMatrix*normal);gl_Position=projectionMatrix*v;}`,
+                fragmentShader:`uniform sampler2D image; uniform vec2 viewport; uniform float ior,amount,thickness,dispersion,roughness,absorption,ortho; uniform vec3 tint; varying vec3 n,p;
+                vec3 sampleImage(vec2 uv){vec2 r=vec2(roughness*.015);return (texture2D(image,clamp(uv,0.,1.)).rgb*4.+texture2D(image,clamp(uv+vec2(r.x,0.),0.,1.)).rgb+texture2D(image,clamp(uv-vec2(r.x,0.),0.,1.)).rgb+texture2D(image,clamp(uv+vec2(0.,r.y),0.,1.)).rgb+texture2D(image,clamp(uv-vec2(0.,r.y),0.,1.)).rgb)/8.;}
+                vec2 shift(float eta){vec3 incident=normalize(mix(p,vec3(0.,0.,-1.),ortho));vec3 direction=refract(incident,normalize(n),1./max(eta,1.));return (direction.xy-incident.xy)*thickness*amount*.15/mix(max(1.,-p.z),5.,ortho);}
+                void main(){vec2 uv=gl_FragCoord.xy/viewport; vec3 col=vec3(sampleImage(uv+shift(ior-dispersion)).r,sampleImage(uv+shift(ior)).g,sampleImage(uv+shift(ior+dispersion)).b);gl_FragColor=vec4(col*mix(vec3(1.),tint,clamp(thickness*.5,0.,1.))*exp(-absorption*thickness),1.);}`
+            });
+        }
+        function renderTransmission(){
+            const t=c.transmission, mirror=c.environmentalLighting.reflectionEnvironment.mirrorDiagnostic;
+            const mode=!t.enabled||mirror?'classic':t.mode;
+            const ior=t.useMaterialIOR?index(550):t.ior;
+            for(const o of objects){const m=o.mesh.userData.glass;const physical=mode==='physical';
+                if((m.transmission>0)!==physical)m.needsUpdate=true;
+                m.transmission=physical?Math.min(1,t.intensity):0;m.transparent=!physical;m.depthWrite=physical;m.side=physical?T.FrontSide:T.DoubleSide;
+                m.opacity=physical?1:m.opacity;m.ior=T.MathUtils.clamp(ior,1,2.5);m.thickness=t.thickness*c.prisms.size;m.dispersion=t.chromaticAberration?t.dispersion:0;
+                m.attenuationDistance=t.absorption>0?1/t.absorption:Infinity;m.attenuationColor.set(t.tint);
+                if(physical)m.roughness=t.roughness;
+            }
+            if(mode!=='advanced'||!objects.length)return;
+            const size=renderer.getDrawingBufferSize(new T.Vector2());
+            const scale=t.quality==='low'?.5:t.resolutionScale;
+            const w=Math.max(1,Math.round(size.x*scale)),h=Math.max(1,Math.round(size.y*scale));
+            const count=t.multiLayer&&t.refractPrisms?Math.min(objects.length,Math.max(1,Math.round(t.maxLayers)),t.quality==='low'?1:4):1;
+            while(transmissionTargets.length>count)transmissionTargets.pop().dispose();
+            while(transmissionTargets.length<count)transmissionTargets.push(new T.WebGLRenderTarget(w,h,{type:T.HalfFloatType}));
+            for(const rt of transmissionTargets)if(rt.width!==w||rt.height!==h)rt.setSize(w,h);
+            scene.updateMatrixWorld(true);camera.updateMatrixWorld(true);
+            const depth=o=>o.mesh.getWorldPosition(new T.Vector3()).applyMatrix4(camera.matrixWorldInverse).z;
+            const sorted=[...objects].sort((a,b)=>depth(a)-depth(b));
+            const saved=objects.map(o=>[o.mesh,o.mesh.visible]);
+            const effects=[lines,halo,impact,pulseMesh,trail,dust].filter(Boolean).map(o=>[o,o.visible]);
+            const oldTarget=renderer.getRenderTarget(); const oldTone=renderer.toneMapping;
+            try{
+                renderer.toneMapping=T.NoToneMapping;
+                for(const [o] of saved)o.visible=false;
+                for(const [o] of effects)if(o===dust?!t.refractDust:!t.refractBeams)o.visible=false;
+                for(let layer=0;layer<count;layer++){
+                    const rt=transmissionTargets[layer];renderer.setRenderTarget(rt);renderer.clear();renderer.render(scene,camera);
+                    const start=Math.floor(layer*sorted.length/count),end=Math.floor((layer+1)*sorted.length/count);
+                    for(let i=start;i<end;i++){
+                        const o=sorted[i],m=o.mesh.userData.transmissionMaterial,u=m.uniforms;
+                        u.image.value=rt.texture;u.viewport.value.set(w,h);u.ior.value=ior;u.amount.value=t.intensity;u.thickness.value=t.thickness*c.prisms.size;u.dispersion.value=t.chromaticAberration?t.dispersion:0;u.roughness.value=t.roughness;u.absorption.value=t.absorption;u.tint.value.set(t.tint);u.ortho.value=Number(camera.isOrthographicCamera===true);
+                        o.mesh.material=m;o.mesh.visible=true;
+                    }
+                }
+            }finally{renderer.setRenderTarget(oldTarget);renderer.toneMapping=oldTone;for(const [o,v] of saved)o.visible=v;for(const [o,v] of effects)o.visible=v;}
+            for(const o of objects)o.mesh.material.uniforms.viewport.value.copy(size);
+        }
+
         function frame(t) {
             requestAnimationFrame(frame);
             const dt = Math.min(.05, (t - last) / 1000);
@@ -846,13 +905,16 @@
                     co.needsUpdate = true;
                 }
             }
+            for(const o of objects) o.mesh.material=o.mesh.userData.glass;
             updateLighting();
             applyReflection(c.environmentalLighting);
             bloom.enabled = c.bloom.enabled;
             bloom.strength = c.bloom.strength;
             bloom.radius = c.bloom.radius;
             bloom.threshold = c.bloom.threshold;
+            renderTransmission();
             composer.render();
+            for(const o of objects) o.mesh.material=o.mesh.userData.glass;
             document.querySelector('#stats').textContent = c.controls.showStats ? `Prisms: ${objects.length}\nSegments: ${segments}\nInterfaces: ${hits}\nFPS: ${Math.round(1 / Math.max(dt, .001))}` : '';
         }
         resize();
@@ -860,3 +922,5 @@
     </script>
 </body>
 </html>
+
+```
