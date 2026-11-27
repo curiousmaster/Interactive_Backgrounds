@@ -64,7 +64,7 @@ const DIAGNOSTICS = process.argv.includes("--diagnostics");
 const args = process.argv.slice(2);
 const flag = name => args.includes(name);
 const option = name => args.find(a => a.startsWith(name + "="))?.slice(name.length + 1);
-const WORKERS = Number(option("--workers") ?? 2);
+const WORKERS = Number(option("--workers") ?? 1);
 if (!Number.isInteger(WORKERS) || WORKERS < 1 || WORKERS > 8) throw new Error("Workers must be 1–8");
 const MANIFEST = join(ROOT, "thumbnail-manifest.json");
 const hash = data => createHash("sha256").update(data).digest("hex");
@@ -522,7 +522,8 @@ async function captureBackground(
     origin,
     background
 ) {
-    const config = {...CONFIG, ...background.thumbnail};
+    const config = {...CONFIG, navigationTimeout: 60000, captureTimeout: 45000, retries: 3, ...background.thumbnail};
+    const prefix = `[${background.name}]`;
     const quality = {minimumScore:0.5, minimumContrast:0.5, minimumEdges:0.1, ...background.thumbnail?.quality};
     const parts = validateFolder(
         background.folder
@@ -559,7 +560,7 @@ async function captureBackground(
         attempt <= config.retries;
         attempt++
     ) {
-        let context;
+        let context, imageContext;
 
         try {
             console.log(
@@ -579,12 +580,14 @@ async function captureBackground(
             });
 
             const page = await context.newPage();
+            imageContext = await browser.newContext();
+            const imagePage = await imageContext.newPage();
 
-            page.on("requestfailed", request => warn(`Request failed: ${request.url()} ${request.failure()?.errorText}`));
-            page.on("response", response => { if (response.status() >= 400) warn(`HTTP ${response.status()}: ${response.url()}`); });
+            page.on("requestfailed", request => warn(`${prefix} Request failed: ${request.url()} ${request.failure()?.errorText}`));
+            page.on("response", response => { if (response.status() >= 400) warn(`${prefix} HTTP ${response.status()}: ${response.url()}`); });
             page.on("pageerror", error => {
                 console.warn(
-                    `  PAGE ERROR: ${error.message}`
+                    `${prefix} PAGE ERROR: ${error.message}`
                 );
             });
 
@@ -628,24 +631,16 @@ async function captureBackground(
                     await sleep(captureTime - elapsed);
                 }
 
-                const png = await captureScreenshot(cdp, config.captureTimeout);
-
-                const analysis = await analyzeScreenshot(
-                    page,
-                    png
-                );
-
-                candidates.push({
-                    png,
-                    time: captureTime,
-                    ...analysis
-                });
-
-                console.log(
-                    `  Frame ${captureTime}ms: ` +
-                    `score=${analysis.score.toFixed(2)}, ` +
-                    `brightness=${analysis.brightness.toFixed(2)}`
-                );
+                try {
+                    const png = await captureScreenshot(cdp, config.captureTimeout);
+                    const analysis = await analyzeScreenshot(imagePage, png);
+                    candidates.push({png, time: captureTime, ...analysis});
+                    console.log(`${prefix} Frame ${captureTime}ms: score=${analysis.score.toFixed(2)}, brightness=${analysis.brightness.toFixed(2)}`);
+                } catch (error) {
+                    warn(`${prefix} Frame ${captureTime}ms failed: ${error.message}; evaluating available candidates`);
+                    // Do not queue more CDP requests behind a stalled capture.
+                    break;
+                }
             }
 
             if (!candidates.length) {
@@ -664,11 +659,11 @@ async function captureBackground(
             const best = valid[0];
 
             console.log(
-                `  Selected frame at ${best.time}ms`
+                `${prefix} Selected frame at ${best.time}ms`
             );
 
             const webp = await convertToWebP(
-                page,
+                imagePage,
                 best.png, config
             );
 
@@ -686,7 +681,7 @@ async function captureBackground(
             const info = await stat(outputPath);
 
             console.log(
-                `  SAVED ${relative(ROOT, outputPath)} ` +
+                `${prefix} SAVED ${relative(ROOT, outputPath)} ` +
                 `(${(info.size / 1024).toFixed(1)} KB)`
             );
 
@@ -719,11 +714,12 @@ async function captureBackground(
             lastError = error;
 
             console.warn(
-                `  ATTEMPT ${attempt} FAILED: ` +
+                `${prefix} ATTEMPT ${attempt} FAILED: ` +
                 error.message
             );
 
         } finally {
+            if (imageContext) await imageContext.close().catch(() => {});
             if (context) {
                 await context.close().catch(() => {});
             }
@@ -875,7 +871,8 @@ async function main() {
         names.add(b.folder);
     }
     const manifest = await loadManifest();
-    const shared = hash(await readFile(fileURLToPath(import.meta.url)));
+    // Stable rendering fingerprint: change only when intentionally invalidating thumbnails.
+    const shared = "0b94dc5b4b999b3889ba928fa967af527e9487d3ecbafe7439f8f9326a6055e2";
     const folder = option("--folder");
     if (folder && !names.has(folder)) throw new Error(`Unknown folder: ${folder}`);
     const selected = all.filter(b => (!folder || b.folder === folder) && (SELECTED_FOLDERS === null || SELECTED_FOLDERS.has(b.folder)));
@@ -888,7 +885,8 @@ async function main() {
             const current = await readFile(path).then(hash).catch(() => null);
             const old = Object.hasOwn(manifest.backgrounds,b.folder) ? manifest.backgrounds[b.folder] : null;
             const stale = !current || old?.sourceHash !== source || old?.thumbnailHash !== current;
-            console.log(`${stale || REGENERATE_ALL ? "UPDATE" : "SKIP"} ${b.folder}`);
+            const reasons = [REGENERATE_ALL && "forced", !current && "thumbnail missing", !old && "no manifest entry", old && old.sourceHash !== source && "source hash changed", old && current && old.thumbnailHash !== current && "thumbnail hash mismatch"].filter(Boolean);
+            console.log(`${stale || REGENERATE_ALL ? "UPDATE" : "SKIP"} ${b.folder}: ${reasons.join(", ") || "up to date"}`);
             if (stale || REGENERATE_ALL) queue.push({b,source}); else skipped++;
         } catch (e) { failed.push(b.folder); warn(`${b.folder}: ${e.message}`); }
     }
@@ -907,17 +905,28 @@ async function main() {
         let browser;
         try {
             browser = await chromium.launch({headless:true,args:["--enable-webgl","--use-gl=angle","--use-angle=swiftshader","--enable-unsafe-swiftshader","--disable-dev-shm-usage"]});
-            async function worker() {
+            const retryQueue = [];
+            async function worker(sequential = false) {
                 while (queue.length) {
                     const {b,source} = queue.shift();
                     try {
                         const result = await captureBackground(browser,origin,b);
                         Object.defineProperty(manifest.backgrounds,b.folder,{value:{sourceHash:source,...result,generatedAt:new Date().toISOString()},enumerable:true,configurable:true,writable:true});
                         generated++;
-                    } catch(e) { failed.push(b.folder); warn(`${b.folder}: ${e.message}`); }
+                    } catch(e) {
+                        if (WORKERS > 1 && !sequential) { retryQueue.push({b,source}); warn(`${b.folder}: ${e.message}; queued for sequential retry`); }
+                        else { failed.push(b.folder); warn(`${b.folder}: ${e.message}`); }
+                    }
                 }
             }
-            await Promise.all(Array.from({length:Math.min(WORKERS,queue.length)},worker));
+            await Promise.all(Array.from({length:Math.min(WORKERS,queue.length)}, () => worker()));
+            if (retryQueue.length) {
+                console.log(`Sequential fallback: ${retryQueue.length} backgrounds`);
+                await browser.close();
+                browser = await chromium.launch({headless:true,args:["--enable-webgl","--use-gl=angle","--use-angle=swiftshader","--enable-unsafe-swiftshader","--disable-dev-shm-usage"]});
+                queue.push(...retryQueue);
+                await worker(true);
+            }
         } finally {
             if (browser) await browser.close().catch(() => {});
             await new Promise(done => server.close(done));

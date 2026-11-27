@@ -22,7 +22,7 @@ jobs:
   generate:
     name: Generate and commit thumbnails
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: write
     outputs:
@@ -53,9 +53,9 @@ jobs:
           set -euo pipefail
           unset THUMBNAIL_FOLDERS
           if [[ "$REGENERATE_ALL" == "true" ]]; then
-            node scripts/generate-thumbnails.mjs --all --workers=2
+            node scripts/generate-thumbnails.mjs --all --workers=1
           else
-            node scripts/generate-thumbnails.mjs --workers=2
+            node scripts/generate-thumbnails.mjs --workers=1
           fi
 
       - name: Commit generated thumbnails
