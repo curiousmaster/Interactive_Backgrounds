@@ -1,6 +1,7 @@
 import defaults from './settings.js';
 const copy = x => JSON.parse(JSON.stringify(x));
 const choices = {
+    source:["procedural","image","none"], fallback:["procedural","none"], animationAxis:["x","y","z"],
     colorMode: ['fixed','spectral','iridescent','material'], axis:['x','y','z'], pattern:['orbit','oscillate'],
     preset:['Dark Side','Soft Studio','Hard Studio','Neon','Laboratory','Cinematic','Cosmic','Rainbow','High Contrast','Custom'],
     style: ['studio', 'strip-lights', 'laboratory', 'neon', 'cosmic', 'dark', 'rainbow'],
@@ -111,6 +112,8 @@ const merge = (a, b) => { for (const k of Object.keys(a)) {
     }
 } return a; };
 export function mountSettings(config, onChange) {
+    let catalog = [];
+    fetch("./environments/environments.json").then(r=>r.ok?r.json():[]).then(items=>{ catalog=Array.isArray(items)?items:[]; build(); }).catch(()=>{});
     const panel = document.createElement('aside');
     panel.id = 'settings';
     document.body.append(panel);
@@ -202,7 +205,12 @@ export function mountSettings(config, onChange) {
                 name.textContent = label(key);
                 row.append(name);
                 let input;
-                if (choices[key]) {
+                if (key === "file" && path.includes("reflectionEnvironment")) {
+                    input = document.createElement("select");
+                    input.append(new Option("Select panorama", ""));
+                    for (const item of catalog) if (typeof item.file === "string" && typeof item.name === "string") input.append(new Option(item.name,item.file));
+                    if (value && !catalog.some(x=>x.file===value)) input.append(new Option(value+" (missing)",value));
+                } else if (choices[key]) {
                     input = document.createElement('select');
                     choices[key].forEach(v => input.append(new Option(label(v), v)));
                 }
@@ -212,7 +220,8 @@ export function mountSettings(config, onChange) {
                     if (input.type === 'range') {
                         const specific = path.join('.') === 'environmentalLighting.rim' && key === 'width' ? [.01,1,.01] : path.join('.') === 'environmentalLighting.directional' && key === 'count' ? [1,4,1] : path.join('.') === 'environmentalLighting.studioPanels' && key === 'count' ? [1,32,1] : null;
                         const special = group === 'environmentalLighting' ? {count:[1,8,1], radius:[.1,25,.1], rotation:[0,360,1], azimuth:[-180,180,1], elevation:[-90,90,1], distance:[1,50,1], decay:[0,2,.1], power:[.5,8,.1]}[key] : null;
-                        const r = specific || special || (group === 'light' && key === 'count' ? [1, 8, 1] : ranges[key] || [0, 10, .1]);
+                        const reflectionRange = path.includes("reflectionEnvironment") ? {rotationX:[-180,180,1],rotationY:[-180,180,1],rotationZ:[-180,180,1],animationSpeed:[-30,30,.5],maxResolution:[256,2048,256],saturation:[0,2,.05],contrast:[0,2,.05],blur:[0,1,.01]}[key] : null;
+                        const r = reflectionRange || specific || special || (group === 'light' && key === 'count' ? [1, 8, 1] : ranges[key] || [0, 10, .1]);
                         [input.min, input.max, input.step] = r;
                     }
                 }
@@ -224,6 +233,7 @@ export function mountSettings(config, onChange) {
                 if (typeof value === 'number')
                     out.textContent = value;
                 input.oninput = () => { const v = input.type === 'checkbox' ? input.checked : typeof value === 'number' ? Number(input.value) : input.value; values[key] = v;
+                    if (path.includes("reflectionEnvironment") && key === "file" && v) { values.source = "image"; build(); onChange([...path,key].join(".")); return; }
                     if (group === 'environmentalLighting' && key === 'preset' && v !== 'Custom') {
                         const styles = {'Dark Side':['dark',.15,.1], 'Soft Studio':['studio',.8,.25], 'Hard Studio':['strip-lights',1.2,.03], Neon:['neon',1,.08], Laboratory:['laboratory',.8,.12], Cinematic:['studio',1.3,.05], Cosmic:['cosmic',.6,.08], Rainbow:['rainbow',1,.1], 'High Contrast':['strip-lights',1.5,.02]};
                         const [style,intensity,roughness] = styles[v];

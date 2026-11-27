@@ -100,6 +100,12 @@
             padding: 8px 0;
         }
 
+        #settings details details {
+            margin-left: 12px;
+            padding-left: 8px;
+            border-left: 1px solid #ffffff20;
+        }
+
         summary {
             cursor: pointer;
             font-weight: 600;
@@ -163,6 +169,8 @@
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
         import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
         import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+        import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
         import defaults from './settings.js';
         const { mountSettings } = await import('./settings-editor.js?v=' + Date.now());
         const c = structuredClone(defaults), V = (x = 0, y = 0, z = 0) => new T.Vector3(x, y, z), rand = (a, b) => a + Math.random() * (b - a), axis = () => V(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize();
@@ -223,6 +231,78 @@
             environmentTarget = next;
             studio.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); });
         }
+        // Local panoramic maps; the visible background is never changed.
+        const environmentCatalog = await fetch('./environments/environments.json')
+            .then(r => { if (!r.ok) throw Error(r.status); return r.json(); })
+            .then(items => Array.isArray(items) ? items.filter(x => typeof x.name === 'string' && typeof x.file === 'string' && /^[\w .-]+\.(hdr|exr|webp|png|jpe?g)$/i.test(x.file)) : [])
+            .catch(() => []);
+        let imageTarget = null, imageKey = '', imageState = 'idle', generation = 0;
+        async function loadReflection(r) {
+            const key = JSON.stringify([r.file,r.exposure,r.saturation,r.contrast,r.maxResolution]);
+            if (key === imageKey) return;
+            imageKey = key;
+            const token = ++generation;
+            imageState = 'loading';
+            let texture, target, material, geometry, adjusted;
+            try {
+                if (!environmentCatalog.some(x => x.file === r.file)) throw Error('Unknown environment');
+                const url = './environments/' + encodeURIComponent(r.file);
+                const ext = r.file.split('.').pop().toLowerCase();
+                texture = await (ext === 'hdr' ? new RGBELoader() : ext === 'exr' ? new EXRLoader() : new T.TextureLoader()).loadAsync(url);
+                if (token !== generation) return;
+                if (!['hdr','exr'].includes(ext)) texture.colorSpace = T.SRGBColorSpace;
+                const width = Math.max(16, Math.floor(Math.min(r.maxResolution, renderer.capabilities.maxTextureSize, texture.image.width)));
+                adjusted = new T.WebGLRenderTarget(width, Math.max(1, Math.floor(width/2)), {type:T.HalfFloatType, depthBuffer:false});
+                material = new T.ShaderMaterial({uniforms:{map:{value:texture}, exposure:{value:r.exposure}, saturation:{value:r.saturation}, contrast:{value:r.contrast}}, vertexShader:`varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`, fragmentShader:`varying vec2 vUv; uniform sampler2D map; uniform float exposure,saturation,contrast; void main(){vec3 c=texture2D(map,vUv).rgb*exposure; c=mix(vec3(dot(c,vec3(.2126,.7152,.0722))),c,saturation); gl_FragColor=vec4(max(vec3(0.),(c-.18)*contrast+.18),1.);}`});
+                geometry = new T.PlaneGeometry(2,2);
+                const staging = new T.Scene(); staging.add(new T.Mesh(geometry,material));
+                const previous = renderer.getRenderTarget();
+                try { renderer.setRenderTarget(adjusted); renderer.render(staging,new T.Camera()); }
+                finally { renderer.setRenderTarget(previous); }
+                adjusted.texture.mapping = T.EquirectangularReflectionMapping;
+                target = pmrem.fromEquirectangular(adjusted.texture);
+                if (token !== generation) { target.dispose(); return; }
+                imageTarget?.dispose(); imageTarget = target; imageState = 'ready';
+            } catch (error) {
+                if (token === generation) { imageState = 'failed'; console.warn('Reflection environment:',error); }
+            } finally { texture?.dispose(); adjusted?.dispose(); material?.dispose(); geometry?.dispose(); }
+        }
+        function applyReflection(l) {
+            const r = l.reflectionEnvironment;
+            const active = l.enabled && r.enabled && r.source !== 'none';
+            if (active && r.source === 'image') loadReflection(r);
+            else if (imageKey) { generation++; imageKey=''; imageState='idle'; imageTarget?.dispose(); imageTarget=null; }
+            const image = active && r.source === 'image' && imageState === 'ready';
+            const procedural = l.enabled && l.environment.enabled ? environmentTarget?.texture : null;
+            const selected = !active ? null : image ? imageTarget.texture : (r.source === 'procedural' || r.fallback === 'procedural') ? procedural : null;
+            const rotation = new T.Euler(...[r.rotationX,r.rotationY,r.rotationZ].map(T.MathUtils.degToRad));
+            if (r.animate) rotation[r.animationAxis] += now * T.MathUtils.degToRad(r.animationSpeed);
+            if (r.source === 'procedural') { rotation.x += T.MathUtils.degToRad(l.environment.verticalRotation); rotation.y += T.MathUtils.degToRad(l.environment.rotation); }
+            // Explicit material maps prevent the selected panorama from affecting other objects.
+            scene.environment = null;
+            const apply = (m, affected) => {
+                if (!m?.isMeshStandardMaterial) return;
+                const map = affected ? selected : null;
+                if (m.envMap !== map) { m.envMap=map; m.needsUpdate=true; }
+                m.envMapIntensity = r.intensity * l.masterIntensity * (r.source === 'procedural' ? l.environment.intensity / .8 : 1);
+                m.envMapRotation.copy(rotation);
+                // Reflection-only suppresses the environment's diffuse term, not direct lights.
+                if (!m.userData.reflectionHook) {
+                    m.userData.reflectionHook=true;
+                    const uniform={value:0}; m.userData.reflectionUniform=uniform;
+                    m.onBeforeCompile = shader => {
+                        shader.uniforms.reflectionOnly=uniform;
+                        shader.fragmentShader='uniform float reflectionOnly;\n'+shader.fragmentShader;
+                        shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_maps>', T.ShaderChunk.lights_fragment_maps.replace('iblIrradiance += getIBLIrradiance( geometryNormal );','iblIrradiance += (1.0-reflectionOnly) * getIBLIrradiance( geometryNormal );'));
+                    };
+                    m.customProgramCacheKey=()=> 'reflection-only-v6'; m.needsUpdate=true;
+                }
+                m.userData.reflectionUniform.value=r.reflectionOnly ? 1 : 0;
+            };
+            for (const o of objects) { apply(o.mesh.material,r.affectPrisms); if (selected && r.affectPrisms) o.mesh.material.roughness=Math.max(o.mesh.material.roughness,r.blur); }
+            for (const emitter of emitters) emitter.traverse(o=>apply(o.material,r.affectLightSources));
+            apply(floor?.material,r.affectFloor);
+        }
         function updateLighting() {
             const l = c.environmentalLighting, enabled = l.enabled;
             const power = section => enabled && section.enabled ? section.intensity * l.masterIntensity : 0;
@@ -256,7 +336,7 @@
             rim.color.set(l.rim.color);
             rim.intensity = power(l.rim);
             if (enabled && l.environment.enabled) updateEnvironment(l.environment.style);
-            scene.environment = enabled && l.environment.enabled ? environmentTarget.texture : null;
+            scene.environment = null;
             scene.environmentIntensity = l.environment.intensity * l.masterIntensity;
             scene.environmentRotation.x = T.MathUtils.degToRad(l.environment.verticalRotation);
             scene.environmentRotation.y = T.MathUtils.degToRad(l.environment.rotation);
@@ -752,6 +832,7 @@
                 }
             }
             updateLighting();
+            applyReflection(c.environmentalLighting);
             bloom.enabled = c.bloom.enabled;
             bloom.strength = c.bloom.strength;
             bloom.radius = c.bloom.radius;

@@ -151,6 +151,28 @@ export default {
             "resolution": 1024,
             "softness": 2,
             "bias": -0.0001
+        },
+        "reflectionEnvironment": {
+            "enabled": true,
+            "source": "procedural",
+            "file": "",
+            "intensity": 0.8,
+            "exposure": 1,
+            "saturation": 1,
+            "contrast": 1,
+            "rotationX": 0,
+            "rotationY": 0,
+            "rotationZ": 0,
+            "blur": 0.05,
+            "animate": false,
+            "animationSpeed": 2,
+            "animationAxis": "y",
+            "affectPrisms": true,
+            "affectLightSources": true,
+            "affectFloor": false,
+            "reflectionOnly": true,
+            "fallback": "procedural",
+            "maxResolution": 1024
         }
     },
     "bloom": {
