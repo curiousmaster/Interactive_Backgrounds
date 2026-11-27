@@ -107,6 +107,14 @@
       "size": 13122,
       "bootstrapped": true
     },
+    "frostlight-windows": {
+      "sourceHash": "edd373bcfd4bed43c2bd46f181076ec4ff5ee1af1184d2718dec9aac3de07f0a",
+      "captureTime": 8500,
+      "score": 10.298296186187137,
+      "size": 14496,
+      "thumbnailHash": "eee8f2823ff6ba3094fa7afbe7d0a6f5b030da24005b82f3d8bcd1ef586d6cbb",
+      "generatedAt": "2026-11-27T11:51:37.305Z"
+    },
     "glass-tides": {
       "sourceHash": "5002ff6252784388e7dab86693bc7e12eea45e5dc1507c8480f3c322ae540a43",
       "thumbnailHash": "dbd3f092e67e3fcb3af3f9f37063af4ff6d4481d0f113cd4f7926cecea427dc7",
