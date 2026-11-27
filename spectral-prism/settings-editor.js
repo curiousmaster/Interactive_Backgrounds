@@ -55,7 +55,7 @@ const presets = {
         prisms: {
             count: 8
         }, environment: {
-            mirrors: true
+            mirrors: false
         }
     },
     'Reverse Spectrum': {
@@ -103,17 +103,39 @@ const presets = {
         }
     }
 };
-const reflectionFiles = ['none','sunset','studio','studio','studio','neon','none','neon','neon','studio','neon','sunset'];
-Object.values(presets).forEach((preset,i) => {
-    preset.edges = {...preset.edges, enabled:false};
-    const file=reflectionFiles[i];
-    preset.environmentalLighting = { ...preset.environmentalLighting, reflectionEnvironment: {
-        enabled:file!=='none', source:'image', file:file==='none'?'neon.png':file+'.png',
-        intensity:[1.5,1.2,1.5,2,.8,1.5,1.5,2,1.2,1.8,1.5,1.5][i],
-        reflectionOpacity:[.65,.45,.65,.8,.3,.65,.65,.75,.5,.65,.55,.7][i],
-        animate:[5,7,8,10,11].includes(i), animationSpeed:({5:2,7:8,8:1,10:4,11:.5})[i]||2
-    }};
+// Environmental reflection configuration for each preset.
+const reflectionFiles = [
+    'none', 'sunset', 'studio', 'studio', 'studio', 'neon',
+    'none', 'neon', 'neon', 'studio', 'neon', 'sunset'
+];
+const reflectionIntensities = [1.5, 1.2, 1.5, 2.0, 0.8, 1.5, 1.5, 2.0, 1.2, 1.8, 1.5, 1.5];
+const reflectionOpacities = [0.65, 0.45, 0.65, 0.80, 0.30, 0.65, 0.65, 0.75, 0.50, 0.65, 0.55, 0.70];
+const animatedPresets = [5, 7, 8, 10, 11];
+const animationSpeeds = {5: 2, 7: 8, 8: 1, 10: 4, 11: 0.5};
+
+Object.values(presets).forEach((preset, i) => {
+    const file = reflectionFiles[i];
+    preset.edges = { ...preset.edges, enabled: false };
+    preset.environment = { ...preset.environment, mirrors: false };
+    preset.environmentalLighting = {
+        ...preset.environmentalLighting,
+        reflectionEnvironment: {
+            enabled: file !== 'none',
+            source: 'image',
+            file: file === 'none' ? 'neon.png' : file + '.png',
+            intensity: reflectionIntensities[i],
+            reflectionOpacity: reflectionOpacities[i],
+            animate: animatedPresets.includes(i),
+            animationSpeed: animationSpeeds[i] ?? 2
+        }
+    };
 });
+
+// Inherit the current defaults, but explicitly disable mirrors and edges.
+const defaultPreset = copy(defaults);
+defaultPreset.environment.mirrors = false;
+defaultPreset.edges.enabled = false;
+const orderedPresets = { Default: defaultPreset, ...presets };
 const merge = (a, b) => { for (const k of Object.keys(a)) {
     if (b && Object.hasOwn(b, k)) {
         if (typeof a[k] === 'object')
@@ -135,7 +157,7 @@ export function mountSettings(config, onChange) {
     toggle.onclick = () => { panel.hidden = !panel.hidden; };
     panel.hidden = !config.editor.enabled;
     const label = k => k.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase());
-    let selectedPreset = '';
+    let selectedPreset = 'Default';
     let searchQuery = '';
     const expanded = new Map();
 
@@ -166,12 +188,12 @@ export function mountSettings(config, onChange) {
         panel.append(searchBar);
         const preset = document.createElement('select');
         preset.append(new Option('Choose preset', ''));
-        Object.keys(presets).forEach(k => preset.append(new Option(k, k)));
+        Object.keys(orderedPresets).forEach(k => preset.append(new Option(k, k)));
         preset.value = selectedPreset;
         preset.onchange = () => {
             selectedPreset = preset.value;
             if (selectedPreset) {
-                apply(presets[selectedPreset], selectedPreset);
+                apply(orderedPresets[selectedPreset], selectedPreset);
             }
         };
         panel.append(preset);
