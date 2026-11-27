@@ -45,6 +45,14 @@
       "size": 4718,
       "bootstrapped": true
     },
+    "chaos-game": {
+      "sourceHash": "2c5f8b0957010cd37ed0d2ca4b0a77108aeac1e1df45f8f506efd16180187d59",
+      "captureTime": 5000,
+      "score": 11.261571939610276,
+      "size": 6002,
+      "thumbnailHash": "ba61e9c033d87884ee96dce0eca55c32a496734da711eccfb635d689746cb62b",
+      "generatedAt": "2026-11-27T13:06:53.147Z"
+    },
     "chromatic-faults": {
       "sourceHash": "1f47c3c811145a2c4f6f45860920c95a7e62520ccaa878925f8a7d653833aff8",
       "thumbnailHash": "3b3c31a89cbb77dd7336a584b5f6b1d93bd44e31e6af116da7e6156126a5740c",
